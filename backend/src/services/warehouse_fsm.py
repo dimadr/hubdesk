@@ -1,0 +1,64 @@
+from src.core.fsm import BaseFSM
+from src.core.fsm.mixins import AuditMixin
+from src.models.warehouse import (
+    AccountingDocument, DocStatus, DocType, StockBalance,
+)
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+
+
+class WarehouseDocFSM(BaseFSM, AuditMixin):
+    transitions = {
+        "DRAFT":    ["APPROVAL"],
+        "APPROVAL": ["DELIVERY"],
+        "DELIVERY": ["ACCOUNTED"],
+        "ACCOUNTED": [],
+    }
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    def get_status(self, entity: AccountingDocument) -> str:
+        return entity.status.value
+
+    def set_status(self, entity: AccountingDocument, target: str) -> None:
+        entity.status = DocStatus(target)
+
+    async def log_transition(
+        self, entity: AccountingDocument, from_status: str, to_status: str, user_id: int, context: dict
+    ) -> None:
+        pass
+
+    async def post_account(self, document: AccountingDocument) -> None:
+        for line in document.lines:
+            await self._apply_stock_change(
+                document.doc_type,
+                document.source_warehouse_id,
+                document.target_warehouse_id,
+                line.nomenclature_id,
+                line.quantity,
+            )
+
+    async def _apply_stock_change(
+        self, doc_type: DocType, source_id: int | None, target_id: int | None,
+        nom_id: int, qty: float
+    ):
+        if doc_type == DocType.INFLOW and target_id:
+            await self._delta(target_id, nom_id, +qty)
+        elif doc_type == DocType.WRITE_OFF and source_id:
+            await self._delta(source_id, nom_id, -qty)
+        elif doc_type == DocType.TRANSFER and source_id and target_id:
+            await self._delta(source_id, nom_id, -qty)
+            await self._delta(target_id, nom_id, +qty)
+
+    async def _delta(self, warehouse_id: int, nom_id: int, delta: float):
+        stmt = select(StockBalance).where(
+            StockBalance.warehouse_id == warehouse_id,
+            StockBalance.nomenclature_id == nom_id,
+        )
+        result = await self.session.execute(stmt)
+        balance = result.scalar_one_or_none()
+        if not balance:
+            balance = StockBalance(warehouse_id=warehouse_id, nomenclature_id=nom_id, quantity=0)
+            self.session.add(balance)
+        balance.quantity += delta

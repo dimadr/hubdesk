@@ -1,0 +1,14 @@
+ticket_grid:
+  features:
+    - sticky_columns
+    - resize_columns
+    - reorder_columns
+    - tree_view
+    - saved_views
+    - tabs
+    - websocket_counters
+
+row_styles:
+  overdue: pink
+  customer_waiting: bold
+  internal_ticket: lock_icon

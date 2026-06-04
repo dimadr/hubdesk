@@ -1,0 +1,10 @@
+document_types:
+  - INFLOW
+  - TRANSFER
+  - WRITE_OFF
+
+statuses:
+  - DRAFT
+  - APPROVAL
+  - DELIVERY
+  - ACCOUNTED

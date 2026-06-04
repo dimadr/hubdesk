@@ -1,0 +1,9 @@
+openapi: 3.0.0
+info:
+  title: FSM API
+  version: 0.1.0
+paths:
+  /tickets: {}
+  /comments: {}
+  /equipment: {}
+  /warehouses: {}

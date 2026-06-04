@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+node_modules/
+dist/
+*.tar.gz
+.env
+*.egg-info/
+.DS_Store
+.vscode/
+.idea/
+сыровато

@@ -1,0 +1,415 @@
+import React, { useEffect, useState } from 'react';
+import { api } from '../api/client';
+
+interface Stats {
+  total_users: number; total_customers: number; total_locations: number;
+  total_warehouses: number; total_tickets: number; open_tickets: number;
+  overdue_tickets: number; completed_tickets: number; critical_tickets: number;
+  user_breakdown: { role: string; count: number }[];
+}
+
+interface CustomerData { id: number; name: string; type: string; locations_count: number; }
+interface UserInfo { id: number; email: string; name: string; role: string; status?: string; }
+interface PendingUser { id: number; email: string; name: string; role: string; status: string; consent_given: boolean; consent_date: string | null; }
+
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'Администратор', engineer: 'Инженер', dispatcher: 'Диспетчер',
+  customer: 'Заказчик', storekeeper: 'Кладовщик',
+};
+
+export const AdminPage: React.FC = () => {
+  const [tab, setTab] = useState<'dashboard' | 'users' | 'moderation' | 'customers' | 'history'>('dashboard');
+
+  return (
+    <div>
+      <div className="tabs" style={{ marginBottom: 20, display: 'inline-flex' }}>
+        {([
+          { key: 'dashboard', label: 'Дашборд', icon: '📊' },
+          { key: 'users', label: 'Пользователи', icon: '👥' },
+          { key: 'moderation', label: 'Модерация', icon: '🛡️' },
+          { key: 'customers', label: 'Клиенты', icon: '🏢' },
+          { key: 'history', label: 'История', icon: '📜' },
+        ] as const).map(t => (
+          <button key={t.key} className={`tab ${tab === t.key ? 'active' : ''}`} onClick={() => setTab(t.key)}>
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'dashboard' && <DashboardTab />}
+      {tab === 'users' && <UsersTab />}
+      {tab === 'moderation' && <ModerationTab />}
+      {tab === 'customers' && <CustomersTab />}
+      {tab === 'history' && <HistoryTab />}
+    </div>
+  );
+};
+
+const DashboardTab: React.FC = () => {
+  const [stats, setStats] = useState<Stats | null>(null);
+
+  useEffect(() => {
+    api.get('/admin/stats').then(r => setStats(r.data)).catch(() => {});
+  }, []);
+
+  if (!stats) return <div className="loading">Загрузка...</div>;
+
+  const statCards = [
+    { label: 'Пользователей', value: stats.total_users, color: 'var(--primary)' },
+    { label: 'Клиентов', value: stats.total_customers, color: 'var(--info)' },
+    { label: 'Объектов', value: stats.total_locations, color: 'var(--success)' },
+    { label: 'Складов', value: stats.total_warehouses, color: 'var(--warning)' },
+  ];
+
+  const ticketCards = [
+    { label: 'Всего заявок', value: stats.total_tickets, sub: null, color: 'var(--text)' },
+    { label: 'Открыто', value: stats.open_tickets, sub: null, color: 'var(--warning)' },
+    { label: 'Просрочено', value: stats.overdue_tickets, sub: null, color: 'var(--danger)' },
+    { label: 'Завершено', value: stats.completed_tickets, sub: null, color: 'var(--success)' },
+  ];
+
+  return (
+    <div>
+      <div className="section-title">Система</div>
+      <div className="kpi-row">
+        {statCards.map(s => (
+          <div className="kpi" key={s.label}>
+            <div className="kpi-lab">{s.label}</div>
+            <div className="kpi-val" style={{ color: s.color }}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="section-title" style={{ marginTop: 20 }}>Заявки</div>
+      <div className="kpi-row">
+        {ticketCards.map(s => (
+          <div className="kpi" key={s.label}>
+            <div className="kpi-lab">{s.label}</div>
+            <div className="kpi-val" style={{ color: s.color }}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="section-title" style={{ marginTop: 20 }}>Пользователи по ролям</div>
+      <div className="table-wrapper" style={{ marginTop: 10 }}>
+        <table>
+          <thead><tr><th>Роль</th><th>Количество</th></tr></thead>
+          <tbody>
+            {stats.user_breakdown.map((u, i) => (
+              <tr key={i}>
+                <td style={{ fontWeight: 600 }}>{ROLE_LABELS[u.role] || u.role}</td>
+                <td className="mono">{u.count}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+const UsersTab: React.FC = () => {
+  const [users, setUsers] = useState<UserInfo[]>([]);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = () => {
+    api.get('/users/list')
+      .then(r => { setUsers(r.data); setLoading(false); })
+      .catch(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []);
+
+  if (loading) return <div className="loading">Загрузка...</div>;
+
+  return (
+    <div>
+      <div className="table-wrapper">
+        <table>
+          <thead><tr><th>ID</th><th>Имя</th><th>Email</th><th>Роль</th><th></th></tr></thead>
+          <tbody>
+            {users.map(u => (
+              <tr key={u.id}>
+                <td className="mono" style={{ color: 'var(--text-muted)' }}>#{u.id}</td>
+                <td style={{ fontWeight: 600 }}>{u.name}</td>
+                <td>{u.email}</td>
+                <td>
+                  <span className="status-pill" style={{ background: 'var(--primary-bg)', color: 'var(--primary)' }}>
+                    {ROLE_LABELS[u.role] || u.role}
+                  </span>
+                  {' '}
+                  {u.status === 'pending' && <span className="status-pill" style={{ background: 'var(--warning-bg)', color: 'var(--warning)' }}>Ожидает</span>}
+                  {u.status === 'rejected' && <span className="status-pill" style={{ background: 'var(--danger-bg)', color: 'var(--danger)' }}>Отклонён</span>}
+                </td>
+                <td>
+                  <button className="btn btn-secondary" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => setEditId(u.id)}>✎</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {editId && (
+        <UserEditModal
+          user={users.find(u => u.id === editId)!}
+          onClose={() => setEditId(null)}
+          onSaved={() => { setEditId(null); load(); }}
+        />
+      )}
+    </div>
+  );
+};
+
+const UserEditModal: React.FC<{ user: UserInfo; onClose: () => void; onSaved: () => void }> = ({ user, onClose, onSaved }) => {
+  const [name, setName] = useState(user.name);
+  const [email, setEmail] = useState(user.email);
+  const [role, setRole] = useState(user.role);
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const body: any = {};
+      if (name !== user.name) body.name = name;
+      if (email !== user.email) body.email = email;
+      if (role !== user.role) body.role = role;
+      if (password) body.password = password;
+      if (Object.keys(body).length === 0) { onClose(); return; }
+      await api.patch(`/admin/users/${user.id}`, body);
+      onSaved();
+    } catch (e: any) {
+      setError(e.response?.data?.detail || 'Ошибка');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={e => e.stopPropagation()}>
+        <h3>Редактировать: {user.name}</h3>
+        {error && <p style={{ color: 'var(--danger)', fontSize: 13, background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 6 }}>{error}</p>}
+        <label>Имя</label>
+        <input value={name} onChange={e => setName(e.target.value)} />
+        <label>Email</label>
+        <input value={email} onChange={e => setEmail(e.target.value)} />
+        <label>Роль</label>
+        <select value={role} onChange={e => setRole(e.target.value)}>
+          {Object.entries(ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+        <label>Новый пароль (оставьте пустым, чтобы не менять)</label>
+        <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" />
+        <div className="modal-actions">
+          <button className="btn btn-primary" onClick={save} disabled={saving}>
+            {saving ? 'Сохранение...' : 'Сохранить'}
+          </button>
+          <button className="btn btn-secondary" onClick={onClose}>Отмена</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const CustomersTab: React.FC = () => {
+  const [customers, setCustomers] = useState<CustomerData[]>([]);
+  const [showAdd, setShowAdd] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = () => {
+    api.get('/admin/customers')
+      .then(r => { setCustomers(r.data); setLoading(false); })
+      .catch(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const deleteCust = async (id: number) => {
+    if (!confirm('Удалить клиента?')) return;
+    try {
+      await api.delete(`/admin/customers/${id}`);
+      load();
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Ошибка удаления');
+    }
+  };
+
+  if (loading) return <div className="loading">Загрузка...</div>;
+
+  return (
+    <div>
+      <div className="page-header">
+        <h2>Клиенты</h2>
+        <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Добавить клиента</button>
+      </div>
+      <div className="table-wrapper">
+        <table>
+          <thead><tr><th>ID</th><th>Название</th><th>Тип</th><th>Объектов</th><th></th></tr></thead>
+          <tbody>
+            {customers.map(c => (
+              <tr key={c.id}>
+                <td className="mono" style={{ color: 'var(--text-muted)' }}>#{c.id}</td>
+                <td style={{ fontWeight: 600 }}>{c.name}</td>
+                <td><span className="status-pill" style={{ background: 'var(--info-bg)', color: 'var(--info)' }}>{c.type === 'company' ? 'Компания' : 'Физлицо'}</span></td>
+                <td className="mono">{c.locations_count}</td>
+                <td>
+                  <button className="btn btn-secondary" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => setEditId(c.id)} title="Редактировать">✎</button>
+                  {' '}
+                  <button className="btn btn-danger" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => deleteCust(c.id)} title="Удалить">✕</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {showAdd && <CustomerFormModal onClose={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); load(); }} />}
+      {editId && <CustomerFormModal onClose={() => setEditId(null)} onSaved={() => { setEditId(null); load(); }} customer={customers.find(c => c.id === editId)} />}
+    </div>
+  );
+};
+
+const CustomerFormModal: React.FC<{ onClose: () => void; onSaved: () => void; customer?: CustomerData }> = ({ onClose, onSaved, customer }) => {
+  const [name, setName] = useState(customer?.name || '');
+  const [type, setType] = useState(customer?.type || 'company');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    if (!name.trim()) { setError('Название обязательно'); return; }
+    setSaving(true);
+    try {
+      const body = { name, type };
+      if (customer) await api.patch(`/admin/customers/${customer.id}`, body);
+      else await api.post('/admin/customers', body);
+      onSaved();
+    } catch (e: any) {
+      setError(e.response?.data?.detail || 'Ошибка');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={e => e.stopPropagation()}>
+        <h3>{customer ? 'Редактировать' : 'Добавить'} клиента</h3>
+        {error && <p style={{ color: 'var(--danger)', fontSize: 13, background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 6 }}>{error}</p>}
+        <label>Название</label>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="ООО Компания" />
+        <label>Тип</label>
+        <select value={type} onChange={e => setType(e.target.value)}>
+          <option value="company">Компания</option>
+          <option value="individual">Физлицо</option>
+        </select>
+        <div className="modal-actions">
+          <button className="btn btn-primary" onClick={save} disabled={saving}>
+            {saving ? 'Сохранение...' : (customer ? 'Сохранить' : 'Добавить')}
+          </button>
+          <button className="btn btn-secondary" onClick={onClose}>Отмена</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ModerationTab: React.FC = () => {
+  const [pending, setPending] = useState<PendingUser[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = () => {
+    api.get('/admin/pending-users')
+      .then(r => { setPending(r.data); setLoading(false); })
+      .catch(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleApprove = async (id: number) => {
+    try { await api.post(`/admin/pending-users/${id}/approve`); load(); } catch {}
+  };
+
+  const handleReject = async (id: number) => {
+    try { await api.post(`/admin/pending-users/${id}/reject`); load(); } catch {}
+  };
+
+  if (loading) return <div className="loading">Загрузка...</div>;
+
+  return (
+    <div>
+      <div className="page-header">
+        <h2>Модерация пользователей</h2>
+        <span className="text-muted">{pending.length} заявок на рассмотрении</span>
+      </div>
+      {pending.length === 0 ? (
+        <div className="dash-card card-accent">
+          <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: 16 }}>Заявок на утверждение нет</p>
+        </div>
+      ) : (
+        <div className="table-wrapper">
+          <table>
+            <thead><tr><th>Имя</th><th>Email</th><th>Роль</th><th>Согласие</th><th>Действия</th></tr></thead>
+            <tbody>
+              {pending.map(u => (
+                <tr key={u.id}>
+                  <td style={{ fontWeight: 600 }}>{u.name}</td>
+                  <td>{u.email}</td>
+                  <td><span className="status-pill" style={{ background: 'var(--primary-bg)', color: 'var(--primary)' }}>{ROLE_LABELS[u.role] || u.role}</span></td>
+                  <td>
+                    {u.consent_given
+                      ? <span style={{ color: 'var(--success)', fontSize: 12 }}>✓ Дано {u.consent_date ? new Date(u.consent_date).toLocaleDateString('ru-RU') : ''}</span>
+                      : <span style={{ color: 'var(--danger)', fontSize: 12 }}>✕ Отсутствует</span>}
+                  </td>
+                  <td>
+                    <button className="btn btn-success" style={{ padding: '5px 12px', fontSize: 12, marginRight: 6 }} onClick={() => handleApprove(u.id)}>✓ Утвердить</button>
+                    <button className="btn btn-danger" style={{ padding: '5px 12px', fontSize: 12 }} onClick={() => handleReject(u.id)}>✕ Отклонить</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const HistoryTab: React.FC = () => {
+  const [lines, setLines] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get('/admin/history')
+      .then(r => { setLines(r.data.lines || []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="loading">Загрузка...</div>;
+
+  return (
+    <div>
+      <div className="page-header">
+        <h2>История действий</h2>
+        <span className="text-muted">{lines.length} записей</span>
+      </div>
+      <div className="table-wrapper" style={{ maxHeight: '70vh', overflow: 'auto' }}>
+        <table>
+          <thead><tr><th style={{ width: 160 }}>Дата</th><th>Событие</th></tr></thead>
+          <tbody>
+            {lines.map((line, i) => {
+              const match = line.match(/^\[(.+?)\]\s+(.+)/);
+              const ts = match ? match[1] : '';
+              const msg = match ? match[2] : line;
+              return (
+                <tr key={i}>
+                  <td className="mono" style={{ color: 'var(--text-muted)', fontSize: 12 }}>{ts}</td>
+                  <td>{msg}</td>
+                </tr>
+              );
+            })}
+            {lines.length === 0 && <tr><td colSpan={2} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)' }}>История пуста</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};

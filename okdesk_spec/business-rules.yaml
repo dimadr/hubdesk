@@ -1,0 +1,12 @@
+rules:
+  - id: private-comment-files
+    description: Attachments inherit privacy from private comments.
+
+  - id: checklist-required
+    description: Ticket completion requires all mandatory checklist fields.
+
+  - id: sla-response
+    description: Response SLA measured from creation until accepted.
+
+  - id: sla-resolution
+    description: Resolution SLA measured until completed.
