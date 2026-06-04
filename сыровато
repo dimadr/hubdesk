@@ -1,0 +1,145 @@
+Technical Domain Profile: Okdesk "Ticket List Dashboard" UI/UX Engine (v1.0)
+1. UI Layout Modes & Visual States
+
+Dashboard поддерживает два альтернативных режима рендеринга основного списка (Layout View Enums).
+
+    Табличный вид (Table View): Строгая сеточная структура с динамическими колонками. Поддерживает кастомный порядок полей (Column Ordering) и горизонтальный скролл (Horizontal Drag-to-Scroll).
+
+    Блочный вид (Card/Block View): Компактные карточки заявок для быстрой визуальной оценки.
+
+Правила условного форматирования (UI Highlight Rules):
+
+    Bold Font: Заявка является «новой» ИЛИ последний комментарий оставлен внешним Контактным лицом (Contact Person). Сигнализирует о необходимости реакции сотрудника.
+
+    Red Background/Text: Нарушен SLA — заявка перешла в статус просроченной (Overdue).
+
+2. Fast Actions Engine (Inline Actions & Preview)
+
+Система минимизирует количество перезагрузок страниц (No-Reload Policy) за счет инлайн-операций на уровне списка.
+Режим предпросмотра (Preview Mode)
+
+При клике на элемент списка открывается сайдбар/модальное окно без ухода с основного роута.
+
+    Прямое комментирование (Inline Commenting): Добавление текстовых логов прямо из превью.
+
+    Механизм упоминаний (Mentions/Ping System): Парсинг паттерна @username в тексте комментария для триггера нотификаций и привлечения коллег к решению.
+
+Drag-and-Drop вложения (File Attachments Interface)
+
+    Поддерживается прямое перетаскивание файлов с Desktop как в сам список, так и в окно предпросмотра.
+
+    Матрица публичности файлов и комментариев (Privacy Control Matrix):
+
+        Public: Видимо всем (Сотрудники + Клиенты/Контактные лица).
+
+        Private: Видимо исключительно внутренним сотрудникам (Internal Agents).
+
+        Каскадное наследование: Файлы, прикрепленные к приватному комментарию, автоматически получают флаг is_private = true. Права публичности (Visibility Flag) могут быть переопределены вручную постфактум.
+
+3. Inline State Modifications
+
+Изменение ключевых атрибутов сущности Ticket доступно прямо из ячеек/элементов списка без захода в полную карточку:
+
+    Статус (Ticket Status Transition): Переключение по графу доступных статусов.
+
+    Ответственный (Assignee Assignment):
+
+        Полиморфное поле: ответственность может быть назначена на User ID (конкретный сотрудник) либо на Group ID (сервисная команда/отдел).
+
+4. Filtering, Sorting & Persistence Engine
+
+Модуль фильтрации делится на три уровня абстракции.
+Компоненты фильтрации:
+
+    Локальные/Временные фильтры (Contextual Micro-Filters): Контекстные иконки в шапке каждой колонки для быстрой фильтрации «на лету» без сохранения параметров.
+
+    Предопределенные системные фильтры (Role-Based Quick Filters): Зашитые в систему пресеты, жестко завязанные на роль текущего пользователя в ACL (например, «Мои открытые», «Новые в группе»).
+
+    Пользовательские сохраненные фильтры (Custom User Presets): Комплексные выборки параметров, которые пользователь может сохранить в виде именованного пресета. Поддерживается перезапись существующих пресетов (Upsert) или создание новых (Insert).
+
+Синхронизация данных:
+
+    Автообновление (Auto-Refresh Polling): Фоновые запросы для обновления датасета без инвалидации состояния UI и перезагрузки страницы (рекомендуемый дефолтный режим для операторов).
+
+    Экспорт данных (Data Export): Модуль выгрузки текущего отфильтрованного списка заявок в файлы отчетов (кнопка в правом верхнем углу интерфейса).
+
+    Для того чтобы LLM могла качественно спроектировать, доработать или реализовать подобную систему, ей необходима глубокая техническая декомпозиция архитектуры и логики сущностей.Ниже представлено детальное техническое описание FSM-системы (Field Service Management) на основе бизнес-логики процессов Okdesk, структурированное по модулям, моделям данных и ключевым бизнес-правилам.Техническая архитектура и функциональные требования к FSM-системе1. Ядро системы и Модель данных (Core Data Models)Для реализации базовой логики в БД должны быть заложены следующие связанные сущности:Заявитель / Клиент (Company / Customer): Юридическое или физическое лицо, балансодержатель объектов.Договор (Service Contract): Определяет SLA (время реакции, время решения), доступные типы работ, сроки действия контракта и привязанные лимиты.Объект обслуживания (Asset Location): Физический адрес (координаты, схемы, регламент доступа), где установлено оборудование.Оборудование (Asset / Equipment): Конкретная инженерная единица (кондиционер, котел, датчик) с уникальным серийным номером, моделью, QR-кодом и собственной историей обслуживания.Заявка / Тикет (Work Order / Ticket): Центральная сущность, объединяющая клиента, объект, оборудование, исполнителей, чек-листы и статусы.2. Модуль омниканального хелпдеска и ДиспетчеризацииМеханизмы создания заявок (Ingestion Rate)Система должна агрегировать входящий поток через:Внешние API / Веб-хуки: Интеграция с формами на сайтах мониторинга.Email-to-Ticket: Парсинг входящих писем, автоматическое определение клиента по домену или email, создание тикета.Интеграция с мессенджерами (Telegram-бот): Двусторонний чат. Клиент пишет боту — создается заявка; инженер пишет комментарий в заявке — клиент получает пуш в Telegram.Client Portal / Mobile App: Интерфейс для заказчика, где он видит только свои объекты, оборудование и статусы заявок.Логика маршрутизации и распределения (Routing Engine)Автоматическое назначение по регламенту: Если тип заявки = "Плановое ТО", система по календарной сетке договора генерирует тикет на закрепленного за объектом инженера, минуя диспетчера.Полуавтоматическое (Территориальное): Парсинг адреса объекта -> определение регионального кластера -> авто-назначение заявки на "Очередь/Группу инженеров" данного региона.Диспетчеризация через Диаграмму Ганта: Интерфейс для ручного планирования. Должен отображать таймлайны занятости мастеров, исключая пересечение ("наползание") выездов и учитывая график работы (выходные, отпуска).Гео-модуль (Карта): Интеграция с GPS-трекером мобильного приложения инженера. Диспетчер видит на карте маркер экстренной заявки и свободные/занятые радиусы мастеров вокруг нее для назначения ближайшего.3. Мобильное рабочее место инженера (Field Service App)Приложение должно быть оптимизировано для работы в условиях плохой связи (подвалы, промзоны) с обязательным Offline-first режимом (накопление изменений в локальной БД SQLite/Room и синхронизация при появлении сети).Жизненный цикл заявки (State Machine)Инженер переводит заявку по строго валидируемым статусам:Назначена -> Принята в работу -> В пути (фиксация гео-точки старта) -> Прибыл на объект / Выполняется -> Проверка / Формирование акта -> Выполнена.Работа с оборудованием через QR-кодыКаждая единица оборудования снабжается наклейкой с уникальным URL/UID.Сценарий 1 (Инспекция): Инженер сканирует QR-код -> Мобильное приложение открывает Паспорт оборудования (модель, схемы, история прошлых ремонтов, активные чек-листы).Сценарий 2 (Новый инцидент): Клиент или инженер сканирует QR-код -> Открывается форма предзаполненной заявки, где поле "Оборудование" и "Объект" уже жестко зафиксированы.4. Модуль контроля регламентов (Чек-листы и Валидация)Механизм гарантирует, что полевые сотрудники выполняют работу по стандарту (SOP), а не "на бумаге".Логика работы Конструктора чек-листов:Типы полей в чек-листе: Checkbox (Выполнено/Нет), Числовое поле (Замер параметров), Текстовое поле, Фотоотчет.Зависимые поля: Если параметр "Давление в контуре" выходит за рамки нормативного диапазона $[X..Y]$, система обязана автоматически сделать поле "Фотофиксация нарушения" строго обязательным для заполнения.Жесткая валидация статусов (Guard Rails): Бэкенд должен отклонять попытку перевода заявки в статус "Выполнена", если массив checklist_responses содержит незаполненные обязательные поля или отсутствуют прикрепленные медиафайлы, если они требовались.5. Финансовый модуль и Закрывающие документы (Billing & Sign-off)Спецификации и Сметы (ERP-lite)Прямо в интерфейсе заявки (как в веб-версии, так и в мобильной) должен функционировать табличный модуль расчета стоимости:Выбор работ/услуг из прайс-листа (связанного с договором конкретного клиента).Выбор ТМЦ (запчасти, расходники) со списанием со "склада мастера" или общего склада.Автоматический расчет итоговой суммы с учетом индивидуальной скидки клиента, параметров НДС и наценок за экстренность/ночную работу.Модуль генерации печатных форм и Sign on GlassДвижок шаблонизатора (например, Carbone / DocxTemplater): На бэкенде хранятся шаблоны актов в формате .docx с переменными типа {{client_name}}, {{work_list}}, {{checklist_data}}. При закрытии заявки система собирает все данные и компилирует финальный PDF.Sign on Glass (Экранная подпись): Компонент HTML5 Canvas в мобильном приложении. Заказчик расписывается пальцем на экране смартфона инженера. Векторный макет (или PNG с прозрачным фоном) подписи отправляется на сервер и автоматически встраивается в сгенерированный PDF-акт в поле "Заказчик принял".6. Коммуникации, SLA и Аналитический бэкендКонфиденциальность комментариев (Внутренние vs Внешние)Все логи переписки в тикете делятся на два типа с помощью флага is_private (boolean):is_private = false: Публичные комментарии и файлы. Отображаются в клиентском портале и дублируются клиенту в Telegram/Email.is_private = true: Внутренние технические логи и общение инженеров. Доступны только сотрудникам сервисной компании. Приватный комментарий автоматически делает все вложенные в него файлы приватными.Тайм-трекинг и SLA-метрикиСистема должна логировать точное время (timestamp) каждого изменения статуса. На основе этого рассчитываются:Response Time: Время от создания заявки до перехода в статус "Принята в работу".Resolution Time: Общее время до статуса "Выполнена".Labor Costs: Чистое время, проведенное в статусе "Выполняется" (для расчета сдельной оплаты труда инженера).Модуль отчетности (Analytics & BI)Бэкенд агрегирует исторические данные для построения дашбордов:Эффективность сотрудников: Количество закрытых заявок, процент повторных обращений (Re-open rate), средняя оценка от клиентов (CSAT).Аналитика оборудования: Выявление "слабых мест" — моделей техники, которые чаще всего выходят из строя и требуют наибольших затрат на ремонт.
+
+    Контекст модуля: Табличный интерфейс управления заявками (Grid View / Work Order Management)
+
+Этот модуль представляет собой расширенный табличный компонент (Data Grid) для операторов, диспетчеров и инженеров. Интерфейс спроектирован по принципу Single Page App (SPA) с фокусом на глубокую кастомизацию отображения, вложенность сущностей, многоуровневую фильтрацию и работу в режиме мульти-вкладок (Tabbed Interface).
+Функциональные требования к реализации
+1. Кастомизация и Поведение Data Grid (UI/UX компонента)
+
+    Sticky Columns (Фиксированные столбцы): При горизонтальном скролле крайние левый (Номер заявки) и правый (Текущий статус) столбцы должны быть жестко зафиксированы на экране (пиннинг колонок).
+
+    Resizing (Изменение ширины): Возможность интерактивного изменения ширины столбцов мышкой (Drag-to-resize) через разделители в заголовке таблицы.
+
+    Управление отображением (Колонки):
+
+        Диалоговое окно настройки состава полей на базе Checkbox-компонентов.
+
+        Изменение порядка столбцов методом Drag-and-Drop элементов списка внутри модального окна настроек.
+
+2. Маркеры состояний и Визуальная индикация строк
+
+Каждая строка таблицы должна динамически обрабатывать стили на основе метаданных заявки:
+
+    Приоритет (Border-индикация): Левая граница строки (border-left) окрашивается в цвет, соответствующий уровню приоритета (настраивается на бэкенде).
+
+    Просрочка решения (SLA Resolution Violation): Вся строка (background-color) окрашивается в нежно-розовый цвет, если текущее время превысило нормативное плановое время решения.
+
+    Просрочка реакции (SLA Reaction Violation): Рядом с номером заявки рендерится иконка «Красный восклицательный знак», если нарушено нормативное время первой реакции/ответа.
+
+    Неотвеченный комментарий: Тема заявки выделяется font-weight: bold, если последний комментарий в ветке был оставлен клиентом (требует внимания сотрудника).
+
+    Приватность (Внутренние работы): Иконка «Замок» рядом с номером, если флаг is_internal = true (заявка скрыта от клиентских учетных записей).
+
+3. Иерархия данных (Tree Grid / Вложенные заявки)
+
+    Поддержка Master-Detail отношений: Возможность связывания заявок в иерархические структуры (родительский проект/инцидент -> дочерние подзадачи/этапы).
+
+    Сворачивание/Разворачивание (Accordion Rows): В крайней левой ячейке родительской строки рендерится триггер (иконка стрелки). При клике (без перезагрузки страницы) под строкой раскрывается вложенный список дочерних заявок с сохранением структуры табличных колонок.
+
+4. Модуль Умного Поиска (Smart Search)
+
+    Инпут глобального поиска по ID (номер) или Теме заявки.
+
+    Авто-аппаратный редирект: Если паттерн ввода строго соответствует ID существующего тикета (например, регулярное выражение /^\d+$/), система должна мгновенно инициализировать переход/открытие карточки этой заявки, минуя вывод результатов в таблицу (сокращение на 1 клик).
+
+5. Двухуровневая фильтрация и Логика инверсии
+
+    Инлайн-фильтры колонок: Контекстные иконки в шапке каждого столбца. При активации подсвечиваются цветом. Рядом рендерится иконка «Сброс» (X).
+
+    Логический оператор инверсии (NOT): В интерфейсе фильтрации должна быть опция «Кроме» (NOT IN). Например, вместо перечисления всех рабочих статусов, пользователь выбирает статусы Решена + Закрыта и активирует «Кроме», инвертируя выборку ко всем открытым заявкам.
+
+    Панель расширенных фильтраций: Выдвижной верхний сайдбар для фильтрации по скрытым (не выведенным в таблицу) атрибутам. Возможность динамически добавлять/удалять чипы (tags) фильтров на панель.
+
+6. Сохранение представлений и Мульти-вкладки (Tabbed Workspace)
+
+    Представления (Saved Views): Механизм сохранения текущего состояния фильтров, сортировок и набора колонок в именованный пресет («Представление»). Возможность перезаписи, переименования, удаления и изменения порядка (сортировки) пресетов в боковом меню.
+
+    Интерфейс вкладок (Tabs): Пользователь может инициализировать создание нескольких постоянных вкладок над таблицей (как в браузере).
+
+        Каждой вкладке жестко сопоставляется конкретное «Представление».
+
+        На табе вкладки динамически выводится badge-счетчик количества заявок, попадающих под критерии фильтра. Счетчик должен асинхронно обновляться в реальном времени (WebSockets).
+
+7. Фоновые процессы и Асинхронный Экспорт
+
+    Автообновление (Polling/WS): Опция включения стриминга изменений списка с настраиваемым интервалом времени.
+
+    Асинхронный Экспорт (Excel Export via Email): При клике на «Выгрузить в Excel» пользователь выбирает скоуп (все доступные системные поля или только текущий кастомный набор колонок). Процесс выгрузки уходит в фоновую очередь (Celery/Redis). По завершении формирования файла бэкенд отправляет скачиваемую ссылку/файл на Email пользователя. Таблица в UI при этом не блокируется.
+
+    Для использования этого видеоматериала большими языковыми моделями (LLM) — например, для генерации документации, проектирования API, создания архитектурных схем или контекстного анализа — подготовлен структурированный prompt-friendly инжиниринговый профиль.Этот текст можно напрямую передавать в контекст любой LLM вместе со спецификациями задач.Technical Domain Profile: Okdesk "Warehouse" Module (v1.0 / Dec 2023 Webinar Analysis)1. Conceptual Architecture & BoundariesSystem Type: Helpdesk / Service Desk / Field Service Management (FSM) system with integrated asset tracking.Target Domain: Warehouse accounting explicitly tailored only for service companies (IT-services, maintenance, field engineering).Out of Scope (Explicit Guardrails): Not commercial/retail warehouse management (no purchase/sale pricing spreads, no trade-margin calculating features, no manufacturing/bill of materials pipelines).Core Entities:Nomenclature (Global Catalog)Warehouse (Storage Locations & Virtual/Employee Stocks)Accounting Document (State-machine driven balance changers)Specification (Customer billable items)Ticket/Request (Operational context)2. Data Models & Registry LogicGlobal Catalog (Nomenclature)Unified system-wide registry used both for billing and tracking inventory.Hierarchical Structure: Unlimited folder nesting (Folder-Tree).Attributes: Internal Code (Unique system ID for API/Integrations), Title, Unit of Measure (e.g., pieces, meters, liters), Nomenclature Type (Enums: Material, Product, Service, Work).Constraint: Only types Material and Product can have physical balances inside the warehouse module. Services and Works are blocked from inventory routines.Optional Attributes: SKU/Article (for legacy billing or 1C mapping), Description (metadata for engineers during selection).Warehouse Abstraction (Warehouse)The platform models physical topology and human operators using the same abstract entity.Warehouse Types:Physical/Regional: Fixed locations (e.g., "Warehouse South", "Central Stock").Virtual/Personal: Assigned directly to an engineer (e.g., "Employee Ivanov's Backpack"). Used for modeling material responsibility during field visits.Attributes: Name, MOL (Materially Responsible Person / Owner), Observer (Read-only access to balances), External ID (Integration key).3. Inventory Accounting Approaches (Dual-Track Model)Quantitative Tracking (Released in current version): Faceless, impersonal volume/count logs matching a specific nomenclature item inside a specific location (e.g., 50 meters of low-voltage cable).Object-Based Tracking (Roadmapped for Jan 2024): Strict unique tracking of physical units using unique IDs or serial numbers (e.g., specific laptops, diagnostic equipment, expensive testing tools).4. Transaction Mechanics & Document State MachinePlatform strictly rejects arbitrary, manual database cell edits for changing stock volumes. Any inventory change must happen via immutable transactional logs called Accounting Documents (Документы учёта).Document Types:Inflow (Оприходование): Outside source $\rightarrow$ Warehouse (e.g., supplier purchase, receiving broken equipment from a client for repair).Transfer (Перемещение): Warehouse A $\rightarrow$ Warehouse B (e.g., moving parts to an engineer's personal car stock).Deduction/Write-off (Списание): Warehouse $\rightarrow$ Out of system (e.g., spent on a resolved ticket, or inventory discrepancy/loss).State Machine & Verification Flow (The 2-Phase Commit Pattern):Inventory levels update only when a document transforms into the terminal status Accounted (Учтён).[Draft (Черновик)] 
+       │
+       ▼ (Triggered by Author)
+[On Approval (На согласовании)]
+       │
+       ├─────────────────────────────────────────┐
+       ▼ (Approved by Source MOL)                 ▼ (Approved by Target MOL)
+[Awaiting Delivery (Ожидание приёмки)]      [Accounted (Учтён)] *Terminal state for Inflow/Deduction
+       │
+       ▼ (Approved by Target MOL)
+[Accounted (Учтён)] *Terminal state for Transfer
+Rollback Capability: If an Accounted document is reopened (restricted by granular ACL rights), all balance changes are atomically decremented/incremented back to the previous state.Overdraft Constraint: System warns via UI/API highlighting if a document attempts to transfer/deduct more than the available current stock, but deliberately permits execution to avoid blocking fast field operations before lagging back-office data is processed.5. Cross-Module Integration Engineering (FSM + Inventory)The Decoupling Axiom: The platform distinguishes between Specification (what is billed to the client via their SLA/Contract) and Deduction (what physical components were consumed from the asset stock).Consumption Cardinality: A ticket can generate multiple write-off documents spanning different warehouses or personal stocks (e.g., Engineer A and Engineer B both used materials from their personal car kits on the same customer issue).Procurement Linkage: System allows attaching Inflow or Transfer documents directly to a Ticket context to handle complex workflows where items are custom-ordered for specific enterprise client requests.Suggested System Prompts for targeting LLM sub-tasks:For Database/SQL Schema tasks: "Using the provided data model definitions and the 2-phase commit document workflow, design a PostgreSQL relational schema complete with foreign keys, transactional boundaries, and an optimized view for aggregated warehouse balances."For API/REST Design tasks: "Generate a complete OpenAPI 3.0 specification in YAML mapping out the CRUD actions for Nomenclature items and full state mutation endpoints (/approve, /receive, /reject) for Transfer Accounting Documents."For Business Process Automation tasks: "Generate a Python script utilizing standard database state abstractions to evaluate stock discrepancies when an accounted document is rolled back into a draft state."
