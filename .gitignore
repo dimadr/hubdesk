@@ -45,3 +45,8 @@ uploads/
 # Local config
 .env.local
 .env.production
+
+# Local project files
+Main.md
+ToDo.md
+archive.sh
