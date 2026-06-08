@@ -14,11 +14,11 @@ interface PendingUser { id: number; email: string; name: string; role: string; s
 
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Администратор', engineer: 'Инженер', dispatcher: 'Диспетчер',
-  customer: 'Заказчик', storekeeper: 'Кладовщик',
+  customer: 'Заказчик', storekeeper: 'Кладовщик', viewer: 'Наблюдатель',
 };
 
 export const AdminPage: React.FC = () => {
-  const [tab, setTab] = useState<'dashboard' | 'users' | 'moderation' | 'customers' | 'history'>('dashboard');
+  const [tab, setTab] = useState<'dashboard' | 'users' | 'moderation' | 'customers' | 'history' | 'mailbox'>('dashboard');
 
   return (
     <div>
@@ -29,6 +29,7 @@ export const AdminPage: React.FC = () => {
           { key: 'moderation', label: 'Модерация', icon: '🛡️' },
           { key: 'customers', label: 'Клиенты', icon: '🏢' },
           { key: 'history', label: 'История', icon: '📜' },
+          { key: 'mailbox', label: 'Почта', icon: '📧' },
         ] as const).map(t => (
           <button key={t.key} className={`tab ${tab === t.key ? 'active' : ''}`} onClick={() => setTab(t.key)}>
             {t.icon} {t.label}
@@ -41,18 +42,23 @@ export const AdminPage: React.FC = () => {
       {tab === 'moderation' && <ModerationTab />}
       {tab === 'customers' && <CustomersTab />}
       {tab === 'history' && <HistoryTab />}
+      {tab === 'mailbox' && <MailboxTab />}
     </div>
   );
 };
 
 const DashboardTab: React.FC = () => {
   const [stats, setStats] = useState<Stats | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get('/admin/stats').then(r => setStats(r.data)).catch(() => {});
+    api.get('/admin/stats')
+      .then(r => { setStats(r.data); setLoading(false); })
+      .catch(() => { setStats(null); setLoading(false); });
   }, []);
 
-  if (!stats) return <div className="loading">Загрузка...</div>;
+  if (loading) return <div className="loading">Загрузка...</div>;
+  if (!stats) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>Ошибка загрузки статистики</div>;
 
   const statCards = [
     { label: 'Пользователей', value: stats.total_users, color: 'var(--primary)' },
@@ -409,6 +415,69 @@ const HistoryTab: React.FC = () => {
             {lines.length === 0 && <tr><td colSpan={2} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)' }}>История пуста</td></tr>}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+};
+
+const MailboxTab: React.FC = () => {
+  const [cfg, setCfg] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [fetchResult, setFetchResult] = useState('');
+  const [form, setForm] = useState({
+    enabled: false,
+    imap_server: 'imap.timeweb.ru', imap_port: 993,
+    folder: 'INBOX', check_interval_min: 5,
+  });
+
+  useEffect(() => {
+    api.get('/admin/mailbox')
+      .then(r => {
+        if (r.data) { setForm({ ...form, ...r.data }); setCfg(r.data); }
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    try { await api.post('/admin/mailbox', form); setCfg(form); } catch {}
+    finally { setSaving(false); }
+  };
+
+  const fetchNow = async () => {
+    setFetchResult('');
+    try {
+      const r = await api.post('/admin/mailbox/fetch');
+      setFetchResult(r.data.created > 0 ? `Создано заявок: ${r.data.created}` : 'Новых писем нет');
+    } catch (e: any) { setFetchResult('Ошибка: ' + (e.response?.data?.detail || e.message)); }
+  };
+
+  if (loading) return <div className="loading">Загрузка...</div>;
+
+  return (
+    <div>
+      <div className="page-header"><h2>Настройка почтового ящика</h2></div>
+      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+        Email и пароль хранятся в <code>.env</code> (mailbox_email, mailbox_password).
+        {cfg?.email && <span style={{ color: 'var(--text)' }}> Подключён: <strong>{cfg.email}</strong></span>}
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 14px', maxWidth: 520 }}>
+        <label style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+          <input type="checkbox" checked={form.enabled} onChange={e => setForm({ ...form, enabled: e.target.checked })} style={{ width: 16, height: 16, accentColor: 'var(--primary)' }} />
+          Включить автоматический сбор заявок из почты
+        </label>
+        <div><label>IMAP сервер</label><input value={form.imap_server} onChange={e => setForm({ ...form, imap_server: e.target.value })} /></div>
+        <div><label>Порт</label><input type="number" value={form.imap_port} onChange={e => setForm({ ...form, imap_port: Number(e.target.value) })} /></div>
+        <div><label>Папка</label><input value={form.folder} onChange={e => setForm({ ...form, folder: e.target.value })} /></div>
+        <div><label>Интервал (мин)</label><input type="number" value={form.check_interval_min} onChange={e => setForm({ ...form, check_interval_min: Number(e.target.value) })} /></div>
+      </div>
+      <div style={{ marginTop: 14, display: 'flex', gap: 8, alignItems: 'center' }}>
+        <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? '...' : 'Сохранить'}</button>
+        <button className="btn btn-secondary" onClick={fetchNow} disabled={!cfg?.enabled}>Проверить сейчас</button>
+        {fetchResult && <span style={{ fontSize: 13, color: fetchResult.includes('Ошибка') ? 'var(--danger)' : 'var(--success)' }}>{fetchResult}</span>}
+        {cfg?.last_check_at && <span className="text-muted" style={{ fontSize: 11, marginLeft: 'auto' }}>Последняя проверка: {new Date(cfg.last_check_at).toLocaleString('ru-RU')}</span>}
       </div>
     </div>
   );

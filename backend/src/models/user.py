@@ -13,6 +13,7 @@ class UserRole(str, enum.Enum):
     dispatcher = "dispatcher"
     admin = "admin"
     storekeeper = "storekeeper"
+    viewer = "viewer"
 
 
 class UserStatus(str, enum.Enum):

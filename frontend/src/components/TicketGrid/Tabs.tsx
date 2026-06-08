@@ -6,7 +6,7 @@ const TABS = [
   { key: 'ASSIGNED', label: 'Назначены' },
   { key: 'IN_PROGRESS', label: 'В работе' },
   { key: 'overdue', label: 'Просрочены' },
-  { key: 'COMPLETED', label: 'Завершены' },
+  { key: 'archive', label: 'Архив' },
 ];
 
 export const Tabs: React.FC = () => {

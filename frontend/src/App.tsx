@@ -4,11 +4,15 @@ import { TicketGrid } from './components/TicketGrid/TicketGrid';
 import { WarehousePage } from './pages/WarehousePage';
 import { LocationsPage } from './pages/LocationsPage';
 import { AdminPage } from './pages/AdminPage';
+import { CalendarPage } from './pages/CalendarPage';
+import { ReportsPage } from './pages/ReportsPage';
 import { L } from './locale';
 
 interface Location {
   id: number; name: string; address: string; customer_id: number; customer_name: string;
-  contacts: string | null; assigned_engineer_id: number | null; assigned_engineer_name: string | null;
+  contacts: string | null;
+  contact_name: string | null; contact_phone: string | null; contact_email: string | null;
+  assigned_engineer_id: number | null; assigned_engineer_name: string | null;
   contract_number: string | null; contract_valid_from: string | null; contract_valid_to: string | null;
 }
 
@@ -18,7 +22,7 @@ interface UserInfo {
 
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Администратор', engineer: 'Инженер', dispatcher: 'Диспетчер',
-  customer: 'Заказчик', storekeeper: 'Кладовщик',
+  customer: 'Заказчик', storekeeper: 'Кладовщик', viewer: 'Наблюдатель',
 };
 
 const AuthPage: React.FC<{ onLogin: (token: string, user: any) => void }> = ({ onLogin }) => {
@@ -28,6 +32,7 @@ const AuthPage: React.FC<{ onLogin: (token: string, user: any) => void }> = ({ o
   const [name, setName] = useState('');
   const [role, setRole] = useState('dispatcher');
   const [consent, setConsent] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -36,7 +41,7 @@ const AuthPage: React.FC<{ onLogin: (token: string, user: any) => void }> = ({ o
     setSuccessMsg('');
     try {
       const url = isLogin ? '/login' : '/signup';
-      const body: any = isLogin ? { email, password } : { email, password, name, role, consent_given: consent };
+      const body: any = isLogin ? { email, password, remember_me: rememberMe } : { email, password, name, role, consent_given: consent };
       const { data } = await api.post(url, body);
       if (!isLogin && !data.token) {
         setSuccessMsg('Заявка отправлена администратору на утверждение. После подтверждения вы сможете войти.');
@@ -58,6 +63,12 @@ const AuthPage: React.FC<{ onLogin: (token: string, user: any) => void }> = ({ o
         {successMsg && <p style={{ color: 'var(--success)', marginBottom: 12, fontSize: 13, background: 'var(--success-bg)', padding: '8px 12px', borderRadius: 6 }}>{successMsg}</p>}
         <input placeholder={L.email} value={email} onChange={e => setEmail(e.target.value)} />
         <input placeholder={L.password} type="password" value={password} onChange={e => setPassword(e.target.value)} />
+        {isLogin && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer', marginBottom: 12, marginTop: 4 }}>
+            <input type="checkbox" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--primary)' }} />
+            Запомнить меня
+          </label>
+        )}
         {!isLogin && (
           <>
             <input placeholder={L.name} value={name} onChange={e => setName(e.target.value)} />
@@ -66,6 +77,7 @@ const AuthPage: React.FC<{ onLogin: (token: string, user: any) => void }> = ({ o
               <option value="engineer">Инженер</option>
               <option value="storekeeper">Кладовщик</option>
               <option value="customer">Заказчик</option>
+              <option value="viewer">Наблюдатель</option>
             </select>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer', marginBottom: 12, marginTop: 4 }}>
               <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--primary)' }} />
@@ -82,25 +94,69 @@ const AuthPage: React.FC<{ onLogin: (token: string, user: any) => void }> = ({ o
   );
 };
 
-const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void }> = ({ onClose, onCreated }) => {
+const TICKET_TYPES: Record<string, string> = {
+  repair: 'Ремонт', installation: 'Монтаж', maintenance: 'ТО',
+  inspection: 'Инспекция', emergency: 'Авария',
+};
+
+const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; users: UserInfo[] }> = ({ onClose, onCreated, users }) => {
   const [subject, setSubject] = useState('');
+  const [ticketType, setTicketType] = useState('');
+  const [sourceDesc, setSourceDesc] = useState('');
   const [body, setBody] = useState('');
   const [locationId, setLocationId] = useState<number | ''>('');
+  const [equipmentId, setEquipmentId] = useState<number | ''>('');
+  const [priority, setPriority] = useState('medium');
+  const [resolutionDeadline, setResolutionDeadline] = useState('');
+  const [scheduledStart, setScheduledStart] = useState('');
+  const [scheduledEnd, setScheduledEnd] = useState('');
+  const [assigneeId, setAssigneeId] = useState<number | ''>('');
+  const [groupId, setGroupId] = useState<number | ''>('');
+  const [siteContactName, setSiteContactName] = useState('');
+  const [siteContactPhone, setSiteContactPhone] = useState('');
+  const [isInternal, setIsInternal] = useState(false);
   const [locations, setLocations] = useState<Location[]>([]);
+  const [equipment, setEquipment] = useState<any[]>([]);
+  const [groups, setGroups] = useState<any[]>([]);
   const [error, setError] = useState('');
 
   useEffect(() => {
     api.get('/locations').then(r => setLocations(r.data)).catch(() => {});
+    api.get('/equipment').then(r => setEquipment(r.data)).catch(() => {});
+    api.get('/groups').then(r => setGroups(r.data)).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!locationId) return;
+    const loc = locations.find(l => l.id === Number(locationId));
+    if (loc) {
+      setSiteContactName(loc.contact_name || loc.assigned_engineer_name || '');
+      const phoneMatch = loc.contacts?.match(/\+7[\s()\d\-]+/);
+      setSiteContactPhone(loc.contact_phone || (phoneMatch ? phoneMatch[0] : '') || '');
+    }
+  }, [locationId, locations]);
 
   const submit = async () => {
     if (!subject || !locationId) { setError('Заполните тему и выберите объект'); return; }
     try {
       const selected = locations.find(l => l.id === Number(locationId));
       await api.post('/tickets', {
-        subject, body,
+        subject,
+        body,
+        type: ticketType || undefined,
+        source_description: sourceDesc || undefined,
         customer_id: selected?.customer_id ?? 1,
         location_id: Number(locationId),
+        equipment_id: equipmentId ? Number(equipmentId) : undefined,
+        priority,
+        resolution_deadline: resolutionDeadline ? new Date(resolutionDeadline).toISOString() : undefined,
+        scheduled_start: scheduledStart ? new Date(scheduledStart).toISOString() : undefined,
+        scheduled_end: scheduledEnd ? new Date(scheduledEnd).toISOString() : undefined,
+        assignee_id: assigneeId ? Number(assigneeId) : undefined,
+        group_id: groupId ? Number(groupId) : undefined,
+        site_contact_name: siteContactName || undefined,
+        site_contact_phone: siteContactPhone || undefined,
+        is_internal: isInternal,
       });
       onCreated();
       onClose();
@@ -109,24 +165,292 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void }
     }
   };
 
+  const engineers = users.filter(u => u.role === 'engineer');
+  const eqForLocation = equipment.filter(e => !locationId || e.location_id === Number(locationId));
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card" onClick={e => e.stopPropagation()}>
+      <div className="modal-card modal-card-wide" onClick={e => e.stopPropagation()}>
         <h3>Создать заявку</h3>
-        {error && <p style={{ color: 'var(--danger)', fontSize: 13, background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 6, marginBottom: 10 }}>{error}</p>}
-        <label>Тема заявки</label>
-        <input placeholder="Введите тему" value={subject} onChange={e => setSubject(e.target.value)} />
-        <label>Описание</label>
-        <textarea placeholder="Опишите проблему" value={body} onChange={e => setBody(e.target.value)} rows={3} />
-        <label>Объект</label>
-        <select value={locationId} onChange={e => setLocationId(Number(e.target.value) || '')}>
-          <option value="">— Выберите объект —</option>
-          {locations.map(l => (
-            <option key={l.id} value={l.id}>{l.name} ({l.customer_name})</option>
-          ))}
-        </select>
+        {error && <p className="modal-error">{error}</p>}
+        <div className="modal-form-grid">
+          <div>
+            <label>Тема заявки <span className="required">*</span></label>
+            <input placeholder="Введите тему" value={subject} onChange={e => setSubject(e.target.value)} />
+          </div>
+          <div>
+            <label>Тип заявки</label>
+            <select value={ticketType} onChange={e => setTicketType(e.target.value)}>
+              <option value="">— Не выбрано —</option>
+              {Object.entries(TICKET_TYPES).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
+          </div>
+          <div className="span-2">
+            <label>Источник обращения</label>
+            <textarea placeholder="Текст обращения клиента (как сообщили)" value={sourceDesc} onChange={e => setSourceDesc(e.target.value)} rows={2} />
+          </div>
+          <div>
+            <label>Объект <span className="required">*</span></label>
+            <select value={locationId} onChange={e => setLocationId(Number(e.target.value) || '')}>
+              <option value="">— Выберите объект —</option>
+              {locations.map(l => (
+                <option key={l.id} value={l.id}>{l.name} ({l.customer_name})</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label>Оборудование</label>
+            <select value={equipmentId} onChange={e => setEquipmentId(Number(e.target.value) || '')}>
+              <option value="">— Не выбрано —</option>
+              {(locationId ? eqForLocation : equipment).map(e => (
+                <option key={e.id} value={e.id}>{e.model} ({e.serial_number})</option>
+              ))}
+            </select>
+          </div>
+          <div className="span-2">
+            <label>Описание проблемы</label>
+            <textarea placeholder="Опишите проблему детально" value={body} onChange={e => setBody(e.target.value)} rows={3} />
+          </div>
+          <div>
+            <label>Приоритет</label>
+            <select value={priority} onChange={e => setPriority(e.target.value)}>
+              <option value="low">Низкий</option>
+              <option value="medium">Средний</option>
+              <option value="high">Высокий</option>
+              <option value="critical">Критический</option>
+            </select>
+          </div>
+          <div>
+            <label>Срок исполнения</label>
+            <input type="datetime-local" value={resolutionDeadline} onChange={e => setResolutionDeadline(e.target.value)} />
+          </div>
+          <div>
+            <label>Плановый выезд с</label>
+            <input type="datetime-local" value={scheduledStart} onChange={e => setScheduledStart(e.target.value)} />
+          </div>
+          <div>
+            <label>Плановый выезд по</label>
+            <input type="datetime-local" value={scheduledEnd} onChange={e => setScheduledEnd(e.target.value)} />
+          </div>
+          <div>
+            <label>Исполнитель</label>
+            <select value={assigneeId} onChange={e => setAssigneeId(Number(e.target.value) || '')}>
+              <option value="">— Назначить позже —</option>
+              {engineers.map(u => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label>Группа</label>
+            <select value={groupId} onChange={e => setGroupId(Number(e.target.value) || '')}>
+              <option value="">— Не выбрана —</option>
+              {groups.map(g => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label>Контактное лицо на объекте</label>
+            <input placeholder="ФИО" value={siteContactName} onChange={e => setSiteContactName(e.target.value)} />
+          </div>
+          <div>
+            <label>Телефон на объекте</label>
+            <input placeholder="+7 (___) ___-__-__" value={siteContactPhone} onChange={e => setSiteContactPhone(e.target.value)} />
+          </div>
+          <div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <input type="checkbox" checked={isInternal} onChange={e => setIsInternal(e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--primary)' }} />
+              Внутренняя заявка
+            </label>
+          </div>
+        </div>
         <div className="modal-actions">
           <button className="btn btn-primary" onClick={submit}>Создать</button>
+          <button className="btn btn-secondary" onClick={onClose}>Отмена</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; onSaved: () => void; users: UserInfo[] }> = ({ ticket, onClose, onSaved, users }) => {
+  const [subject, setSubject] = useState(ticket.subject);
+  const [ticketType, setTicketType] = useState(ticket.type || '');
+  const [sourceDesc, setSourceDesc] = useState(ticket.source_description || '');
+  const [body, setBody] = useState(ticket.body);
+  const [locationId, setLocationId] = useState<number | ''>(ticket.location_id);
+  const [equipmentId, setEquipmentId] = useState<number | ''>(ticket.equipment_id ?? '');
+  const [priority, setPriority] = useState(ticket.priority);
+  const [resolutionDeadline, setResolutionDeadline] = useState(ticket.resolution_deadline ? ticket.resolution_deadline.substring(0, 16) : '');
+  const [scheduledStart, setScheduledStart] = useState(ticket.scheduled_start ? ticket.scheduled_start.substring(0, 16) : '');
+  const [scheduledEnd, setScheduledEnd] = useState(ticket.scheduled_end ? ticket.scheduled_end.substring(0, 16) : '');
+  const [assigneeId, setAssigneeId] = useState<number | ''>(ticket.assignee_id ?? '');
+  const [groupId, setGroupId] = useState<number | ''>(ticket.group_id ?? '');
+  const [siteContactName, setSiteContactName] = useState(ticket.site_contact_name || '');
+  const [siteContactPhone, setSiteContactPhone] = useState(ticket.site_contact_phone || '');
+  const [isInternal, setIsInternal] = useState(ticket.is_internal);
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [equipment, setEquipment] = useState<any[]>([]);
+  const [groups, setGroups] = useState<any[]>([]);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.get('/locations').then(r => setLocations(r.data)).catch(() => {});
+    api.get('/equipment').then(r => setEquipment(r.data)).catch(() => {});
+    api.get('/groups').then(r => setGroups(r.data)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const sel = locations.find(l => l.id === Number(locationId));
+    if (sel) {
+      if (!ticket.site_contact_name) setSiteContactName(sel.assigned_engineer_name || '');
+      if (!ticket.site_contact_phone) {
+        const phoneMatch = sel.contacts?.match(/\+7[\s()\d\-]+/);
+        setSiteContactPhone(phoneMatch ? phoneMatch[0] : sel.contacts || '');
+      }
+    }
+  }, [locationId, locations]);
+
+  const submit = async () => {
+    if (!subject || !locationId) { setError('Заполните тему и выберите объект'); return; }
+    setSaving(true);
+    try {
+      const selected = locations.find(l => l.id === Number(locationId));
+      await api.patch(`/tickets/${ticket.id}`, {
+        subject,
+        body,
+        type: ticketType || undefined,
+        source_description: sourceDesc || undefined,
+        customer_id: selected?.customer_id ?? ticket.customer_id,
+        location_id: Number(locationId),
+        equipment_id: equipmentId ? Number(equipmentId) : undefined,
+        priority,
+        resolution_deadline: resolutionDeadline ? new Date(resolutionDeadline).toISOString() : undefined,
+        scheduled_start: scheduledStart ? new Date(scheduledStart).toISOString() : undefined,
+        scheduled_end: scheduledEnd ? new Date(scheduledEnd).toISOString() : undefined,
+        assignee_id: assigneeId ? Number(assigneeId) : undefined,
+        group_id: groupId ? Number(groupId) : undefined,
+        site_contact_name: siteContactName || undefined,
+        site_contact_phone: siteContactPhone || undefined,
+        is_internal: isInternal,
+      });
+      onSaved();
+    } catch (e: any) {
+      const msg = e.response?.data?.detail || e.message || 'Ошибка сохранения';
+      setError(e.response ? `${e.response.status}: ${msg}` : msg);
+    } finally { setSaving(false); }
+  };
+
+  const engineers = users.filter(u => u.role === 'engineer');
+  const eqForLocation = equipment.filter(e => !locationId || e.location_id === Number(locationId));
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card modal-card-wide" onClick={e => e.stopPropagation()}>
+        <h3>Редактировать заявку #{ticket.number}</h3>
+        {error && <p className="modal-error">{error}</p>}
+        <div className="modal-form-grid">
+          <div>
+            <label>Тема заявки <span className="required">*</span></label>
+            <input value={subject} onChange={e => setSubject(e.target.value)} />
+          </div>
+          <div>
+            <label>Тип заявки</label>
+            <select value={ticketType} onChange={e => setTicketType(e.target.value)}>
+              <option value="">— Не выбрано —</option>
+              {Object.entries(TICKET_TYPES).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
+          </div>
+          <div className="span-2">
+            <label>Источник обращения</label>
+            <textarea value={sourceDesc} onChange={e => setSourceDesc(e.target.value)} rows={2} />
+          </div>
+          <div>
+            <label>Объект <span className="required">*</span></label>
+            <select value={locationId} onChange={e => setLocationId(Number(e.target.value) || '')}>
+              <option value="">— Выберите объект —</option>
+              {locations.map(l => (
+                <option key={l.id} value={l.id}>{l.name} ({l.customer_name})</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label>Оборудование</label>
+            <select value={equipmentId} onChange={e => setEquipmentId(Number(e.target.value) || '')}>
+              <option value="">— Не выбрано —</option>
+              {(locationId ? eqForLocation : equipment).map(e => (
+                <option key={e.id} value={e.id}>{e.model} ({e.serial_number})</option>
+              ))}
+            </select>
+          </div>
+          <div className="span-2">
+            <label>Описание проблемы</label>
+            <textarea value={body} onChange={e => setBody(e.target.value)} rows={3} />
+          </div>
+          <div>
+            <label>Приоритет</label>
+            <select value={priority} onChange={e => setPriority(e.target.value)}>
+              <option value="low">Низкий</option>
+              <option value="medium">Средний</option>
+              <option value="high">Высокий</option>
+              <option value="critical">Критический</option>
+            </select>
+          </div>
+          <div>
+            <label>Срок исполнения</label>
+            <input type="datetime-local" value={resolutionDeadline} onChange={e => setResolutionDeadline(e.target.value)} />
+          </div>
+          <div>
+            <label>Плановый выезд с</label>
+            <input type="datetime-local" value={scheduledStart} onChange={e => setScheduledStart(e.target.value)} />
+          </div>
+          <div>
+            <label>Плановый выезд по</label>
+            <input type="datetime-local" value={scheduledEnd} onChange={e => setScheduledEnd(e.target.value)} />
+          </div>
+          <div>
+            <label>Исполнитель</label>
+            <select value={assigneeId} onChange={e => setAssigneeId(Number(e.target.value) || '')}>
+              <option value="">— Назначить позже —</option>
+              {engineers.map(u => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label>Группа</label>
+            <select value={groupId} onChange={e => setGroupId(Number(e.target.value) || '')}>
+              <option value="">— Не выбрана —</option>
+              {groups.map(g => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label>Контактное лицо на объекте</label>
+            <input value={siteContactName} onChange={e => setSiteContactName(e.target.value)} />
+          </div>
+          <div>
+            <label>Телефон на объекте</label>
+            <input value={siteContactPhone} onChange={e => setSiteContactPhone(e.target.value)} />
+          </div>
+          <div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <input type="checkbox" checked={isInternal} onChange={e => setIsInternal(e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--primary)' }} />
+              Внутренняя заявка
+            </label>
+          </div>
+        </div>
+        <div className="modal-actions">
+          <button className="btn btn-primary" onClick={submit} disabled={saving}>
+            {saving ? 'Сохранение...' : 'Сохранить'}
+          </button>
           <button className="btn btn-secondary" onClick={onClose}>Отмена</button>
         </div>
       </div>
@@ -167,6 +491,7 @@ const AddEmployeeModal: React.FC<{ onClose: () => void; onAdded: () => void }> =
           <option value="admin">Администратор</option>
           <option value="storekeeper">Кладовщик</option>
           <option value="customer">Заказчик</option>
+          <option value="viewer">Наблюдатель</option>
         </select>
         <div className="modal-actions">
           <button className="btn btn-primary" onClick={submit}>Добавить</button>
@@ -182,6 +507,8 @@ const NAV_ITEMS = [
   { key: 'locations', label: 'Объекты', icon: '🏢' },
   { key: 'employees', label: 'Сотрудники', icon: '👥' },
   { key: 'warehouse', label: 'Склад', icon: '📦' },
+  { key: 'reports', label: 'Отчёты', icon: '📊' },
+  { key: 'calendar', label: 'Календарь', icon: '📅' },
   { key: 'admin', label: 'Админка', icon: '⚙️', adminOnly: true },
 ] as const;
 
@@ -192,6 +519,7 @@ const App: React.FC = () => {
   const [page, setPage] = useState<Page>('tickets');
   const [showCreate, setShowCreate] = useState(false);
   const [showAddEmployee, setShowAddEmployee] = useState(false);
+  const [editTicket, setEditTicket] = useState<TicketResponse | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [stats, setStats] = useState<{ total: number; open: number; urgent: number }>({ total: 0, open: 0, urgent: 0 });
@@ -239,12 +567,14 @@ const App: React.FC = () => {
     <div className="app-layout">
       <aside className="sidebar">
         <div className="sidebar-logo">
-          <div className="logo-mark">F</div>
-          FSM<span> Desk</span>
+          <div className="logo-mark">H</div>
+          HUB<span> Desk</span>
         </div>
         <nav className="sidebar-nav">
           <div className="nav-section">Навигация</div>
-          {NAV_ITEMS.filter(item => !(item as any).adminOnly || user.role === 'admin').map(item => (
+          {NAV_ITEMS.filter(item => !(item as any).adminOnly || user.role === 'admin')
+            .filter(item => item.key !== 'reports' || user.role === 'admin' || user.role === 'dispatcher')
+            .map(item => (
             <button
               key={item.key}
               className={`nav-item ${page === item.key ? 'active' : ''}`}
@@ -267,6 +597,8 @@ const App: React.FC = () => {
         <div className="top-bar">
           <h1>
             {page === 'tickets' ? 'Заявки' :
+             page === 'calendar' ? 'Календарь' :
+             page === 'reports' ? 'Отчёты' :
              page === 'locations' ? 'Объекты' :
              page === 'employees' ? 'Сотрудники' :
              page === 'admin' ? 'Администрирование' : 'Склад'}
@@ -300,14 +632,17 @@ const App: React.FC = () => {
                 + Создать заявку
               </button>
             </div>
-            <TicketGrid key={refreshKey} users={users} />
+            <TicketGrid key={refreshKey} users={users} onEdit={t => setEditTicket(t)} />
           </>
         )}
+        {page === 'calendar' && <CalendarPage />}
+        {page === 'reports' && <ReportsPage />}
         {page === 'warehouse' && <WarehousePage />}
         {page === 'locations' && <LocationsPage />}
         {page === 'employees' && <EmployeesPage onAdd={() => setShowAddEmployee(true)} refreshKey={refreshKey} isAdmin={user.role === 'admin'} />}
         {page === 'admin' && <AdminPage />}
-        {showCreate && <CreateTicketModal onClose={() => setShowCreate(false)} onCreated={() => setRefreshKey(k => k + 1)} />}
+        {showCreate && <CreateTicketModal onClose={() => setShowCreate(false)} onCreated={() => setRefreshKey(k => k + 1)} users={users} />}
+        {editTicket && <EditTicketModal ticket={editTicket} onClose={() => setEditTicket(null)} onSaved={() => { setEditTicket(null); setRefreshKey(k => k + 1); }} users={users} />}
         {showAddEmployee && <AddEmployeeModal onClose={() => setShowAddEmployee(false)} onAdded={() => { setShowAddEmployee(false); setRefreshKey(k => k + 1); }} />}
       </main>
     </div>

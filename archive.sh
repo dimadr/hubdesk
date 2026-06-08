@@ -1,7 +1,8 @@
 #!/bin/bash
-VERSION="${1:-$(date +%d.%m.%Y_v1bX)}"
+VERSION="${1:-v1bX}"
+DATE=$(date +%d.%m.%Y)
 DIR="$(dirname "$0")"
-ARCHIVE="${DIR}/${VERSION}.tar.gz"
+ARCHIVE="${DIR}/${DATE}_${VERSION}.tar.gz"
 
 cd "$DIR" && tar czf "$ARCHIVE" \
   --exclude="__pycache__" \
@@ -15,4 +16,4 @@ cd "$DIR" && tar czf "$ARCHIVE" \
   backend/ frontend/
 
 SIZE=$(du -h "$ARCHIVE" | cut -f1)
-echo "✓ $VERSION.tar.gz ($SIZE)"
+echo "✓ ${DATE}_${VERSION}.tar.gz ($SIZE)"

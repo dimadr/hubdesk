@@ -1,11 +1,47 @@
-__pycache__/
-*.pyc
-*.pyo
-node_modules/
-dist/
-*.tar.gz
+# Environment
 .env
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
 *.egg-info/
-.DS_Store
+dist/
+build/
+*.egg
+
+# Node / Vite
+node_modules/
+.vite/
+
+# Frontend build
+frontend/dist/
+
+# IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+history.log
+/tmp/
+
+# Archives
+*.tar.gz
+backup/
+
+# Uploads
+uploads/
+
+# Local config
+.env.local
+.env.production

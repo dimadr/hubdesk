@@ -22,12 +22,21 @@ class TicketPriority(str, enum.Enum):
     critical = "critical"
 
 
+class TicketType(str, enum.Enum):
+    repair = "repair"
+    installation = "installation"
+    maintenance = "maintenance"
+    inspection = "inspection"
+    emergency = "emergency"
+
+
 class Ticket(Base):
     __tablename__ = "tickets"
     __table_args__ = (
         Index("ix_tickets_status", "status"),
         Index("ix_tickets_assignee", "assignee_id"),
         Index("ix_tickets_customer", "customer_id"),
+        Index("ix_tickets_archived", "archived_at"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -40,6 +49,9 @@ class Ticket(Base):
     priority: Mapped[TicketPriority] = mapped_column(
         Enum(TicketPriority), default=TicketPriority.medium
     )
+    type: Mapped[TicketType | None] = mapped_column(
+        Enum(TicketType), nullable=True
+    )
     is_internal: Mapped[bool] = mapped_column(Boolean, default=False)
 
     customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"))
@@ -48,9 +60,16 @@ class Ticket(Base):
     assignee_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     group_id: Mapped[int | None] = mapped_column(ForeignKey("groups.id"), nullable=True)
 
+    site_contact_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    site_contact_phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    scheduled_start: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    scheduled_end: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    source_description: Mapped[str | None] = mapped_column(String(5000), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     response_deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     resolution_deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

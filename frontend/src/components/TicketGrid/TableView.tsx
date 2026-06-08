@@ -1,8 +1,8 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { api, TicketResponse } from '../../api/client';
 import { RowStyle } from './RowStyles';
 import { ColumnHeader } from './ColumnHeader';
-import { DndContext, closestCenter } from '@dnd-kit/core';
+import { DndContext, closestCenter, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 
 interface UserInfo {
@@ -12,6 +12,9 @@ interface UserInfo {
 interface Props {
   tickets: TicketResponse[];
   users: UserInfo[];
+  onEdit?: (ticket: TicketResponse) => void;
+  colFilter?: Record<string, string | undefined>;
+  onFilter?: (key: string, value: string) => void;
 }
 
 interface ColumnDef {
@@ -27,6 +30,7 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: 'assignee', label: 'Исполнитель', width: 180 },
   { key: 'created_at', label: 'Создано', width: 140 },
   { key: 'deadline', label: 'Крайний срок', width: 140 },
+  { key: 'actions', label: '', width: 40, sticky: true },
 ];
 
 const STATUS_MAP: Record<string, string> = {
@@ -43,105 +47,186 @@ const PRIORITY_MAP: Record<string, string> = {
   low: 'Низкий', medium: 'Средний', high: 'Высокий', critical: 'Критичный',
 };
 
-export const TableView: React.FC<Props> = ({ tickets, users }) => {
+const FILTERABLE_COLUMNS = ['status', 'priority', 'created_at', 'deadline'];
+
+interface CellProps {
+  ticket: TicketResponse;
+  col: ColumnDef;
+  width: number;
+  userMap: Map<number, string>;
+  engineerIds: number[];
+  onEdit?: (ticket: TicketResponse) => void;
+  onFilter?: (key: string, value: string) => void;
+}
+
+const Cell = React.memo<CellProps>(({ ticket, col, width, userMap, engineerIds, onEdit, onFilter }) => {
+  const content = renderCellContent(ticket, col, userMap, engineerIds, onEdit);
+  const isFilterable = FILTERABLE_COLUMNS.includes(col.key);
+
+  const clickHandler = isFilterable ? () => {
+    if (col.key === 'status') onFilter?.('status', ticket.status);
+    else if (col.key === 'priority') onFilter?.('priority', ticket.priority);
+    else if (col.key === 'created_at') {
+      const d = ticket.created_at?.substring?.(0, 10);
+      if (d) onFilter?.('created', d);
+    } else if (col.key === 'deadline') {
+      const d = ticket.resolution_deadline?.substring?.(0, 10);
+      if (d) onFilter?.('deadline', d);
+    }
+  } : undefined;
+
+  return (
+    <td style={{ width }}>
+      {isFilterable ? (
+        <button
+          className="cell-filter-btn"
+          onClick={clickHandler}
+          title="Фильтр по значению"
+          style={{ background: 'none', border: 'none', padding: 0, margin: 0, font: 'inherit', color: 'inherit', width: '100%', display: 'block', cursor: 'pointer', textAlign: 'left' }}
+        >
+          {content}
+        </button>
+      ) : (
+        content
+      )}
+    </td>
+  );
+});
+
+function renderCellContent(ticket: TicketResponse, col: ColumnDef, userMap: Map<number, string>, engineerIds: number[], onEdit?: (ticket: TicketResponse) => void) {
+  if (col.key === 'subject') {
+    return (
+      <span className="cell-subject" style={{ fontWeight: ticket.status === 'ASSIGNED' || ticket.response_overdue ? 700 : 400 }}>
+        {ticket.subject}
+      </span>
+    );
+  }
+  if (col.key === 'status') {
+    return (
+      <span className={`status-pill ${STATUS_CSS[ticket.status] || ''}`}>
+        {STATUS_MAP[ticket.status] || ticket.status}
+      </span>
+    );
+  }
+  if (col.key === 'priority') return PRIORITY_MAP[ticket.priority] || ticket.priority;
+  if (col.key === 'number') return <span className="mono" style={{ color: 'var(--text-muted)' }}>#{ticket.number}</span>;
+  if (col.key === 'created_at') {
+    try { return new Date(ticket.created_at).toLocaleDateString('ru-RU'); }
+    catch { return ticket.created_at?.substring(0, 10) || '—'; }
+  }
+  if (col.key === 'customer') return ticket.customer_id;
+  if (col.key === 'assignee') return (
+    <select
+      className="assignee-select"
+      value={ticket.assignee_id ?? ''}
+      onChange={async (e) => {
+        const val = e.target.value;
+        const assigneeId = val === '' ? null : Number(val);
+        try {
+          await api.patch(`/tickets/${ticket.id}/assign`, { assignee_id: assigneeId });
+        } catch {
+          alert('Ошибка назначения исполнителя');
+        }
+      }}
+      onClick={e => e.stopPropagation()}
+    >
+      <option value="">— Не назначен —</option>
+      {engineerIds.map(id => (
+        <option key={id} value={id}>{userMap.get(id) || `#${id}`}</option>
+      ))}
+    </select>
+  );
+  if (col.key === 'deadline') {
+    try { return ticket.resolution_deadline ? new Date(ticket.resolution_deadline).toLocaleDateString('ru-RU') : '—'; }
+    catch { return ticket.resolution_deadline?.substring(0, 10) || '—'; }
+  }
+  if (col.key === 'actions') return (
+    <button
+      className="btn btn-secondary"
+      style={{ padding: '2px 6px', fontSize: 11, lineHeight: 1 }}
+      onClick={e => { e.stopPropagation(); onEdit?.(ticket); }}
+      title="Редактировать"
+    >✎</button>
+  );
+  return '';
+}
+
+export const TableView: React.FC<Props> = ({ tickets, users, onEdit, colFilter, onFilter }) => {
   const [columns, setColumns] = useState<ColumnDef[]>(() => {
     try {
-      const saved = localStorage.getItem('ticket-columns');
+      const saved = localStorage.getItem('ticket-columns-v2');
       return saved ? JSON.parse(saved) : DEFAULT_COLUMNS;
     } catch { return DEFAULT_COLUMNS; }
   });
 
   const [colWidths, setColWidths] = useState<Record<string, number>>({});
 
-  const handleReorder = (event: any) => {
+  const userMap = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const u of users) m.set(u.id, u.name);
+    return m;
+  }, [users]);
+
+  const engineerIds = useMemo(
+    () => users.filter(u => u.role === 'engineer' || u.role === 'admin').map(u => u.id),
+    [users]
+  );
+
+  const handleReorder = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const oldIdx = columns.findIndex(c => c.key === active.id);
     const newIdx = columns.findIndex(c => c.key === over.id);
     const next = arrayMove(columns, oldIdx, newIdx);
     setColumns(next);
-    localStorage.setItem('ticket-columns', JSON.stringify(next));
-  };
+    localStorage.setItem('ticket-columns-v2', JSON.stringify(next));
+  }, [columns]);
 
   const handleResize = useCallback((key: string, width: number) => {
     setColWidths(prev => ({ ...prev, [key]: Math.max(50, width) }));
   }, []);
 
-  const getUserName = (id: number | null) => {
-    if (!id) return '—';
-    const u = users.find(u => u.id === id);
-    return u ? u.name : `#${id}`;
-  };
-
-  const handleAssign = async (ticket: TicketResponse, e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value;
-    const assigneeId = val === '' ? null : Number(val);
-    try {
-      await api.patch(`/tickets/${ticket.id}/assign`, { assignee_id: assigneeId });
-    } catch {}
-  };
-
-  const renderCell = (ticket: TicketResponse, col: ColumnDef) => {
-    if (col.key === 'subject') {
-      return (
-        <span className="cell-subject" style={{ fontWeight: ticket.status === 'ASSIGNED' || ticket.response_overdue ? 700 : 400 }}>
-          {ticket.subject}
-        </span>
-      );
-    }
-    if (col.key === 'status') {
-      return <span className={`status-pill ${STATUS_CSS[ticket.status] || ''}`}>{STATUS_MAP[ticket.status] || ticket.status}</span>;
-    }
-    if (col.key === 'priority') return PRIORITY_MAP[ticket.priority] || ticket.priority;
-    if (col.key === 'number') return <span className="mono" style={{ color: 'var(--text-muted)' }}>#{ticket.number}</span>;
-    if (col.key === 'created_at') return new Date(ticket.created_at).toLocaleDateString('ru-RU');
-    if (col.key === 'customer') return ticket.customer_id;
-    if (col.key === 'assignee') return (
-      <select
-        className="assignee-select"
-        value={ticket.assignee_id ?? ''}
-        onChange={e => handleAssign(ticket, e)}
-        onClick={e => e.stopPropagation()}
-      >
-        <option value="">— Не назначен —</option>
-        {users.filter(u => u.role === 'engineer' || u.role === 'admin').map(u => (
-          <option key={u.id} value={u.id}>{u.name}</option>
-        ))}
-      </select>
-    );
-    if (col.key === 'deadline') return ticket.response_deadline ? new Date(ticket.response_deadline).toLocaleDateString('ru-RU') : '—';
-    return '';
-  };
-
   if (tickets.length === 0) return <div className="loading">Нет заявок</div>;
 
+  const visibleColumns = useMemo(
+    () => columns.filter(c => c.key !== 'actions' || onEdit),
+    [columns, onEdit]
+  );
+
   return (
-    <div className="table-wrapper">
-      <table>
-        <thead>
-          <tr>
-            <DndContext collisionDetection={closestCenter} onDragEnd={handleReorder}>
-              <SortableContext items={columns.map(c => c.key)} strategy={horizontalListSortingStrategy}>
-                {columns.map(col => (
+    <DndContext collisionDetection={closestCenter} onDragEnd={handleReorder}>
+      <SortableContext items={visibleColumns.map(c => c.key)} strategy={horizontalListSortingStrategy}>
+        <div className="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                {visibleColumns.map(col => (
                   <ColumnHeader key={col.key} id={col.key} label={col.label} sticky={col.sticky}
-                    width={colWidths[col.key] ?? col.width ?? 150} onResize={w => handleResize(col.key, w)} />
+                    colKey={col.key} width={colWidths[col.key] ?? col.width ?? 150} onResize={handleResize} />
                 ))}
-              </SortableContext>
-            </DndContext>
-          </tr>
-        </thead>
+              </tr>
+            </thead>
         <tbody>
           {tickets.map(ticket => (
             <RowStyle key={ticket.id} ticket={ticket}>
-              {columns.map(col => (
-                <td key={col.key} style={{ width: colWidths[col.key] ?? col.width }}>
-                  {renderCell(ticket, col)}
-                </td>
+              {visibleColumns.map(col => (
+                <Cell
+                  key={col.key}
+                  ticket={ticket}
+                  col={col}
+                  width={colWidths[col.key] ?? col.width ?? 100}
+                  userMap={userMap}
+                  engineerIds={engineerIds}
+                  onEdit={onEdit}
+                  onFilter={onFilter}
+                />
               ))}
             </RowStyle>
           ))}
         </tbody>
       </table>
     </div>
+      </SortableContext>
+    </DndContext>
   );
 };

@@ -11,7 +11,7 @@ from .database import engine, Base, async_session
 from .models.user import User, UserRole, UserStatus
 from .models.customer import Customer
 from .models.equipment import AssetLocation
-from .models.ticket import Ticket, TicketStatus, TicketPriority
+from .models.ticket import Ticket, TicketStatus, TicketPriority, TicketType
 from .models.warehouse import Warehouse, WarehouseType, Nomenclature, NomenclatureType, AccountingDocument, DocType, DocStatus, DocumentLine, StockBalance
 
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "frontend", "dist")
@@ -22,10 +22,28 @@ STATIC_DIR = os.path.join(FRONTEND_DIR, "assets") if os.path.exists(os.path.join
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        from sqlalchemy import text
+        new_columns = [
+            ("type", "VARCHAR(50)"),
+            ("site_contact_name", "VARCHAR(255)"),
+            ("site_contact_phone", "VARCHAR(50)"),
+            ("scheduled_start", "TIMESTAMP"),
+            ("scheduled_end", "TIMESTAMP"),
+            ("source_description", "VARCHAR(5000)"),
+            ("archived_at", "TIMESTAMP"),
+            ("contact_name", "VARCHAR(255)"),
+            ("contact_phone", "VARCHAR(50)"),
+            ("contact_email", "VARCHAR(255)"),
+        ]
+        for col_name, col_type in new_columns:
+            try:
+                await conn.execute(text(f"ALTER TABLE tickets ADD COLUMN {col_name} {col_type}"))
+            except:
+                pass
 
     async with async_session() as session:
         from sqlalchemy import select
-        result = await session.execute(select(User).where(User.email == "admin@fsm.local").limit(1))
+        result = await session.execute(select(User).limit(1))
         if not result.scalar_one_or_none():
             session.add_all([
                 User(email="admin@fsm.local", name="Админ", role=UserRole.admin,
@@ -165,78 +183,78 @@ async def lifespan(app: FastAPI):
 
             tickets = [
                 Ticket(number=1001, subject="Не включается сервер в серверной", body="Сервер HP ProLiant DL380 не подаёт признаков жизни после скачка напряжения.",
-                       status=TicketStatus.IN_PROGRESS, priority=TicketPriority.critical, is_internal=False,
+                       status=TicketStatus.IN_PROGRESS,                        type=TicketType.emergency, priority=TicketPriority.critical, is_internal=False,
                        customer_id=loc_by_name["Главный офис"].customer_id, location_id=loc_by_name["Главный офис"].id,
                        assignee_id=user_by_name["Иван Петров"].id,
                        response_deadline=now + timedelta(hours=2), resolution_deadline=now + timedelta(days=1)),
                 Ticket(number=1002, subject="Замена картриджа в МФУ", body="МФУ HP LaserJet в бухгалтерии печатает с полосами. Требуется замена картриджа.",
-                       status=TicketStatus.ASSIGNED, priority=TicketPriority.low, is_internal=False,
+                       status=TicketStatus.ASSIGNED,                        type=TicketType.repair, priority=TicketPriority.low, is_internal=False,
                        customer_id=loc_by_name["Главный офис"].customer_id, location_id=loc_by_name["Главный офис"].id,
                        assignee_id=user_by_name["Сергей Кузнецов"].id,
                        response_deadline=now + timedelta(hours=4), resolution_deadline=now + timedelta(hours=24)),
                 Ticket(number=1003, subject="Пропал интернет во всём филиале", body="С 10:00 нет доступа в сеть. Маршрутизатор MikroTik перезагружали — не помогло.",
-                       status=TicketStatus.ACCEPTED, priority=TicketPriority.critical, is_internal=False,
+                       status=TicketStatus.ACCEPTED,                        type=TicketType.emergency, priority=TicketPriority.critical, is_internal=False,
                        customer_id=loc_by_name["Филиал на Гагарина"].customer_id, location_id=loc_by_name["Филиал на Гагарина"].id,
                        assignee_id=user_by_name["Иван Петров"].id,
                        response_deadline=now - timedelta(hours=3), resolution_deadline=now + timedelta(hours=3)),
                 Ticket(number=1004, subject="Установка нового рабочего места", body="Нужно установить ПК, монитор и подключить к сети в кабинете №14.",
-                       status=TicketStatus.ASSIGNED, priority=TicketPriority.medium, is_internal=False,
+                       status=TicketStatus.ASSIGNED, type=TicketType.installation, priority=TicketPriority.medium, is_internal=False,
                        customer_id=loc_by_name["Филиал на Гагарина"].customer_id, location_id=loc_by_name["Филиал на Гагарина"].id,
                        assignee_id=user_by_name["Анна Волкова"].id,
                        response_deadline=now + timedelta(hours=8), resolution_deadline=now + timedelta(days=3)),
                 Ticket(number=1005, subject="Гости не могут подключиться к Wi-Fi", body="В главном корпусе гостиницы перестала работать гостевая Wi-Fi сеть. Жалобы от постояльцев.",
-                       status=TicketStatus.ON_THE_WAY, priority=TicketPriority.high, is_internal=False,
+                       status=TicketStatus.ON_THE_WAY, type=TicketType.repair, priority=TicketPriority.high, is_internal=False,
                        customer_id=loc_by_name["Гостиница Волга — главный корпус"].customer_id, location_id=loc_by_name["Гостиница Волга — главный корпус"].id,
                        assignee_id=user_by_name["Сергей Кузнецов"].id,
                        response_deadline=now + timedelta(hours=1), resolution_deadline=now + timedelta(hours=6)),
                 Ticket(number=1006, subject="Сломался турникет на входе", body="Турникет PERCo на главном входе не считывает карты. Сотрудники не могут пройти.",
-                       status=TicketStatus.IN_PROGRESS, priority=TicketPriority.high, is_internal=False,
+                       status=TicketStatus.IN_PROGRESS, type=TicketType.repair, priority=TicketPriority.high, is_internal=False,
                        customer_id=loc_by_name["Гостиница Волга — главный корпус"].customer_id, location_id=loc_by_name["Гостиница Волга — главный корпус"].id,
                        assignee_id=user_by_name["Сергей Кузнецов"].id,
                        response_deadline=now + timedelta(hours=4), resolution_deadline=now + timedelta(hours=12)),
                 Ticket(number=1007, subject="Замена термопасты на сервере видеонаблюдения", body="Плановое обслуживание. Сервер перегревается, температура CPU под 85°C.",
-                       status=TicketStatus.REVIEW, priority=TicketPriority.medium, is_internal=False,
+                       status=TicketStatus.REVIEW, type=TicketType.maintenance, priority=TicketPriority.medium, is_internal=False,
                        customer_id=loc_by_name["ТЦ Мегаполис — здание А"].customer_id, location_id=loc_by_name["ТЦ Мегаполис — здание А"].id,
                        assignee_id=user_by_name["Анна Волкова"].id,
                        response_deadline=now + timedelta(hours=24), resolution_deadline=now + timedelta(days=2)),
                 Ticket(number=1008, subject="Не работают камеры на паркинге", body="4 камеры из 12 не передают картинку. Предположительно проблема с PoE-коммутатором.",
-                       status=TicketStatus.ARRIVED, priority=TicketPriority.high, is_internal=False,
+                       status=TicketStatus.ARRIVED, type=TicketType.repair, priority=TicketPriority.high, is_internal=False,
                        customer_id=loc_by_name["ТЦ Мегаполис — паркинг"].customer_id, location_id=loc_by_name["ТЦ Мегаполис — паркинг"].id,
                        assignee_id=user_by_name["Анна Волкова"].id,
                        response_deadline=now + timedelta(hours=2), resolution_deadline=now + timedelta(hours=8)),
                 Ticket(number=1009, subject="Плановая проверка ИБП в серверной", body="Ежемесячная проверка всех ИБП. Замена батарей при необходимости.",
-                       status=TicketStatus.COMPLETED, priority=TicketPriority.low, is_internal=False,
+                       status=TicketStatus.COMPLETED, type=TicketType.inspection, priority=TicketPriority.low, is_internal=False,
                        customer_id=loc_by_name["ТЦ Мегаполис — здание А"].customer_id, location_id=loc_by_name["ТЦ Мегаполис — здание А"].id,
                        assignee_id=user_by_name["Анна Волкова"].id,
                        completed_at=now - timedelta(days=2),
                        response_deadline=now - timedelta(days=5), resolution_deadline=now - timedelta(days=3)),
                 Ticket(number=1010, subject="Кассовый аппарат не печатает чеки", body="Касса Атол 30Ф в аптеке №1 зависла. Требуется срочный выезд — очередь покупателей.",
-                       status=TicketStatus.ASSIGNED, priority=TicketPriority.critical, is_internal=False,
+                       status=TicketStatus.ASSIGNED,                        type=TicketType.emergency, priority=TicketPriority.critical, is_internal=False,
                        customer_id=loc_by_name["Аптека №1 Центральная"].customer_id, location_id=loc_by_name["Аптека №1 Центральная"].id,
                        assignee_id=user_by_name["Иван Петров"].id,
                        response_deadline=now + timedelta(minutes=30), resolution_deadline=now + timedelta(hours=4)),
                 Ticket(number=1011, subject="Замена жёсткого диска на рабочем ПК", body="ПК фармацевта в аптеке №4 выдаёт SMART-ошибку. Нужно заменить диск и перенести данные.",
-                       status=TicketStatus.COMPLETED, priority=TicketPriority.medium, is_internal=False,
+                       status=TicketStatus.COMPLETED, type=TicketType.repair, priority=TicketPriority.medium, is_internal=False,
                        customer_id=loc_by_name["Аптека №4 Заречная"].customer_id, location_id=loc_by_name["Аптека №4 Заречная"].id,
                        assignee_id=user_by_name["Анна Волкова"].id,
                        completed_at=now - timedelta(days=5),
                        response_deadline=now - timedelta(days=6), resolution_deadline=now - timedelta(days=5)),
                 Ticket(number=1012, subject="Не синхронизируется база аптеки с сервером", body="После обновления 1С база аптеки №4 не коннектится к центральному серверу.",
-                       status=TicketStatus.IN_PROGRESS, priority=TicketPriority.high, is_internal=False,
+                       status=TicketStatus.IN_PROGRESS, type=TicketType.repair, priority=TicketPriority.high, is_internal=False,
                        customer_id=loc_by_name["Аптека №4 Заречная"].customer_id, location_id=loc_by_name["Аптека №4 Заречная"].id,
                        assignee_id=user_by_name["Сергей Кузнецов"].id,
                        response_deadline=now - timedelta(hours=12), resolution_deadline=now + timedelta(hours=12)),
                 Ticket(number=1013, subject="Внутреннее: переезд серверной стойки", body="Плановая миграция оборудования в рамках реорганизации офиса.",
-                       status=TicketStatus.ASSIGNED, priority=TicketPriority.medium, is_internal=True,
+                       status=TicketStatus.ASSIGNED, type=TicketType.installation, priority=TicketPriority.medium, is_internal=True,
                        customer_id=loc_by_name["Главный офис"].customer_id, location_id=loc_by_name["Главный офис"].id,
                        response_deadline=now + timedelta(days=7), resolution_deadline=now + timedelta(days=14)),
                 Ticket(number=1014, subject="SPA-комплекс: не греется бассейн", body="Система подогрева бассейна вышла из строя. Температура упала до 18°C.",
-                       status=TicketStatus.ACCEPTED, priority=TicketPriority.high, is_internal=False,
+                       status=TicketStatus.ACCEPTED, type=TicketType.repair, priority=TicketPriority.high, is_internal=False,
                        customer_id=loc_by_name["Гостиница Волга — SPA-комплекс"].customer_id, location_id=loc_by_name["Гостиница Волга — SPA-комплекс"].id,
                        assignee_id=user_by_name["Сергей Кузнецов"].id,
                        response_deadline=now - timedelta(hours=6), resolution_deadline=now + timedelta(hours=6)),
                 Ticket(number=1015, subject="Настройка почтового сервера", body="Настроить Exchange для нового филиала. Создать 15 почтовых ящиков, мигрировать старые.",
-                       status=TicketStatus.COMPLETED, priority=TicketPriority.low, is_internal=False,
+                       status=TicketStatus.COMPLETED, type=TicketType.installation, priority=TicketPriority.low, is_internal=False,
                        customer_id=loc_by_name["Филиал на Гагарина"].customer_id, location_id=loc_by_name["Филиал на Гагарина"].id,
                        assignee_id=user_by_name["Иван Петров"].id,
                        completed_at=now - timedelta(days=10),
@@ -285,7 +303,27 @@ async def lifespan(app: FastAPI):
 
         await session.commit()
 
+    import asyncio as _asyncio
+
+    async def _mail_worker():
+        from src.services.mail_service import MailService
+        while True:
+            try:
+                async with async_session() as s:
+                    await MailService.fetch_and_create_tickets(s)
+            except:
+                pass
+            await _asyncio.sleep(120)
+
+    _mail_task = _asyncio.create_task(_mail_worker())
+
     yield
+
+    _mail_task.cancel()
+    try:
+        await _mail_task
+    except _asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(title="FSM Platform", version="0.1.0", lifespan=lifespan)

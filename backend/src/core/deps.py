@@ -36,8 +36,8 @@ async def get_current_user(
     return user
 
 
-def create_token(user_id: int) -> str:
-    expire = datetime.utcnow() + timedelta(seconds=settings.access_token_ttl)
+def create_token(user_id: int, ttl: int | None = None) -> str:
+    expire = datetime.utcnow() + timedelta(seconds=ttl or settings.access_token_ttl)
     return jwt.encode(
         {"sub": str(user_id), "exp": expire},
         settings.secret_key,

@@ -25,6 +25,8 @@ class UserRoleEnum:
     engineer = "engineer"
     dispatcher = "dispatcher"
     admin = "admin"
+    storekeeper = "storekeeper"
+    viewer = "viewer"
 
 
 class DocTypeEnum:
@@ -55,16 +57,36 @@ class TicketCreate(BaseModel):
     customer_id: int
     location_id: int
     equipment_id: Optional[int] = None
+    type: Optional[str] = None
     priority: str = "medium"
     is_internal: bool = False
+    assignee_id: Optional[int] = None
+    group_id: Optional[int] = None
+    site_contact_name: Optional[str] = Field(None, max_length=255)
+    site_contact_phone: Optional[str] = Field(None, max_length=50)
+    scheduled_start: Optional[datetime] = None
+    scheduled_end: Optional[datetime] = None
+    source_description: Optional[str] = Field(None, max_length=5000)
+    resolution_deadline: Optional[datetime] = None
 
 
 class TicketUpdate(BaseModel):
     subject: Optional[str] = Field(None, max_length=500)
     body: Optional[str] = Field(None, max_length=5000)
+    customer_id: Optional[int] = None
+    location_id: Optional[int] = None
     priority: Optional[str] = None
+    type: Optional[str] = None
     assignee_id: Optional[int] = None
     group_id: Optional[int] = None
+    equipment_id: Optional[int] = None
+    site_contact_name: Optional[str] = Field(None, max_length=255)
+    site_contact_phone: Optional[str] = Field(None, max_length=50)
+    scheduled_start: Optional[datetime] = None
+    scheduled_end: Optional[datetime] = None
+    source_description: Optional[str] = Field(None, max_length=5000)
+    resolution_deadline: Optional[datetime] = None
+    is_internal: Optional[bool] = None
 
 
 class StatusChange(BaseModel):
@@ -78,12 +100,18 @@ class TicketResponse(BaseModel):
     body: str
     status: str
     priority: str
+    type: Optional[str] = None
     is_internal: bool
     customer_id: int
     location_id: int
     equipment_id: Optional[int]
     assignee_id: Optional[int]
     group_id: Optional[int]
+    site_contact_name: Optional[str] = None
+    site_contact_phone: Optional[str] = None
+    scheduled_start: Optional[datetime] = None
+    scheduled_end: Optional[datetime] = None
+    source_description: Optional[str] = None
     created_at: datetime
     accepted_at: Optional[datetime]
     completed_at: Optional[datetime]
@@ -91,6 +119,7 @@ class TicketResponse(BaseModel):
     resolution_deadline: Optional[datetime]
     response_overdue: bool = False
     resolution_overdue: bool = False
+    is_archived: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -211,9 +240,12 @@ class SavedViewResponse(BaseModel):
 class TicketFilter(BaseModel):
     status: Optional[str] = None
     priority: Optional[str] = None
+    type: Optional[str] = None
     assignee_id: Optional[int] = None
     customer_id: Optional[int] = None
+    location_id: Optional[int] = None
     q: Optional[str] = None
     overdue: Optional[bool] = None
+    archived: Optional[bool] = None
     limit: int = Field(default=50, le=200)
     offset: int = Field(default=0)

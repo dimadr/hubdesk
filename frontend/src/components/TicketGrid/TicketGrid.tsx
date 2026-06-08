@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { useTicketStore } from '../../store/tickets';
 import { Tabs } from './Tabs';
 import { SavedViews } from './SavedViews';
@@ -9,6 +9,8 @@ import { TreeView } from './TreeView';
 interface UserInfo {
   id: number; email: string; name: string; role: string;
 }
+
+type ColFilter = Record<string, string | undefined>;
 
 const ViewSwitcher: React.FC = () => {
   const { viewType, setViewType } = useTicketStore();
@@ -21,33 +23,57 @@ const ViewSwitcher: React.FC = () => {
   );
 };
 
-export const TicketGrid: React.FC<{ users: UserInfo[] }> = ({ users }) => {
+export const TicketGrid: React.FC<{ users: UserInfo[]; onEdit?: (ticket: any) => void }> = ({ users, onEdit }) => {
   const { tickets, activeTab, viewType, fetchTickets, loading } = useTicketStore();
   const [search, setSearch] = useState('');
+  const [colFilter, setColFilter] = useState<ColFilter>({});
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    doFetch();
-  }, [activeTab]);
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
-  const doFetch = () => {
-    const filters: any = {};
-    if (activeTab === 'overdue') filters.overdue = true;
-    else if (activeTab !== 'all') filters.status = activeTab;
-    if (search) filters.q = search;
-    fetchTickets(filters);
-  };
+    const timer = setTimeout(async () => {
+      if (search.length > 0 && search.length < 2) return;
 
-  useEffect(() => {
-    if (search && search.length < 2) return;
-    const timer = setTimeout(doFetch, 300);
-    return () => clearTimeout(timer);
-  }, [search]);
+      const filters: Record<string, any> = {};
+      if (activeTab === 'overdue') filters.overdue = true;
+      else if (activeTab === 'archive') { filters.archived = true; }
+      else if (activeTab !== 'all') filters.status = activeTab;
+      if (activeTab === 'all') filters.archived = false;
+      if (search) filters.q = search;
+      Object.assign(filters, colFilter);
 
-  const viewComponent = {
-    table: <TableView tickets={tickets} users={users} />,
-    card: <CardView tickets={tickets} users={users} />,
-    tree: <TreeView tickets={tickets} />,
-  }[viewType];
+      await fetchTickets(filters, controller.signal);
+    }, 300);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [activeTab, search, colFilter]);
+
+  const toggleFilter = useCallback((key: string, value: string) => {
+    setColFilter(prev => prev[key as keyof ColFilter] === value ? { ...prev, [key]: undefined } : { ...prev, [key]: value });
+  }, []);
+
+  const clearFilter = useCallback(() => setColFilter({}), []);
+
+  const filteredTickets = useMemo(() => {
+    if (!colFilter.deadline && !colFilter.created) return tickets;
+    return tickets.filter(t => {
+      if (colFilter.deadline && t.resolution_deadline?.substring(0, 10) !== colFilter.deadline) return false;
+      if (colFilter.created && t.created_at?.substring(0, 10) !== colFilter.created) return false;
+      return true;
+    });
+  }, [tickets, colFilter.deadline, colFilter.created]);
+
+  const filterLabels: { key: string; label: string }[] = [];
+  if (colFilter.status) filterLabels.push({ key: 'status', label: `Статус: ${STATUS_LABELS[colFilter.status] || colFilter.status}` });
+  if (colFilter.priority) filterLabels.push({ key: 'priority', label: `Приоритет: ${PRIORITY_LABELS[colFilter.priority] || colFilter.priority}` });
+  if (colFilter.deadline) filterLabels.push({ key: 'deadline', label: `Срок: ${colFilter.deadline}` });
+  if (colFilter.created) filterLabels.push({ key: 'created', label: `Создано: ${colFilter.created}` });
 
   return (
     <div className="ticket-grid">
@@ -59,7 +85,30 @@ export const TicketGrid: React.FC<{ users: UserInfo[] }> = ({ users }) => {
       <div style={{ marginBottom: 14 }}>
         <input type="text" className="search-bar" placeholder="Поиск по номеру или теме..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
-      {loading ? <div className="loading">Загрузка...</div> : viewComponent}
+      {filterLabels.length > 0 && (
+        <div style={{ marginBottom: 10, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          {filterLabels.map(f => (
+            <span key={f.key} className="status-pill" style={{ cursor: 'pointer', background: 'var(--primary-bg)', color: 'var(--primary)', fontSize: 11 }} onClick={() => setColFilter(prev => ({ ...prev, [f.key]: undefined }))}>
+              {f.label} ✕
+            </span>
+          ))}
+          <button className="btn btn-secondary" style={{ padding: '2px 8px', fontSize: 11 }} onClick={clearFilter}>Сбросить</button>
+        </div>
+      )}
+      {loading ? <div className="loading">Загрузка...</div> : (
+        viewType === 'table' ? <TableView tickets={filteredTickets} users={users} onEdit={onEdit} colFilter={colFilter} onFilter={toggleFilter} /> :
+        viewType === 'card' ? <CardView tickets={filteredTickets} users={users} /> :
+        <TreeView tickets={filteredTickets} />
+      )}
     </div>
   );
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  ASSIGNED: 'Назначена', ACCEPTED: 'Принята', ON_THE_WAY: 'В пути',
+  ARRIVED: 'На месте', IN_PROGRESS: 'В работе', REVIEW: 'Проверка', COMPLETED: 'Завершена',
+};
+
+const PRIORITY_LABELS: Record<string, string> = {
+  low: 'Низкий', medium: 'Средний', high: 'Высокий', critical: 'Критичный',
 };

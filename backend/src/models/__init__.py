@@ -11,3 +11,4 @@ from .warehouse import (
     WarehouseType, NomenclatureType, DocType, DocStatus,
 )
 from .views import SavedView
+from .mailbox import MailboxConfig

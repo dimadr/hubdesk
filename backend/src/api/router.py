@@ -16,6 +16,7 @@ from .equipment import equipment_router
 from .warehouse import warehouse_router
 from .views import views_router
 from .admin import admin_router
+from .reports import reports_router
 
 api_router.include_router(create_ticket_router())
 api_router.include_router(attachment_router)
@@ -23,6 +24,7 @@ api_router.include_router(equipment_router)
 api_router.include_router(warehouse_router)
 api_router.include_router(views_router)
 api_router.include_router(admin_router)
+api_router.include_router(reports_router)
 
 
 class SignupRequest(BaseModel):
@@ -36,6 +38,7 @@ class SignupRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str
     password: str
+    remember_me: bool = False
 
 
 class AuthResponse(BaseModel):
@@ -95,18 +98,6 @@ async def signup(data: SignupRequest, db: AsyncSession = Depends(get_db)):
         role=user.role.value,
         status=user.status.value,
     )
-    db.add(user)
-    await db.flush()
-    await db.refresh(user)
-    token = create_token(user.id)
-    await db.commit()
-    return AuthResponse(
-        token=token,
-        user_id=user.id,
-        email=user.email,
-        name=user.name,
-        role=user.role.value,
-    )
 
 
 @api_router.post("/login", response_model=AuthResponse, tags=["Auth"])
@@ -121,8 +112,9 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
         raise HTTPException(403, "Учётная запись ожидает утверждения администратором")
     if user.status == UserStatus.rejected:
         raise HTTPException(403, "Учётная запись отклонена администратором")
+    ttl = 2592000 if data.remember_me else 14400
     return AuthResponse(
-        token=create_token(user.id),
+        token=create_token(user.id, ttl),
         user_id=user.id,
         email=user.email,
         name=user.name,
@@ -138,6 +130,9 @@ class LocationResponse(BaseModel):
     customer_id: int
     customer_name: str = ""
     contacts: str | None = None
+    contact_name: str | None = None
+    contact_phone: str | None = None
+    contact_email: str | None = None
     assigned_engineer_id: int | None = None
     assigned_engineer_name: str | None = None
     contract_number: str | None = None
@@ -169,6 +164,9 @@ async def list_locations(
             id=loc.id, name=loc.name, address=loc.address, customer_id=loc.customer_id,
             customer_name=cust_name,
             contacts=loc.contacts,
+            contact_name=loc.contact_name,
+            contact_phone=loc.contact_phone,
+            contact_email=loc.contact_email,
             assigned_engineer_id=loc.assigned_engineer_id,
             assigned_engineer_name=loc.assigned_engineer.name if loc.assigned_engineer else None,
             contract_number=loc.contract_number,
@@ -182,6 +180,9 @@ class LocationCreate(BaseModel):
     name: str
     address: str = ""
     contacts: str | None = None
+    contact_name: str | None = None
+    contact_phone: str | None = None
+    contact_email: str | None = None
     assigned_engineer_id: int | None = None
     contract_number: str | None = None
     contract_valid_from: str | None = None
@@ -192,6 +193,9 @@ class LocationUpdate(BaseModel):
     name: str | None = None
     address: str | None = None
     contacts: str | None = None
+    contact_name: str | None = None
+    contact_phone: str | None = None
+    contact_email: str | None = None
     assigned_engineer_id: int | None = None
     contract_number: str | None = None
     contract_valid_from: str | None = None
@@ -210,6 +214,9 @@ async def create_location(
     loc = AssetLocation(
         name=data.name, address=data.address, customer_id=cust.id,
         contacts=data.contacts,
+        contact_name=data.contact_name,
+        contact_phone=data.contact_phone,
+        contact_email=data.contact_email,
         assigned_engineer_id=data.assigned_engineer_id,
         contract_number=data.contract_number,
         contract_valid_from=date.fromisoformat(data.contract_valid_from) if data.contract_valid_from else None,
@@ -218,11 +225,24 @@ async def create_location(
     db.add(loc)
     await db.flush()
     await db.commit()
-    d = LocationResponse.model_validate(loc)
-    d.customer_name = cust.name
-    if loc.assigned_engineer:
-        d.assigned_engineer_name = loc.assigned_engineer.name
-    return d
+    eng_name = None
+    if data.assigned_engineer_id:
+        from src.models.user import User as UUser
+        eng = await db.get(UUser, data.assigned_engineer_id)
+        eng_name = eng.name if eng else None
+    return LocationResponse(
+        id=loc.id, name=loc.name, address=loc.address, customer_id=loc.customer_id,
+        customer_name=cust.name,
+        contacts=loc.contacts,
+        contact_name=loc.contact_name,
+        contact_phone=loc.contact_phone,
+        contact_email=loc.contact_email,
+        assigned_engineer_id=loc.assigned_engineer_id,
+        assigned_engineer_name=eng_name,
+        contract_number=loc.contract_number,
+        contract_valid_from=loc.contract_valid_from.isoformat() if loc.contract_valid_from else None,
+        contract_valid_to=loc.contract_valid_to.isoformat() if loc.contract_valid_to else None,
+    )
 
 
 @api_router.patch("/locations/{location_id}", response_model=LocationResponse, tags=["Locations"])
@@ -246,11 +266,34 @@ async def update_location(
     await db.commit()
     return LocationResponse(
         id=loc.id, name=loc.name, address=loc.address, customer_id=loc.customer_id,
-        contacts=loc.contacts, assigned_engineer_id=loc.assigned_engineer_id,
+        contacts=loc.contacts,
+        contact_name=loc.contact_name,
+        contact_phone=loc.contact_phone,
+        contact_email=loc.contact_email,
+        assigned_engineer_id=loc.assigned_engineer_id,
         contract_number=loc.contract_number,
         contract_valid_from=loc.contract_valid_from.isoformat() if loc.contract_valid_from else None,
         contract_valid_to=loc.contract_valid_to.isoformat() if loc.contract_valid_to else None,
     )
+
+
+@api_router.delete("/locations/{location_id}", tags=["Locations"])
+async def delete_location(location_id: int, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if user.role.value != "admin":
+        from fastapi import HTTPException
+        raise HTTPException(403, "Только администратор может удалять объекты")
+    loc = await db.get(AssetLocation, location_id)
+    if not loc:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Объект не найден")
+    from src.models.ticket import Ticket
+    from sqlalchemy import select as sa_select, func
+    ticket_count = (await db.execute(sa_select(func.count()).select_from(Ticket).where(Ticket.location_id == location_id))).scalar()
+    if ticket_count > 0:
+        raise HTTPException(400, f"Нельзя удалить объект с заявками ({ticket_count} шт.)")
+    await db.delete(loc)
+    await db.commit()
+    return {"ok": True}
 
 
 class UserListResponse(BaseModel):
@@ -271,3 +314,20 @@ async def list_engineers(
     result = await db.execute(select(User))
     users = result.scalars().all()
     return [UserListResponse(id=u.id, email=u.email, name=u.name, role=u.role.value, status=u.status.value) for u in users]
+
+
+class GroupResponse(BaseModel):
+    id: int
+    name: str
+
+    model_config = {"from_attributes": True}
+
+
+@api_router.get("/groups", response_model=list[GroupResponse], tags=["Groups"])
+async def list_groups(
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from src.models.user import Group
+    result = await db.execute(select(Group))
+    return [GroupResponse(id=g.id, name=g.name) for g in result.scalars().all()]

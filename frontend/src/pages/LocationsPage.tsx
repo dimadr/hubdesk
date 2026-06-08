@@ -3,7 +3,9 @@ import { api } from '../api/client';
 
 interface Location {
   id: number; name: string; address: string; customer_id: number; customer_name: string;
-  contacts: string | null; assigned_engineer_id: number | null; assigned_engineer_name: string | null;
+  contacts: string | null;
+  contact_name: string | null; contact_phone: string | null; contact_email: string | null;
+  assigned_engineer_id: number | null; assigned_engineer_name: string | null;
   contract_number: string | null; contract_valid_from: string | null; contract_valid_to: string | null;
 }
 interface UserInfo { id: number; email: string; name: string; role: string; }
@@ -13,10 +15,18 @@ export const LocationsPage: React.FC = () => {
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
 
   const load = () => {
     api.get('/locations').then(r => setLocations(r.data)).catch(() => {});
     api.get('/users/list').then(r => setUsers(r.data)).catch(() => {});
+  };
+
+  const handleDelete = async (id: number) => {
+    if (confirmDelete !== id) { setConfirmDelete(id); setTimeout(() => setConfirmDelete(null), 3000); return; }
+    setConfirmDelete(null);
+    try { await api.delete(`/locations/${id}`); load(); }
+    catch (e: any) { alert(e.response?.data?.detail || 'Ошибка удаления'); }
   };
 
   useEffect(() => { load(); }, []);
@@ -34,24 +44,33 @@ export const LocationsPage: React.FC = () => {
             <th>Инженер</th><th>Договор</th><th>Срок</th><th></th>
           </tr></thead>
           <tbody>
-            {locations.map(l => (
-              <tr key={l.id}>
-                <td className="mono" style={{ color: 'var(--text-muted)' }}>#{l.id}</td>
-                <td style={{ fontWeight: 600 }}>{l.name}</td>
-                <td style={{ color: 'var(--text-secondary)' }}>{l.address}</td>
-                <td>{l.contacts || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                <td>{l.assigned_engineer_name || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                <td className="mono" style={{ fontSize: 11 }}>{l.contract_number || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                <td style={{ fontSize: 11 }}>
-                  {l.contract_valid_from && <span>с {l.contract_valid_from.slice(0, 10)}</span>}
-                  {l.contract_valid_to && <span> до {l.contract_valid_to.slice(0, 10)}</span>}
-                  {!l.contract_valid_from && !l.contract_valid_to && <span style={{ color: 'var(--text-muted)' }}>—</span>}
-                </td>
-                <td>
-                  <button onClick={() => setEditId(l.id)} className="btn btn-secondary" style={{ padding: '3px 8px', fontSize: 11 }}>✎</button>
-                </td>
-              </tr>
-            ))}
+            {locations.map(l => {
+              const contactStr = [l.contact_name, l.contact_phone, l.contact_email].filter(Boolean).join(' / ') || l.contacts;
+              return (
+                <tr key={l.id}>
+                  <td className="mono" style={{ color: 'var(--text-muted)' }}>#{l.id}</td>
+                  <td style={{ fontWeight: 600 }}>{l.name}</td>
+                  <td style={{ color: 'var(--text-secondary)' }}>{l.address}</td>
+                  <td>{contactStr || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                  <td>{l.assigned_engineer_name || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                  <td className="mono" style={{ fontSize: 11 }}>{l.contract_number || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                  <td style={{ fontSize: 11 }}>
+                    {l.contract_valid_from && <span>с {l.contract_valid_from.slice(0, 10)}</span>}
+                    {l.contract_valid_to && <span> до {l.contract_valid_to.slice(0, 10)}</span>}
+                    {!l.contract_valid_from && !l.contract_valid_to && <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                  </td>
+                  <td>
+                    <button onClick={() => setEditId(l.id)} className="btn btn-secondary" style={{ padding: '3px 8px', fontSize: 11 }}>✎</button>
+                    {' '}
+                    <button onClick={() => handleDelete(l.id)}
+                      className={confirmDelete === l.id ? 'btn btn-danger' : 'btn btn-secondary'}
+                      style={{ padding: '3px 8px', fontSize: 11, background: confirmDelete === l.id ? 'var(--danger)' : undefined, color: confirmDelete === l.id ? '#fff' : undefined }}>
+                      {confirmDelete === l.id ? 'Точно?' : '✕'}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
             {locations.length === 0 && (
               <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)' }}>Нет объектов</td></tr>
             )}
@@ -68,6 +87,9 @@ const LocForm: React.FC<{ onClose: () => void; onSaved: () => void; users: UserI
   const [name, setName] = useState(loc?.name || '');
   const [address, setAddress] = useState(loc?.address || '');
   const [contacts, setContacts] = useState(loc?.contacts || '');
+  const [contactName, setContactName] = useState(loc?.contact_name || '');
+  const [contactPhone, setContactPhone] = useState(loc?.contact_phone || '');
+  const [contactEmail, setContactEmail] = useState(loc?.contact_email || '');
   const [engId, setEngId] = useState<string>(loc?.assigned_engineer_id?.toString() || '');
   const [contractNo, setContractNo] = useState(loc?.contract_number || '');
   const [from, setFrom] = useState(loc?.contract_valid_from || '');
@@ -77,7 +99,17 @@ const LocForm: React.FC<{ onClose: () => void; onSaved: () => void; users: UserI
   const submit = async () => {
     if (!name) { setError('Название обязательно'); return; }
     try {
-      const body: any = { name, address, contacts, assigned_engineer_id: engId ? Number(engId) : null, contract_number: contractNo, contract_valid_from: from || null, contract_valid_to: to || null };
+      const body: any = {
+        name, address,
+        contacts: contacts || null,
+        contact_name: contactName || null,
+        contact_phone: contactPhone || null,
+        contact_email: contactEmail || null,
+        assigned_engineer_id: engId ? Number(engId) : null,
+        contract_number: contractNo,
+        contract_valid_from: from || null,
+        contract_valid_to: to || null,
+      };
       if (loc) await api.patch(`/locations/${loc.id}`, body);
       else await api.post('/locations', body);
       onSaved();
@@ -93,8 +125,18 @@ const LocForm: React.FC<{ onClose: () => void; onSaved: () => void; users: UserI
         <input placeholder="Введите название" value={name} onChange={e => setName(e.target.value)} />
         <label>Адрес</label>
         <input placeholder="Введите адрес" value={address} onChange={e => setAddress(e.target.value)} />
-        <label>Контакты (тел, email)</label>
-        <input placeholder="Введите контакты" value={contacts} onChange={e => setContacts(e.target.value)} />
+        <label>Контактное лицо (ФИО)</label>
+        <input placeholder="Иванов Иван Иванович" value={contactName} onChange={e => setContactName(e.target.value)} />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ flex: 1 }}>
+            <label>Телефон</label>
+            <input placeholder="+7 (___) ___-__-__" value={contactPhone} onChange={e => setContactPhone(e.target.value)} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label>Email</label>
+            <input placeholder="contact@domain.ru" value={contactEmail} onChange={e => setContactEmail(e.target.value)} />
+          </div>
+        </div>
         <label>Ответственный инженер</label>
         <select value={engId} onChange={e => setEngId(e.target.value)}>
           <option value="">— Не назначен —</option>

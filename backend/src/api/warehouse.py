@@ -155,3 +155,47 @@ async def remove_warehouse_access(warehouse_id: int, user_id: int, user=Depends(
     await db.execute(stmt)
     await db.commit()
     return {"status": "ok"}
+
+
+class WarehouseCreate(BaseModel):
+    name: str
+    type: str = "physical"
+
+
+@warehouse_router.post("/warehouses", status_code=201, response_model=WarehouseResponse)
+async def create_warehouse(data: WarehouseCreate, user=Depends(get_current_user), db=Depends(get_db)):
+    if user.role not in (UserRole.admin, UserRole.storekeeper):
+        raise HTTPException(403, "Только админ или кладовщик может создавать склады")
+    w = Warehouse(name=data.name, type=data.type if data.type in ("physical", "personal") else "physical")
+    db.add(w)
+    await db.flush()
+    await db.commit()
+    return WarehouseResponse.model_validate(w)
+
+
+@warehouse_router.patch("/warehouses/{warehouse_id}", response_model=WarehouseResponse)
+async def rename_warehouse(warehouse_id: int, data: WarehouseCreate, user=Depends(get_current_user), db=Depends(get_db)):
+    if user.role not in (UserRole.admin, UserRole.storekeeper):
+        raise HTTPException(403, "Только админ или кладовщик")
+    w = await db.get(Warehouse, warehouse_id)
+    if not w:
+        raise HTTPException(404)
+    w.name = data.name
+    await db.commit()
+    return WarehouseResponse.model_validate(w)
+
+
+@warehouse_router.delete("/warehouses/{warehouse_id}")
+async def delete_warehouse(warehouse_id: int, user=Depends(get_current_user), db=Depends(get_db)):
+    if user.role != UserRole.admin:
+        raise HTTPException(403, "Только администратор может удалять склады")
+    w = await db.get(Warehouse, warehouse_id)
+    if not w:
+        raise HTTPException(404)
+    from sqlalchemy import select as sa_select, func
+    bal = (await db.execute(sa_select(func.sum(StockBalance.quantity)).where(StockBalance.warehouse_id == warehouse_id))).scalar()
+    if bal and bal > 0:
+        raise HTTPException(400, f"Нельзя удалить склад с остатками (сумма: {bal}). Обнулите остатки.")
+    await db.delete(w)
+    await db.commit()
+    return {"ok": True}

@@ -19,6 +19,11 @@ export const WarehousePage: React.FC = () => {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [balances, setBalances] = useState<Balance[]>([]);
   const [loading, setLoading] = useState(false);
+  const [editingWh, setEditingWh] = useState<number | null>(null);
+  const [editWhName, setEditWhName] = useState('');
+  const [newWhName, setNewWhName] = useState('');
+  const [balWhFilter, setBalWhFilter] = useState<number | ''>('');
+  const [balSearch, setBalSearch] = useState('');
 
   const loadAll = async () => {
     setLoading(true);
@@ -59,10 +64,48 @@ export const WarehousePage: React.FC = () => {
         <DocumentsTab docs={docs} warehouses={warehouses} nomenclatures={nomenclatures} nomName={nomName} whName={whName} doAction={doAction} onRefresh={loadAll} />
       )}
       {tab === 'warehouses' && (
-        <div className="table-wrapper">
-          <table><thead><tr><th>ID</th><th>Название</th><th>Тип</th></tr></thead>
-            <tbody>{warehouses.map(w => (<tr key={w.id}><td className="mono" style={{ color: 'var(--text-muted)' }}>#{w.id}</td><td style={{fontWeight:600}}>{w.name}</td><td><span className="status-pill" style={{ background: 'var(--info-bg)', color: 'var(--info)' }}>{WAREHOUSE_TYPES[w.type] || w.type}</span></td></tr>))}</tbody>
-          </table>
+        <div>
+          <div className="page-header" style={{ marginBottom: 12 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 700 }}>Склады</h2>
+          </div>
+          <div className="table-wrapper">
+            <table><thead><tr><th>ID</th><th>Название</th><th>Тип</th><th></th></tr></thead>
+              <tbody>
+                {warehouses.map(w => (
+                  <tr key={w.id} style={{ cursor: 'pointer' }} onClick={() => { setBalWhFilter(w.id); setTab('balances'); }}>
+                    <td className="mono" style={{ color: 'var(--text-muted)' }}>#{w.id}</td>
+                    <td style={{ fontWeight: 600 }}>
+                      {editingWh === w.id
+                        ? <input value={editWhName} onChange={e => setEditWhName(e.target.value)} onClick={e => e.stopPropagation()} style={{ padding: '2px 6px', width: '80%' }} />
+                        : w.name}
+                    </td>
+                    <td><span className="status-pill" style={{ background: 'var(--info-bg)', color: 'var(--info)' }}>{WAREHOUSE_TYPES[w.type] || w.type}</span></td>
+                    <td onClick={e => e.stopPropagation()}>
+                      {editingWh === w.id ? (
+                        <>
+                          <button className="btn btn-success" style={{ padding: '2px 6px', fontSize: 10 }} onClick={async () => { try { await api.patch(`/warehouses/${w.id}`, { name: editWhName }); setEditingWh(null); loadAll(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка'); } }}>✓</button>
+                          <button className="btn btn-secondary" style={{ padding: '2px 6px', fontSize: 10, marginLeft: 4 }} onClick={() => setEditingWh(null)}>✕</button>
+                        </>
+                      ) : (
+                        <>
+                          <button className="btn btn-secondary" style={{ padding: '2px 6px', fontSize: 10 }} onClick={() => { setEditingWh(w.id); setEditWhName(w.name); }}>✎</button>
+                          <button className="btn btn-danger" style={{ padding: '2px 6px', fontSize: 10, marginLeft: 4 }} onClick={async () => { try { await api.delete(`/warehouses/${w.id}`); loadAll(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка'); } }}>✕</button>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                <tr>
+                  <td colSpan={2}>
+                    <input placeholder="Название нового склада" value={newWhName} onChange={e => setNewWhName(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, width: '100%' }} />
+                  </td>
+                  <td colSpan={2}>
+                    <button className="btn btn-primary" style={{ padding: '4px 12px', fontSize: 12 }} onClick={async () => { if (!newWhName.trim()) return; try { await api.post('/warehouses', { name: newWhName, type: 'physical' }); setNewWhName(''); loadAll(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка'); } }}>+ Добавить</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
       {tab === 'nomenclature' && (
@@ -73,10 +116,30 @@ export const WarehousePage: React.FC = () => {
         </div>
       )}
       {tab === 'balances' && (
-        <div className="table-wrapper">
-          <table><thead><tr><th>Склад</th><th>Номенклатура</th><th>Количество</th></tr></thead>
-            <tbody>{balances.map((b, i) => (<tr key={i}><td>{whName(b.warehouse_id)}</td><td>{nomName(b.nomenclature_id)}</td><td className="mono" style={{fontWeight:600}}>{b.quantity}</td></tr>))}</tbody>
-          </table>
+        <div>
+          <div className="page-header" style={{ marginBottom: 12, display: 'flex', gap: 10, alignItems: 'center' }}>
+            <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Остатки</h2>
+            <select value={balWhFilter} onChange={e => setBalWhFilter(e.target.value ? Number(e.target.value) : '')}
+              style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-surface)', color: 'var(--text)', fontSize: 12 }}>
+              <option value="">— Все склады —</option>
+              {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+            </select>
+            <input type="text" placeholder="Поиск по названию..." value={balSearch} onChange={e => setBalSearch(e.target.value)}
+              style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-surface)', color: 'var(--text)', fontSize: 12, width: 180 }} />
+            <span className="text-muted" style={{ fontSize: 12 }}>
+              {balances.filter(b => (!balWhFilter || b.warehouse_id === balWhFilter) && (!balSearch || nomName(b.nomenclature_id).toLowerCase().includes(balSearch.toLowerCase()))).length} позиций
+            </span>
+          </div>
+          <div className="table-wrapper">
+            <table><thead><tr><th>Склад</th><th>Номенклатура</th><th>Количество</th></tr></thead>
+              <tbody>
+                {balances
+                  .filter(b => (!balWhFilter || b.warehouse_id === balWhFilter) && (!balSearch || nomName(b.nomenclature_id).toLowerCase().includes(balSearch.toLowerCase())))
+                  .map((b, i) => (<tr key={i}><td>{whName(b.warehouse_id)}</td><td>{nomName(b.nomenclature_id)}</td><td className="mono" style={{fontWeight:600}}>{b.quantity}</td></tr>))
+                }
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

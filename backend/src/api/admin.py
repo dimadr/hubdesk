@@ -193,3 +193,116 @@ async def delete_customer(customer_id: int, user=Depends(get_current_user), db: 
     await db.delete(c)
     await db.commit()
     return {"ok": True}
+
+
+class PendingUserResponse(BaseModel):
+    id: int
+    email: str
+    name: str
+    role: str
+    status: str
+    consent_given: bool
+    consent_date: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+@admin_router.get("/pending-users", response_model=list[PendingUserResponse])
+async def list_pending_users(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    is_admin(user)
+    result = await db.execute(select(User).where(User.status == UserStatus.pending))
+    users = result.scalars().all()
+    return [PendingUserResponse(
+        id=u.id, email=u.email, name=u.name, role=u.role.value,
+        status=u.status.value, consent_given=u.consent_given,
+        consent_date=u.consent_date.isoformat() if u.consent_date else None,
+    ) for u in users]
+
+
+@admin_router.post("/pending-users/{user_id}/approve")
+async def approve_user(user_id: int, admin=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    is_admin(admin)
+    target = await db.get(User, user_id)
+    if not target:
+        raise HTTPException(404, "Пользователь не найден")
+    target.status = UserStatus.active
+    await db.commit()
+
+    log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "history.log")
+    ts = __import__("datetime").datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(f"[{ts}] {admin.name} — Утвердил пользователя: {target.name} ({target.email}), роль: {target.role.value}\n")
+
+    return {"ok": True}
+
+
+@admin_router.post("/pending-users/{user_id}/reject")
+async def reject_user(user_id: int, admin=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    is_admin(admin)
+    target = await db.get(User, user_id)
+    if not target:
+        raise HTTPException(404, "Пользователь не найден")
+    target.status = UserStatus.rejected
+    await db.commit()
+
+    log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "history.log")
+    ts = __import__("datetime").datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(f"[{ts}] {admin.name} — Отклонил пользователя: {target.name} ({target.email}), роль: {target.role.value}\n")
+
+    return {"ok": True}
+
+
+class MailboxConfigRequest(BaseModel):
+    enabled: bool = False
+    imap_server: str = "imap.timeweb.ru"
+    imap_port: int = 993
+    folder: str = "INBOX"
+    check_interval_min: int = 5
+
+
+class MailboxConfigResponse(BaseModel):
+    id: int
+    enabled: bool
+    email: str
+    imap_server: str
+    imap_port: int
+    folder: str
+    check_interval_min: int
+    last_check_at: str | None = None
+    last_uid: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+@admin_router.get("/mailbox", response_model=None)
+async def get_mailbox(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    is_admin(user)
+    from src.models.mailbox import MailboxConfig
+    result = await db.execute(select(MailboxConfig).limit(1))
+    cfg = result.scalar_one_or_none()
+    if not cfg:
+        return None
+    return {
+        "id": cfg.id, "enabled": cfg.enabled, "email": cfg.email,
+        "imap_server": cfg.imap_server, "imap_port": cfg.imap_port,
+        "folder": cfg.folder, "check_interval_min": cfg.check_interval_min,
+        "last_check_at": cfg.last_check_at.isoformat() if cfg.last_check_at else None,
+        "last_uid": cfg.last_uid,
+    }
+    return {
+        "id": cfg.id, "enabled": cfg.enabled, "email": cfg.email,
+        "imap_server": cfg.imap_server, "imap_port": cfg.imap_port,
+        "folder": cfg.folder, "check_interval_min": cfg.check_interval_min,
+        "last_check_at": cfg.last_check_at.isoformat() if cfg.last_check_at else None,
+        "last_uid": cfg.last_uid,
+    }
+@admin_router.post("/mailbox/fetch")
+async def trigger_mailbox_fetch(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    is_admin(user)
+    from src.services.mail_service import MailService
+    try:
+        count = await MailService.fetch_and_create_tickets(db)
+        return {"ok": True, "created": count}
+    except Exception as e:
+        raise HTTPException(500, str(e))

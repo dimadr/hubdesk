@@ -10,7 +10,7 @@ interface TicketStore {
 
   setActiveTab: (tab: string) => void;
   setViewType: (vt: 'table' | 'card' | 'tree') => void;
-  fetchTickets: (filters: Record<string, any>) => Promise<void>;
+  fetchTickets: (filters: Record<string, any>, signal?: AbortSignal) => Promise<void>;
   updateCounter: (event: string, count: number) => void;
 }
 
@@ -24,10 +24,16 @@ export const useTicketStore = create<TicketStore>((set) => ({
   setActiveTab: (tab) => set({ activeTab: tab }),
   setViewType: (vt) => set({ viewType: vt }),
 
-  fetchTickets: async (filters) => {
+  fetchTickets: async (filters, signal?: AbortSignal) => {
     set({ loading: true });
-    const { data } = await api.get('/tickets', { params: filters });
-    set({ tickets: data, loading: false });
+    try {
+      const { data } = await api.get('/tickets', { params: filters, signal });
+      set({ tickets: data, loading: false });
+    } catch (err: any) {
+      if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') {
+        set({ loading: false });
+      }
+    }
   },
 
   updateCounter: (event, count) => {

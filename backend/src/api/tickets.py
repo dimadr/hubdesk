@@ -14,7 +14,7 @@ from src.api.schemas import (
     CommentCreate, CommentResponse,
 )
 from src.core.deps import get_current_user
-from src.models.user import User
+from src.models.user import User, UserRole
 from src.models.checklist import Checklist, ChecklistField, FieldType
 
 
@@ -38,16 +38,24 @@ def create_ticket_router() -> APIRouter:
             stmt = stmt.where(Ticket.status == filters.status)
         if filters.priority:
             stmt = stmt.where(Ticket.priority == filters.priority)
+        if filters.type:
+            stmt = stmt.where(Ticket.type == filters.type)
         if filters.assignee_id:
             stmt = stmt.where(Ticket.assignee_id == filters.assignee_id)
         if filters.customer_id:
             stmt = stmt.where(Ticket.customer_id == filters.customer_id)
+        if filters.location_id:
+            stmt = stmt.where(Ticket.location_id == filters.location_id)
         if filters.q:
             stmt = stmt.where(Ticket.subject.ilike(f"%{filters.q}%"))
         if user.role.value == "customer":
             stmt = stmt.where(Ticket.customer_id == user.id)
         elif user.role.value == "engineer":
             stmt = stmt.where(Ticket.assignee_id == user.id)
+        if filters.archived is True:
+            stmt = stmt.where(Ticket.archived_at != None)
+        elif filters.archived is False:
+            stmt = stmt.where(Ticket.archived_at == None)
         stmt = stmt.offset(filters.offset).limit(filters.limit)
         result = await db.execute(stmt)
         tickets = result.scalars().all()
@@ -56,6 +64,7 @@ def create_ticket_router() -> APIRouter:
             d = TicketResponse.model_validate(t)
             d.response_overdue = SLAService.is_response_overdue(t)
             d.resolution_overdue = SLAService.is_resolution_overdue(t)
+            d.is_archived = t.archived_at is not None
             output.append(d)
         return output
 
@@ -71,6 +80,7 @@ def create_ticket_router() -> APIRouter:
         d = TicketResponse.model_validate(ticket)
         d.response_overdue = SLAService.is_response_overdue(ticket)
         d.resolution_overdue = SLAService.is_resolution_overdue(ticket)
+        d.is_archived = ticket.archived_at is not None
         return d
 
     @router.post("", status_code=201, response_model=TicketResponse)
@@ -79,6 +89,8 @@ def create_ticket_router() -> APIRouter:
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
+        if user.role not in (UserRole.admin, UserRole.dispatcher):
+            raise HTTPException(403, "Только диспетчер или администратор может создавать заявки")
         svc = TicketService(db)
         ticket = await svc.create(data.model_dump(), user)
         await db.commit()
@@ -92,12 +104,16 @@ def create_ticket_router() -> APIRouter:
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
+        if user.role not in (UserRole.admin, UserRole.dispatcher, UserRole.engineer):
+            raise HTTPException(403, "Недостаточно прав для редактирования заявки")
         ticket = await db.get(Ticket, ticket_id)
         if not ticket:
             raise HTTPException(404)
         if not RoleChecker.can_view_ticket(user, ticket):
             raise HTTPException(404)
         for field, value in data.model_dump(exclude_unset=True).items():
+            if isinstance(value, datetime):
+                value = value.replace(tzinfo=None)
             setattr(ticket, field, value)
         await db.commit()
         log_history("Обновлена заявка", f"#{ticket.number} {ticket.subject}", user.name)
@@ -126,6 +142,8 @@ def create_ticket_router() -> APIRouter:
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
+        if user.role not in (UserRole.admin, UserRole.dispatcher, UserRole.engineer, UserRole.customer):
+            raise HTTPException(403, "Недостаточно прав для добавления комментариев")
         svc = CommentService(db)
         comment = await svc.add(ticket_id, data.body, data.is_internal, user)
         await db.commit()
@@ -148,6 +166,8 @@ def create_ticket_router() -> APIRouter:
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
+        if user.role in (UserRole.viewer, UserRole.customer, UserRole.storekeeper):
+            raise HTTPException(403, "Недостаточно прав")
         ticket = await db.get(Ticket, ticket_id)
         if not ticket:
             raise HTTPException(404)
@@ -184,6 +204,8 @@ def create_ticket_router() -> APIRouter:
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
+        if user.role in (UserRole.viewer, UserRole.customer, UserRole.storekeeper):
+            raise HTTPException(403, "Недостаточно прав")
         ftype = FieldType[data.field_type] if data.field_type in FieldType._member_names_ else FieldType.checkbox
         field = ChecklistField(checklist_id=checklist_id, label=data.label, field_type=ftype, is_mandatory=data.is_mandatory)
         db.add(field)
@@ -201,6 +223,8 @@ def create_ticket_router() -> APIRouter:
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
+        if user.role in (UserRole.viewer, UserRole.customer, UserRole.storekeeper):
+            raise HTTPException(403, "Недостаточно прав")
         field = await db.get(ChecklistField, field_id)
         if not field:
             raise HTTPException(404)

@@ -14,7 +14,7 @@ class RoleChecker:
 
     @staticmethod
     def can_view_ticket(user: User, ticket: Ticket) -> bool:
-        if user.role == UserRole.admin or user.role == UserRole.dispatcher:
+        if user.role in (UserRole.admin, UserRole.dispatcher, UserRole.viewer):
             return True
         if user.role == UserRole.engineer:
             return ticket.assignee_id == user.id
@@ -32,7 +32,7 @@ class RoleChecker:
 
     @staticmethod
     def can_see_comment(user: User, comment) -> bool:
-        if user.role in (UserRole.admin, UserRole.dispatcher):
+        if user.role in (UserRole.admin, UserRole.dispatcher, UserRole.viewer):
             return True
         if comment.is_internal:
             return False

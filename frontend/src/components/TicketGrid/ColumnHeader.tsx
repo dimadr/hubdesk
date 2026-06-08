@@ -3,21 +3,21 @@ import { useSortable } from '@dnd-kit/sortable';
 
 interface Props {
   id: string; label: string; sticky?: boolean;
-  width: number; onResize: (w: number) => void;
+  width: number; colKey: string; onResize: (key: string, w: number) => void;
 }
 
-export const ColumnHeader: React.FC<Props> = ({ id, label, sticky, width, onResize }) => {
+export const ColumnHeader: React.FC<Props> = ({ id, label, sticky, width, colKey, onResize }) => {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     const startX = e.clientX;
     const startWidth = width;
-    const onMove = (ev: MouseEvent) => onResize(startWidth + (ev.clientX - startX));
+    const onMove = (ev: MouseEvent) => onResize(colKey, startWidth + (ev.clientX - startX));
     const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
-  }, [width, onResize]);
+  }, [width, colKey, onResize]);
 
   return (
     <th

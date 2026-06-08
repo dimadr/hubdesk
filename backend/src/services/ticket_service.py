@@ -23,8 +23,17 @@ class TicketService:
             customer_id=data["customer_id"],
             location_id=data["location_id"],
             equipment_id=data.get("equipment_id"),
+            type=data.get("type"),
             priority=data.get("priority", "medium"),
             is_internal=data.get("is_internal", False),
+            assignee_id=data.get("assignee_id"),
+            group_id=data.get("group_id"),
+            site_contact_name=data.get("site_contact_name"),
+            site_contact_phone=data.get("site_contact_phone"),
+            scheduled_start=data.get("scheduled_start"),
+            scheduled_end=data.get("scheduled_end"),
+            source_description=data.get("source_description"),
+            resolution_deadline=data.get("resolution_deadline"),
         )
         contract = await self._get_active_contract(ticket.customer_id)
         if contract:
@@ -54,6 +63,7 @@ class TicketService:
             ticket.accepted_at = now
         elif target == "COMPLETED":
             ticket.completed_at = now
+            ticket.archived_at = now
         await self.session.flush()
         return ticket
 
