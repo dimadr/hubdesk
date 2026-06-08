@@ -172,4 +172,4 @@ npm run build
 
 ## Лицензия
 
-MIT
+[MIT](LICENSE)
