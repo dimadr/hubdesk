@@ -13,8 +13,8 @@ reports_router = APIRouter(prefix="/reports", tags=["Reports"])
 
 
 def check_access(user: User):
-    if user.role not in (UserRole.admin, UserRole.dispatcher):
-        raise HTTPException(403, "Доступно только администратору и диспетчеру")
+    if user.role not in (UserRole.admin, UserRole.dispatcher, UserRole.accountant):
+        raise HTTPException(403, "Доступно администратору, диспетчеру и бухгалтеру")
 
 
 async def ticket_query(db: AsyncSession, date_from: str | None, date_to: str | None):

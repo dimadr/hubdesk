@@ -14,6 +14,8 @@ class UserRole(str, enum.Enum):
     admin = "admin"
     storekeeper = "storekeeper"
     viewer = "viewer"
+    metrologist = "metrologist"
+    accountant = "accountant"
 
 
 class UserStatus(str, enum.Enum):
@@ -34,6 +36,8 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True)
     name: Mapped[str] = mapped_column(String(255))
+    phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    position: Mapped[str | None] = mapped_column(String(500), nullable=True)
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.engineer)
     password_hash: Mapped[str] = mapped_column(String(255))
     status: Mapped[UserStatus] = mapped_column(Enum(UserStatus), default=UserStatus.active)

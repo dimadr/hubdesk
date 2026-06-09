@@ -85,6 +85,8 @@ async def read_history(user=Depends(get_current_user)):
 class UserUpdate(BaseModel):
     name: str | None = None
     email: str | None = None
+    phone: str | None = None
+    position: str | None = None
     role: str | None = None
     password: str | None = None
     status: str | None = None
@@ -106,6 +108,10 @@ async def update_user(
         target.name = data.name
     if data.email is not None:
         target.email = data.email
+    if data.phone is not None:
+        target.phone = data.phone
+    if data.position is not None:
+        target.position = data.position
     if data.role is not None:
         if data.role not in UserRole.__members__:
             raise HTTPException(400, "Неизвестная роль")

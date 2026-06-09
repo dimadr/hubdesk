@@ -17,12 +17,12 @@ interface Location {
 }
 
 interface UserInfo {
-  id: number; email: string; name: string; role: string; status?: string;
+  id: number; email: string; name: string; phone?: string; role: string; status?: string;
 }
 
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Администратор', engineer: 'Инженер', dispatcher: 'Диспетчер',
-  customer: 'Заказчик', storekeeper: 'Кладовщик', viewer: 'Наблюдатель',
+  customer: 'Заказчик', storekeeper: 'Кладовщик', viewer: 'Наблюдатель', metrologist: 'Метролог', accountant: 'Бухгалтер',
 };
 
 const AuthPage: React.FC<{ onLogin: (token: string, user: any) => void }> = ({ onLogin }) => {
@@ -78,6 +78,8 @@ const AuthPage: React.FC<{ onLogin: (token: string, user: any) => void }> = ({ o
               <option value="storekeeper">Кладовщик</option>
               <option value="customer">Заказчик</option>
               <option value="viewer">Наблюдатель</option>
+              <option value="metrologist">Метролог</option>
+              <option value="accountant">Бухгалтер</option>
             </select>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer', marginBottom: 12, marginTop: 4 }}>
               <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--primary)' }} />
@@ -461,14 +463,17 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
 const AddEmployeeModal: React.FC<{ onClose: () => void; onAdded: () => void }> = ({ onClose, onAdded }) => {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('engineer');
+  const [consent, setConsent] = useState(false);
   const [error, setError] = useState('');
 
   const submit = async () => {
     if (!email || !name || !password) { setError('Все поля обязательны'); return; }
+    if (!consent) { setError('Требуется согласие на обработку персональных данных'); return; }
     try {
-      await api.post('/signup', { email, name, password, role });
+      await api.post('/signup', { email, name, phone, password, role, consent_given: true });
       onAdded();
     } catch (e: any) { setError(e.response?.data?.detail || 'Ошибка'); }
   };
@@ -478,13 +483,15 @@ const AddEmployeeModal: React.FC<{ onClose: () => void; onAdded: () => void }> =
       <div className="modal-card" onClick={e => e.stopPropagation()}>
         <h3>Добавить сотрудника</h3>
         {error && <p style={{ color: 'var(--danger)', fontSize: 13, background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 6, marginBottom: 10 }}>{error}</p>}
-        <label>Имя</label>
-        <input placeholder="Иван Петров" value={name} onChange={e => setName(e.target.value)} />
+        <label>ФИО</label>
+        <input placeholder="Иванов Иван Иванович" value={name} onChange={e => setName(e.target.value)} />
         <label>Email</label>
         <input placeholder="ivan@example.com" value={email} onChange={e => setEmail(e.target.value)} />
+        <label>Телефон</label>
+        <input placeholder="+7 (___) ___-__-__" value={phone} onChange={e => setPhone(e.target.value)} />
         <label>Пароль</label>
         <input placeholder="••••••••" type="password" value={password} onChange={e => setPassword(e.target.value)} />
-        <label>Роль</label>
+        <label>Должность</label>
         <select value={role} onChange={e => setRole(e.target.value)}>
           <option value="engineer">Инженер</option>
           <option value="dispatcher">Диспетчер</option>
@@ -493,6 +500,10 @@ const AddEmployeeModal: React.FC<{ onClose: () => void; onAdded: () => void }> =
           <option value="customer">Заказчик</option>
           <option value="viewer">Наблюдатель</option>
         </select>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer', marginTop: 8 }}>
+          <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--primary)' }} />
+          Согласен на обработку персональных данных
+        </label>
         <div className="modal-actions">
           <button className="btn btn-primary" onClick={submit}>Добавить</button>
           <button className="btn btn-secondary" onClick={onClose}>Отмена</button>
@@ -573,7 +584,7 @@ const App: React.FC = () => {
         <nav className="sidebar-nav">
           <div className="nav-section">Навигация</div>
           {NAV_ITEMS.filter(item => !(item as any).adminOnly || user.role === 'admin')
-            .filter(item => item.key !== 'reports' || user.role === 'admin' || user.role === 'dispatcher')
+            .filter(item => item.key !== 'reports' || user.role === 'admin' || user.role === 'dispatcher' || user.role === 'accountant')
             .map(item => (
             <button
               key={item.key}
@@ -673,12 +684,13 @@ const EmployeesPage: React.FC<{ onAdd: () => void; refreshKey: number; isAdmin: 
       )}
       <div className="table-wrapper">
         <table>
-          <thead><tr><th>ID</th><th>Имя</th><th>Email</th><th>Роль</th><th>Статус</th>{isAdmin && <th></th>}</tr></thead>
+          <thead><tr><th>ID</th><th>ФИО</th><th>Телефон</th><th>Email</th><th>Должность</th><th>Статус</th>{isAdmin && <th></th>}</tr></thead>
           <tbody>
             {users.map(u => (
               <tr key={u.id}>
                 <td className="mono" style={{ color: 'var(--text-muted)' }}>#{u.id}</td>
                 <td style={{ fontWeight: 600 }}>{u.name}</td>
+                <td style={{ color: 'var(--text-secondary)' }}>{u.phone || '—'}</td>
                 <td>{u.email}</td>
                 <td><span className="status-pill" style={{ background: 'var(--primary-bg)', color: 'var(--primary)' }}>{ROLE_LABELS[u.role] || u.role}</span></td>
                 <td>

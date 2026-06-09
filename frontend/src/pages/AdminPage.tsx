@@ -9,12 +9,12 @@ interface Stats {
 }
 
 interface CustomerData { id: number; name: string; type: string; locations_count: number; }
-interface UserInfo { id: number; email: string; name: string; role: string; status?: string; }
+interface UserInfo { id: number; email: string; name: string; phone?: string; role: string; status?: string; }
 interface PendingUser { id: number; email: string; name: string; role: string; status: string; consent_given: boolean; consent_date: string | null; }
 
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Администратор', engineer: 'Инженер', dispatcher: 'Диспетчер',
-  customer: 'Заказчик', storekeeper: 'Кладовщик', viewer: 'Наблюдатель',
+  customer: 'Заказчик', storekeeper: 'Кладовщик', viewer: 'Наблюдатель', metrologist: 'Метролог', accountant: 'Бухгалтер',
 };
 
 export const AdminPage: React.FC = () => {
@@ -99,7 +99,7 @@ const DashboardTab: React.FC = () => {
       <div className="section-title" style={{ marginTop: 20 }}>Пользователи по ролям</div>
       <div className="table-wrapper" style={{ marginTop: 10 }}>
         <table>
-          <thead><tr><th>Роль</th><th>Количество</th></tr></thead>
+          <thead><tr><th>Должность</th><th>Количество</th></tr></thead>
           <tbody>
             {stats.user_breakdown.map((u, i) => (
               <tr key={i}>
@@ -133,12 +133,13 @@ const UsersTab: React.FC = () => {
     <div>
       <div className="table-wrapper">
         <table>
-          <thead><tr><th>ID</th><th>Имя</th><th>Email</th><th>Роль</th><th></th></tr></thead>
+          <thead><tr><th>ID</th><th>ФИО</th><th>Телефон</th><th>Email</th><th>Должность</th><th></th></tr></thead>
           <tbody>
             {users.map(u => (
               <tr key={u.id}>
                 <td className="mono" style={{ color: 'var(--text-muted)' }}>#{u.id}</td>
                 <td style={{ fontWeight: 600 }}>{u.name}</td>
+                <td style={{ color: 'var(--text-secondary)' }}>{u.phone || '—'}</td>
                 <td>{u.email}</td>
                 <td>
                   <span className="status-pill" style={{ background: 'var(--primary-bg)', color: 'var(--primary)' }}>
@@ -170,6 +171,7 @@ const UsersTab: React.FC = () => {
 const UserEditModal: React.FC<{ user: UserInfo; onClose: () => void; onSaved: () => void }> = ({ user, onClose, onSaved }) => {
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
+  const [phone, setPhone] = useState(user.phone || '');
   const [role, setRole] = useState(user.role);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -182,6 +184,7 @@ const UserEditModal: React.FC<{ user: UserInfo; onClose: () => void; onSaved: ()
       const body: any = {};
       if (name !== user.name) body.name = name;
       if (email !== user.email) body.email = email;
+      if (phone !== (user.phone || '')) body.phone = phone;
       if (role !== user.role) body.role = role;
       if (password) body.password = password;
       if (Object.keys(body).length === 0) { onClose(); return; }
@@ -197,11 +200,13 @@ const UserEditModal: React.FC<{ user: UserInfo; onClose: () => void; onSaved: ()
       <div className="modal-card" onClick={e => e.stopPropagation()}>
         <h3>Редактировать: {user.name}</h3>
         {error && <p style={{ color: 'var(--danger)', fontSize: 13, background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 6 }}>{error}</p>}
-        <label>Имя</label>
+        <label>ФИО</label>
         <input value={name} onChange={e => setName(e.target.value)} />
         <label>Email</label>
         <input value={email} onChange={e => setEmail(e.target.value)} />
-        <label>Роль</label>
+        <label>Телефон</label>
+        <input value={phone} onChange={e => setPhone(e.target.value)} />
+        <label>Должность</label>
         <select value={role} onChange={e => setRole(e.target.value)}>
           {Object.entries(ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
@@ -353,7 +358,7 @@ const ModerationTab: React.FC = () => {
       ) : (
         <div className="table-wrapper">
           <table>
-            <thead><tr><th>Имя</th><th>Email</th><th>Роль</th><th>Согласие</th><th>Действия</th></tr></thead>
+            <thead><tr><th>Имя</th><th>Email</th><th>Должность</th><th>Согласие</th><th>Действия</th></tr></thead>
             <tbody>
               {pending.map(u => (
                 <tr key={u.id}>

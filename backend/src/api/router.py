@@ -30,6 +30,8 @@ api_router.include_router(reports_router)
 class SignupRequest(BaseModel):
     email: str = Field(max_length=255)
     name: str = Field(max_length=255)
+    phone: str = ""
+    position: str = ""
     password: str = Field(min_length=4)
     role: str = "dispatcher"
     consent_given: bool = False
@@ -72,6 +74,8 @@ async def signup(data: SignupRequest, db: AsyncSession = Depends(get_db)):
     user = User(
         email=data.email,
         name=data.name,
+        phone=data.phone or None,
+        position=data.position or None,
         role=role_enum,
         password_hash=bcrypt.hash(data.password),
         status=UserStatus.pending,
@@ -300,6 +304,8 @@ class UserListResponse(BaseModel):
     id: int
     email: str
     name: str
+    phone: str | None = None
+    position: str | None = None
     role: str
     status: str
 
@@ -313,7 +319,7 @@ async def list_engineers(
 ):
     result = await db.execute(select(User))
     users = result.scalars().all()
-    return [UserListResponse(id=u.id, email=u.email, name=u.name, role=u.role.value, status=u.status.value) for u in users]
+    return [UserListResponse(id=u.id, email=u.email, name=u.name, phone=u.phone, position=u.position, role=u.role.value, status=u.status.value) for u in users]
 
 
 class GroupResponse(BaseModel):
