@@ -13,6 +13,9 @@ interface Props {
   tickets: TicketResponse[];
   users: UserInfo[];
   onEdit?: (ticket: TicketResponse) => void;
+  onDetail?: (ticket: TicketResponse) => void;
+  onStatusChange?: (ticket: TicketResponse, targetStatus: string) => void;
+  currentUserId?: number;
   colFilter?: Record<string, string | undefined>;
   onFilter?: (key: string, value: string) => void;
 }
@@ -49,6 +52,17 @@ const PRIORITY_MAP: Record<string, string> = {
 
 const FILTERABLE_COLUMNS = ['status', 'priority', 'created_at', 'deadline'];
 
+const NEXT_STATUS: Record<string, string> = {
+  ASSIGNED: 'ACCEPTED', ACCEPTED: 'ON_THE_WAY', ON_THE_WAY: 'ARRIVED',
+  ARRIVED: 'IN_PROGRESS', IN_PROGRESS: 'REVIEW', REVIEW: 'COMPLETED',
+};
+const STATUS_BUTTON_LABELS: Record<string, string> = {
+  ACCEPTED: 'Еду', ON_THE_WAY: 'На месте', ARRIVED: 'Работаю',
+  IN_PROGRESS: 'Готово', REVIEW: 'Завершить', COMPLETED: '✓',
+};
+const CAN_ACCEPT = ['ASSIGNED', 'ACCEPTED', 'ON_THE_WAY', 'ARRIVED', 'IN_PROGRESS'];
+const CAN_REVIEW = ['REVIEW'];
+
 interface CellProps {
   ticket: TicketResponse;
   col: ColumnDef;
@@ -56,11 +70,13 @@ interface CellProps {
   userMap: Map<number, string>;
   engineerIds: number[];
   onEdit?: (ticket: TicketResponse) => void;
+  onStatusChange?: (ticket: TicketResponse, targetStatus: string) => void;
+  currentUserId?: number;
   onFilter?: (key: string, value: string) => void;
 }
 
-const Cell = React.memo<CellProps>(({ ticket, col, width, userMap, engineerIds, onEdit, onFilter }) => {
-  const content = renderCellContent(ticket, col, userMap, engineerIds, onEdit);
+const Cell = React.memo<CellProps>(({ ticket, col, width, userMap, engineerIds, onEdit, onStatusChange, currentUserId, onFilter }) => {
+  const content = renderCellContent(ticket, col, userMap, engineerIds, onEdit, onStatusChange, currentUserId);
   const isFilterable = FILTERABLE_COLUMNS.includes(col.key);
 
   const clickHandler = isFilterable ? () => {
@@ -93,7 +109,7 @@ const Cell = React.memo<CellProps>(({ ticket, col, width, userMap, engineerIds, 
   );
 });
 
-function renderCellContent(ticket: TicketResponse, col: ColumnDef, userMap: Map<number, string>, engineerIds: number[], onEdit?: (ticket: TicketResponse) => void) {
+function renderCellContent(ticket: TicketResponse, col: ColumnDef, userMap: Map<number, string>, engineerIds: number[], onEdit?: (ticket: TicketResponse) => void, onStatusChange?: (ticket: TicketResponse, targetStatus: string) => void, currentUserId?: number) {
   if (col.key === 'subject') {
     return (
       <span className="cell-subject" style={{ fontWeight: ticket.status === 'ASSIGNED' || ticket.response_overdue ? 700 : 400 }}>
@@ -141,17 +157,30 @@ function renderCellContent(ticket: TicketResponse, col: ColumnDef, userMap: Map<
     catch { return ticket.resolution_deadline?.substring(0, 10) || '—'; }
   }
   if (col.key === 'actions') return (
-    <button
-      className="btn btn-secondary"
-      style={{ padding: '2px 6px', fontSize: 11, lineHeight: 1 }}
-      onClick={e => { e.stopPropagation(); onEdit?.(ticket); }}
-      title="Редактировать"
-    >✎</button>
+    <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+      {ticket.status !== 'COMPLETED' && NEXT_STATUS[ticket.status] && (
+        (CAN_ACCEPT.includes(ticket.status) && currentUserId === ticket.assignee_id) ||
+        (CAN_REVIEW.includes(ticket.status))
+      ) && onStatusChange && (
+        <button
+          className="btn btn-success"
+          style={{ padding: '2px 6px', fontSize: 10, lineHeight: 1.2 }}
+          onClick={e => { e.stopPropagation(); onStatusChange(ticket, NEXT_STATUS[ticket.status]); }}
+          title={`Перевести в ${NEXT_STATUS[ticket.status]}`}
+        >→ {STATUS_BUTTON_LABELS[NEXT_STATUS[ticket.status]]}</button>
+      )}
+      <button
+        className="btn btn-secondary"
+        style={{ padding: '2px 6px', fontSize: 11, lineHeight: 1 }}
+        onClick={e => { e.stopPropagation(); onEdit?.(ticket); }}
+        title="Редактировать"
+      >✎</button>
+    </span>
   );
   return '';
 }
 
-export const TableView: React.FC<Props> = ({ tickets, users, onEdit, colFilter, onFilter }) => {
+export const TableView: React.FC<Props> = ({ tickets, users, onEdit, onDetail, onStatusChange, currentUserId, colFilter, onFilter }) => {
   const [columns, setColumns] = useState<ColumnDef[]>(() => {
     try {
       const saved = localStorage.getItem('ticket-columns-v2');
@@ -168,7 +197,7 @@ export const TableView: React.FC<Props> = ({ tickets, users, onEdit, colFilter, 
   }, [users]);
 
   const engineerIds = useMemo(
-    () => users.filter(u => u.role === 'engineer' || u.role === 'admin').map(u => u.id),
+    () => users.map(u => u.id),
     [users]
   );
 
@@ -208,17 +237,19 @@ export const TableView: React.FC<Props> = ({ tickets, users, onEdit, colFilter, 
             </thead>
         <tbody>
           {tickets.map(ticket => (
-            <RowStyle key={ticket.id} ticket={ticket}>
+            <RowStyle key={ticket.id} ticket={ticket} onClick={() => onDetail?.(ticket)}>
               {visibleColumns.map(col => (
-                <Cell
-                  key={col.key}
-                  ticket={ticket}
-                  col={col}
-                  width={colWidths[col.key] ?? col.width ?? 100}
-                  userMap={userMap}
-                  engineerIds={engineerIds}
-                  onEdit={onEdit}
-                  onFilter={onFilter}
+                  <Cell
+                    key={col.key}
+                    ticket={ticket}
+                    col={col}
+                    width={colWidths[col.key] ?? col.width ?? 100}
+                    userMap={userMap}
+                    engineerIds={engineerIds}
+                    onEdit={onEdit}
+                    onStatusChange={onStatusChange}
+                    currentUserId={currentUserId}
+                    onFilter={onFilter}
                 />
               ))}
             </RowStyle>

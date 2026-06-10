@@ -13,7 +13,7 @@ const WAREHOUSE_TYPES: Record<string, string> = { physical: 'Физически�
 const NOM_TYPES: Record<string, string> = { material: 'Материал', product: 'Продукт', service: 'Услуга', work: 'Работа' };
 
 export const WarehousePage: React.FC = () => {
-  const [tab, setTab] = useState<'warehouses' | 'nomenclature' | 'docs' | 'balances'>('docs');
+  const [tab, setTab] = useState<'warehouses' | 'nomenclature' | 'docs' | 'balances' | 'replacement' | 'insert'>('docs');
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [nomenclatures, setNomen] = useState<NomenclatureItem[]>([]);
   const [docs, setDocs] = useState<Doc[]>([]);
@@ -51,9 +51,9 @@ export const WarehousePage: React.FC = () => {
   return (
     <div>
       <div className="tabs" style={{ marginBottom: 16, display: 'inline-flex' }}>
-        {(['docs', 'warehouses', 'nomenclature', 'balances'] as const).map(t => (
+        {(['docs', 'warehouses', 'nomenclature', 'balances', 'replacement', 'insert'] as const).map(t => (
           <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
-            {t === 'docs' ? 'Документы' : t === 'warehouses' ? 'Склады' : t === 'nomenclature' ? 'Номенклатура' : 'Остатки'}
+            {t === 'docs' ? 'Документы' : t === 'warehouses' ? 'Склады' : t === 'nomenclature' ? 'Номенклатура' : t === 'replacement' ? 'Подменный фонд' : t === 'insert' ? 'Склад вставок' : 'Остатки'}
           </button>
         ))}
       </div>
@@ -139,6 +139,102 @@ export const WarehousePage: React.FC = () => {
                 }
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+      {tab === 'replacement' && <ReplacementTab />}
+      {tab === 'insert' && <InsertTab />}
+    </div>
+  );
+};
+
+const ReplacementTab: React.FC = () => {
+  const [devices, setDevices] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [form, setForm] = useState({ name: '', verification_expiry: '', verification_interval_months: '', taken_by_id: '', location_id: '', return_date: '', passport_scan: '' });
+  const [users, setUsers] = useState<any[]>([]);
+  const [locations, setLocations] = useState<any[]>([]);
+  const [error, setError] = useState('');
+
+  const load = () => {
+    setLoading(true);
+    Promise.all([
+      api.get('/replacement-devices'),
+      api.get('/users/list'),
+      api.get('/locations'),
+    ]).then(([d, u, l]) => {
+      setDevices(d.data); setUsers(u.data); setLocations(l.data); setLoading(false);
+    }).catch(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const openForm = (d?: any) => {
+    if (d) { setEditId(d.id); setForm({ name: d.name, verification_expiry: d.verification_expiry || '', verification_interval_months: d.verification_interval_months?.toString() || '', taken_by_id: d.taken_by_id?.toString() || '', location_id: d.location_id?.toString() || '', return_date: d.return_date || '', passport_scan: d.passport_scan || '' }); }
+    else { setEditId(null); setForm({ name: '', verification_expiry: '', verification_interval_months: '', taken_by_id: '', location_id: '', return_date: '', passport_scan: '' }); }
+    setShowForm(true); setError('');
+  };
+
+  const submit = async () => {
+    if (!form.name.trim()) { setError('Название обязательно'); return; }
+    try {
+      const body: any = { name: form.name, verification_expiry: form.verification_expiry || null, verification_interval_months: form.verification_interval_months ? Number(form.verification_interval_months) : null, taken_by_id: form.taken_by_id ? Number(form.taken_by_id) : null, location_id: form.location_id ? Number(form.location_id) : null, return_date: form.return_date || null, passport_scan: form.passport_scan || null };
+      if (editId) await api.patch(`/replacement-devices/${editId}`, body);
+      else await api.post('/replacement-devices', body);
+      setShowForm(false); load();
+    } catch (e: any) { setError(e.response?.data?.detail || 'Ошибка'); }
+  };
+
+  const remove = async (id: number) => { if (!confirm('Удалить?')) return; try { await api.delete(`/replacement-devices/${id}`); load(); } catch {} };
+
+  if (loading) return <div className="loading">Загрузка...</div>;
+
+  return (
+    <div>
+      <div className="page-header"><h2>Подменный фонд</h2><button className="btn btn-primary" onClick={() => openForm()}>+ Добавить прибор</button></div>
+      <div className="table-wrapper">
+        <table>
+          <thead><tr><th>Название</th><th>Поверка до</th><th>Интервал</th><th>Кто взял</th><th>Объект</th><th>Возврат</th><th></th></tr></thead>
+          <tbody>
+            {devices.map(d => (
+              <tr key={d.id}>
+                <td style={{ fontWeight: 600 }}>{d.name}</td>
+                <td style={{ fontSize: 12, color: d.verification_expiry && new Date(d.verification_expiry) < new Date() ? 'var(--danger)' : 'var(--text-secondary)' }}>{d.verification_expiry ? new Date(d.verification_expiry).toLocaleDateString('ru-RU') : '—'}</td>
+                <td className="mono" style={{ fontSize: 12 }}>{d.verification_interval_months ? `${d.verification_interval_months} мес` : '—'}</td>
+                <td>{d.taken_by_name || '—'}</td>
+                <td style={{ fontSize: 12 }}>{d.location_name || '—'}</td>
+                <td style={{ fontSize: 12 }}>{d.return_date ? new Date(d.return_date).toLocaleDateString('ru-RU') : '—'}</td>
+                <td>
+                  <button className="btn btn-secondary" onClick={() => openForm(d)} style={{ padding: '3px 8px', fontSize: 10 }}>✎</button>
+                  <button className="btn btn-danger" onClick={() => remove(d.id)} style={{ padding: '3px 8px', fontSize: 10, marginLeft: 4 }}>✕</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {showForm && (
+        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+          <div className="modal-card" onClick={e => e.stopPropagation()}>
+            <h3>{editId ? 'Редактировать' : 'Добавить'} прибор</h3>
+            {error && <p style={{ color: 'var(--danger)', fontSize: 13, background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 6 }}>{error}</p>}
+            <label>Название прибора *</label>
+            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Манометр МП-160" />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ flex: 1 }}><label>Дата окончания поверки</label><input type="date" value={form.verification_expiry} onChange={e => setForm({ ...form, verification_expiry: e.target.value })} /></div>
+              <div style={{ flex: 1 }}><label>Межповерочный интервал (мес)</label><input type="number" value={form.verification_interval_months} onChange={e => setForm({ ...form, verification_interval_months: e.target.value })} placeholder="12" /></div>
+            </div>
+            <label>ФИО кто взял прибор</label>
+            <select value={form.taken_by_id} onChange={e => setForm({ ...form, taken_by_id: e.target.value })}><option value="">— На складе —</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
+            <label>На какой объект взят прибор</label>
+            <select value={form.location_id} onChange={e => setForm({ ...form, location_id: e.target.value })}><option value="">— Не выбран —</option>{locations.map(l => <option key={l.id} value={l.id}>{l.name} ({l.customer_name})</option>)}</select>
+            <label>Примерная дата возврата</label>
+            <input type="date" value={form.return_date} onChange={e => setForm({ ...form, return_date: e.target.value })} />
+            <label>Фото/скан паспорта (ссылка)</label>
+            <input value={form.passport_scan} onChange={e => setForm({ ...form, passport_scan: e.target.value })} placeholder="https://..." />
+            <div className="modal-actions"><button className="btn btn-primary" onClick={submit}>{editId ? 'Сохранить' : 'Добавить'}</button><button className="btn btn-secondary" onClick={() => setShowForm(false)}>Отмена</button></div>
           </div>
         </div>
       )}
@@ -266,6 +362,202 @@ const CreateDocModal: React.FC<{
           <button className="btn btn-secondary" onClick={onClose}>Отмена</button>
         </div>
       </div>
+    </div>
+  );
+};
+
+const InsertTab: React.FC = () => {
+  const [tab, setTab] = useState<'catalog' | 'journal' | 'balance'>('catalog');
+  const [products, setProducts] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [form, setForm] = useState({ name: '', diameter: '', length: '', flange_type: '', type: 'incoming', quantity: '1', product_id: '', taken_by_id: '', location_id: '', destination: '', comment: '', document: '' });
+  const [error, setError] = useState('');
+
+  const load = () => {
+    setLoading(true);
+    Promise.all([api.get('/insert/products'), api.get('/insert/transactions'), api.get('/users/list')])
+      .then(([p, t, u]) => { setProducts(p.data); setTransactions(t.data); setUsers(u.data); setLoading(false); })
+      .catch(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, []);
+
+  const prodName = (id: number) => products.find(p => p.id === id)?.name || `#${id}`;
+
+  const openProductForm = (p?: any) => {
+    if (p) { setEditId(p.id); setForm({ ...form, name: p.name, diameter: p.diameter || '', length: p.length || '', flange_type: p.flange_type || '' }); }
+    else { setEditId(null); setForm({ name: '', diameter: '', length: '', flange_type: '', type: 'incoming', quantity: '1', product_id: '', taken_by_id: '', location_id: '', destination: '', comment: '', document: '' }); }
+    setShowForm(true); setError('');
+  };
+
+  const openTxForm = () => {
+    setEditId(null); setForm({ name: '', diameter: '', length: '', flange_type: '', type: 'outgoing', quantity: '1', product_id: '', taken_by_id: '', location_id: '', destination: '', comment: '', document: '' });
+    setShowForm(true); setError('');
+  };
+
+  const submit = async () => {
+    try {
+      if (tab === 'catalog') {
+        if (!form.name.trim()) { setError('Название обязательно'); return; }
+        const body = { name: form.name, diameter: form.diameter || null, length: form.length || null, flange_type: form.flange_type || null };
+        if (editId) await api.patch(`/insert/products/${editId}`, body);
+        else await api.post('/insert/products', body);
+      } else {
+        if (!form.product_id || !form.quantity) { setError('Выберите продукт и укажите количество'); return; }
+        await api.post('/insert/transactions', {
+          type: form.type, product_id: Number(form.product_id), quantity: Number(form.quantity),
+          taken_by_id: form.taken_by_id ? Number(form.taken_by_id) : null,
+          location_id: form.location_id ? Number(form.location_id) : null,
+          destination: form.destination || null, comment: form.comment || null, document: form.document || null,
+        });
+      }
+      setShowForm(false); load();
+    } catch (e: any) { setError(e.response?.data?.detail || 'Ошибка'); }
+  };
+
+  const delProduct = async (id: number) => { if (!confirm('Удалить?')) return; try { await api.delete(`/insert/products/${id}`); load(); } catch {} };
+  const delTx = async (id: number) => { if (!confirm('Удалить транзакцию?')) return; try { await api.delete(`/insert/transactions/${id}`); load(); } catch {} };
+
+  if (loading) return <div className="loading">Загрузка...</div>;
+
+  const txLabels: Record<string, string> = { incoming: 'Приход', outgoing: 'Выдача', return: 'Возврат' };
+  const txColors: Record<string, string> = { incoming: 'var(--success)', outgoing: 'var(--warning)', return: 'var(--info)' };
+
+  return (
+    <div>
+      <div className="tabs" style={{ marginBottom: 12, display: 'inline-flex' }}>
+        {(['catalog', 'journal', 'balance'] as const).map(t => (
+          <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
+            {t === 'catalog' ? 'Каталог' : t === 'journal' ? 'Движения' : 'Остатки'}
+          </button>
+        ))}
+      </div>
+      <div className="page-header" style={{ marginTop: 0 }}>
+        {tab === 'catalog' && <button className="btn btn-primary" onClick={() => { setTab('catalog'); openProductForm(undefined); }}>+ Продукт</button>}
+        {tab === 'journal' && <button className="btn btn-primary" onClick={() => openTxForm()}>+ Операция</button>}
+        {tab === 'balance' && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Баланс рассчитывается из транзакций</span>}
+      </div>
+
+      {tab === 'catalog' && (
+        <div className="table-wrapper">
+          <table><thead><tr><th>Название</th><th>Диаметр</th><th>Длина</th><th>Фланец</th><th>Остаток</th><th></th></tr></thead>
+            <tbody>
+              {products.map(p => (
+                <tr key={p.id}>
+                  <td style={{ fontWeight: 600 }}>{p.name}</td>
+                  <td>{p.diameter || '—'}</td>
+                  <td>{p.length || '—'}</td>
+                  <td>{p.flange_type || '—'}</td>
+                  <td className="mono" style={{ fontWeight: 700, color: p.balance > 0 ? 'var(--success)' : p.balance < 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{p.balance}</td>
+                  <td><button className="btn btn-secondary" onClick={() => openProductForm(p)} style={{ padding: '3px 8px', fontSize: 10 }}>✎</button><button className="btn btn-danger" onClick={() => delProduct(p.id)} style={{ padding: '3px 8px', fontSize: 10, marginLeft: 4 }}>✕</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === 'journal' && (
+        <div className="table-wrapper">
+          <table><thead><tr><th>Дата</th><th>Тип</th><th>Продукт</th><th>Кол-во</th><th>Кто</th><th>Куда</th><th>Назначение</th><th></th></tr></thead>
+            <tbody>
+              {transactions.map(t => (
+                <tr key={t.id}>
+                  <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(t.created_at).toLocaleString('ru-RU')}</td>
+                  <td><span className="status-pill" style={{ background: `${txColors[t.type]}18`, color: txColors[t.type] }}>{txLabels[t.type] || t.type}</span></td>
+                  <td>{t.product_name}</td>
+                  <td className="mono" style={{ fontWeight: 600 }}>{t.quantity}</td>
+                  <td>{t.taken_by_name || '—'}</td>
+                  <td>{t.location_name || '—'}</td>
+                  <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t.destination || '—'}</td>
+                  <td><button className="btn btn-danger" onClick={() => delTx(t.id)} style={{ padding: '3px 8px', fontSize: 10 }}>✕</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === 'balance' && (
+        <div className="table-wrapper">
+          <table><thead><tr><th>Продукт</th><th>Приход</th><th>Выдано</th><th>Возвращено</th><th>Остаток</th></tr></thead>
+            <tbody>
+              {products.map(p => {
+                const inc = transactions.filter(t => t.product_id === p.id && t.type === 'incoming').reduce((s, t) => s + t.quantity, 0);
+                const out = transactions.filter(t => t.product_id === p.id && t.type === 'outgoing').reduce((s, t) => s + t.quantity, 0);
+                const ret = transactions.filter(t => t.product_id === p.id && t.type === 'return').reduce((s, t) => s + t.quantity, 0);
+                const bal = inc - out + ret;
+                return (
+                  <tr key={p.id}>
+                    <td style={{ fontWeight: 600 }}>{p.name}</td>
+                    <td className="mono" style={{ color: 'var(--success)' }}>{inc || 0}</td>
+                    <td className="mono" style={{ color: 'var(--warning)' }}>{out || 0}</td>
+                    <td className="mono" style={{ color: 'var(--info)' }}>{ret || 0}</td>
+                    <td className="mono" style={{ fontWeight: 700, color: bal > 0 ? 'var(--success)' : bal < 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{bal}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {showForm && (
+        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+          <div className="modal-card" onClick={e => e.stopPropagation()}>
+            <h3>{tab === 'catalog' ? (editId ? 'Редактировать' : 'Новый') : 'Новая операция'}</h3>
+            {error && <p style={{ color: 'var(--danger)', fontSize: 13, background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 6 }}>{error}</p>}
+            {tab === 'catalog' ? (
+              <>
+                <label>Название *</label><input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Вставка 50 мм" />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ flex: 1 }}><label>Диаметр</label><input value={form.diameter} onChange={e => setForm({ ...form, diameter: e.target.value })} /></div>
+                  <div style={{ flex: 1 }}><label>Длина</label><input value={form.length} onChange={e => setForm({ ...form, length: e.target.value })} /></div>
+                </div>
+                <label>Тип</label>
+                <select value={form.flange_type} onChange={e => setForm({ ...form, flange_type: e.target.value })}><option value="">—</option><option value="Фланцевый">Фланцевый</option><option value="Сэндвич">Сэндвич</option></select>
+              </>
+            ) : (
+              <>
+                <label>Тип операции</label>
+                <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
+                  <option value="incoming">Приход</option><option value="outgoing">Выдача</option><option value="return">Возврат</option>
+                </select>
+                <label>Продукт</label>
+                <select value={form.product_id} onChange={e => setForm({ ...form, product_id: e.target.value })}>
+                  <option value="">— Выберите —</option>
+                  {products.map(p => <option key={p.id} value={p.id}>{p.name} (остаток: {p.balance})</option>)}
+                </select>
+                <label>Количество</label>
+                <input type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} min="0.5" step="0.5" />
+                {form.type !== 'incoming' && (
+                  <>
+                    <label>Кто взял</label>
+                    <select value={form.taken_by_id} onChange={e => setForm({ ...form, taken_by_id: e.target.value })}>
+                      <option value="">— Не выбран —</option>
+                      {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </select>
+                    <label>Объект</label>
+                    <select value={form.location_id} onChange={e => setForm({ ...form, location_id: e.target.value })}>
+                      <option value="">— Не выбран —</option>
+                    </select>
+                    <label>Назначение / проект</label>
+                    <input value={form.destination} onChange={e => setForm({ ...form, destination: e.target.value })} placeholder="Проект #..." />
+                  </>
+                )}
+                <label>Комментарий</label>
+                <textarea value={form.comment} onChange={e => setForm({ ...form, comment: e.target.value })} rows={2} placeholder="Дополнительная информация" style={{ width: '100%', padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, background: 'var(--bg-surface)', color: 'var(--text)', resize: 'vertical', fontFamily: 'inherit' }} />
+                <label>Документ</label>
+                <input value={form.document} onChange={e => setForm({ ...form, document: e.target.value })} placeholder="Накладная / Заявка #..." />
+              </>
+            )}
+            <div className="modal-actions"><button className="btn btn-primary" onClick={submit}>{editId ? 'Сохранить' : 'Создать'}</button><button className="btn btn-secondary" onClick={() => setShowForm(false)}>Отмена</button></div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -17,6 +17,11 @@ from .warehouse import warehouse_router
 from .views import views_router
 from .admin import admin_router
 from .reports import reports_router
+from .personal_tasks import personal_tasks_router
+from .v1_router import v1_router
+from .replacement import replacement_router
+from .insert_stock import insert_router
+from .insert_v2 import insert_v2_router
 
 api_router.include_router(create_ticket_router())
 api_router.include_router(attachment_router)
@@ -25,12 +30,18 @@ api_router.include_router(warehouse_router)
 api_router.include_router(views_router)
 api_router.include_router(admin_router)
 api_router.include_router(reports_router)
+api_router.include_router(personal_tasks_router)
+api_router.include_router(v1_router)
+api_router.include_router(replacement_router)
+api_router.include_router(insert_router)
+api_router.include_router(insert_v2_router)
 
 
 class SignupRequest(BaseModel):
     email: str = Field(max_length=255)
     name: str = Field(max_length=255)
     phone: str = ""
+    patronymic: str = ""
     position: str = ""
     password: str = Field(min_length=4)
     role: str = "dispatcher"
@@ -75,6 +86,7 @@ async def signup(data: SignupRequest, db: AsyncSession = Depends(get_db)):
         email=data.email,
         name=data.name,
         phone=data.phone or None,
+        patronymic=data.patronymic or None,
         position=data.position or None,
         role=role_enum,
         password_hash=bcrypt.hash(data.password),
@@ -305,6 +317,7 @@ class UserListResponse(BaseModel):
     email: str
     name: str
     phone: str | None = None
+    patronymic: str | None = None
     position: str | None = None
     role: str
     status: str
@@ -319,7 +332,7 @@ async def list_engineers(
 ):
     result = await db.execute(select(User))
     users = result.scalars().all()
-    return [UserListResponse(id=u.id, email=u.email, name=u.name, phone=u.phone, position=u.position, role=u.role.value, status=u.status.value) for u in users]
+    return [UserListResponse(id=u.id, email=u.email, name=u.name, phone=u.phone, patronymic=u.patronymic, position=u.position, role=u.role.value, status=u.status.value) for u in users]
 
 
 class GroupResponse(BaseModel):

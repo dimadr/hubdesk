@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from src.models.ticket import Ticket, TicketStatus
-from src.models.user import User
+from src.models.user import User, UserRole
 from src.models.customer import Contract
 from src.models.checklist import Checklist, ChecklistField
 from src.services.ticket_fsm import TicketFSM
@@ -15,7 +15,7 @@ class TicketService:
         self.session = session
         self.fsm = TicketFSM(session)
 
-    async def create(self, data: dict, user: User) -> Ticket:
+    async def create(self, data: dict, user: User | None = None) -> Ticket:
         ticket = Ticket(
             number=await self._next_number(),
             subject=data["subject"],
@@ -57,7 +57,8 @@ class TicketService:
             raise PermissionError(f"User {user.id} cannot transition ticket {ticket_id} to {target}")
         if not RoleChecker.can_view_ticket(user, ticket):
             raise PermissionError("Access denied")
-        await self.fsm.transition(ticket, target, user.id)
+        bypass = user.role == UserRole.admin
+        await self.fsm.transition(ticket, target, user.id, bypass_guards=bypass)
         now = datetime.utcnow()
         if target == "ACCEPTED" and ticket.accepted_at is None:
             ticket.accepted_at = now

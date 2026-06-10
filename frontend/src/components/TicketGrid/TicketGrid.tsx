@@ -23,7 +23,7 @@ const ViewSwitcher: React.FC = () => {
   );
 };
 
-export const TicketGrid: React.FC<{ users: UserInfo[]; onEdit?: (ticket: any) => void }> = ({ users, onEdit }) => {
+export const TicketGrid: React.FC<{ users: UserInfo[]; onEdit?: (ticket: any) => void; onDetail?: (ticket: any) => void; onStatusChange?: (ticket: any, status: string) => void; currentUserId?: number }> = ({ users, onEdit, onDetail, onStatusChange, currentUserId }) => {
   const { tickets, activeTab, viewType, fetchTickets, loading } = useTicketStore();
   const [search, setSearch] = useState('');
   const [colFilter, setColFilter] = useState<ColFilter>({});
@@ -96,7 +96,7 @@ export const TicketGrid: React.FC<{ users: UserInfo[]; onEdit?: (ticket: any) =>
         </div>
       )}
       {loading ? <div className="loading">Загрузка...</div> : (
-        viewType === 'table' ? <TableView tickets={filteredTickets} users={users} onEdit={onEdit} colFilter={colFilter} onFilter={toggleFilter} /> :
+        viewType === 'table' ? <TableView tickets={filteredTickets} users={users} onEdit={onEdit} onDetail={onDetail} onStatusChange={onStatusChange} currentUserId={currentUserId} colFilter={colFilter} onFilter={toggleFilter} /> :
         viewType === 'card' ? <CardView tickets={filteredTickets} users={users} /> :
         <TreeView tickets={filteredTickets} />
       )}

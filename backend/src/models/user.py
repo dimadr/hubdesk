@@ -37,6 +37,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True)
     name: Mapped[str] = mapped_column(String(255))
     phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    patronymic: Mapped[str | None] = mapped_column(String(255), nullable=True)
     position: Mapped[str | None] = mapped_column(String(500), nullable=True)
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.engineer)
     password_hash: Mapped[str] = mapped_column(String(255))

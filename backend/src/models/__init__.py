@@ -12,3 +12,8 @@ from .warehouse import (
 )
 from .views import SavedView
 from .mailbox import MailboxConfig
+from .personal_task import PersonalTask
+from .api_key import ApiKey
+from .replacement_device import ReplacementDevice
+from .insert_item import InsertItem
+from .insert_stock import InsertProduct, InsertTransaction

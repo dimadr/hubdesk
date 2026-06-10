@@ -9,7 +9,7 @@ class RoleChecker:
         "ON_THE_WAY->ARRIVED":    [UserRole.engineer],
         "ARRIVED->IN_PROGRESS":   [UserRole.engineer],
         "IN_PROGRESS->REVIEW":    [UserRole.engineer],
-        "REVIEW->COMPLETED":      [UserRole.engineer],
+        "REVIEW->COMPLETED":      [UserRole.engineer, UserRole.dispatcher],
     }
 
     @staticmethod

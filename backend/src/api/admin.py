@@ -86,6 +86,7 @@ class UserUpdate(BaseModel):
     name: str | None = None
     email: str | None = None
     phone: str | None = None
+    patronymic: str | None = None
     position: str | None = None
     role: str | None = None
     password: str | None = None
@@ -110,6 +111,8 @@ async def update_user(
         target.email = data.email
     if data.phone is not None:
         target.phone = data.phone
+    if data.patronymic is not None:
+        target.patronymic = data.patronymic
     if data.position is not None:
         target.position = data.position
     if data.role is not None:
@@ -312,3 +315,62 @@ async def trigger_mailbox_fetch(user=Depends(get_current_user), db: AsyncSession
         return {"ok": True, "created": count}
     except Exception as e:
         raise HTTPException(500, str(e))
+
+
+class ApiKeyResponse(BaseModel):
+    id: int
+    key: str
+    name: str
+    is_active: bool
+    created_at: str
+
+    model_config = {"from_attributes": True}
+
+
+@admin_router.get("/api-keys", response_model=list[ApiKeyResponse])
+async def list_api_keys(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    is_admin(user)
+    from src.models.api_key import ApiKey
+    result = await db.execute(select(ApiKey).order_by(ApiKey.id.desc()))
+    keys = result.scalars().all()
+    return [ApiKeyResponse(id=k.id, key=k.key, name=k.name, is_active=k.is_active, created_at=k.created_at.isoformat() if k.created_at else "") for k in keys]
+
+
+class CreateApiKeyRequest(BaseModel):
+    name: str
+
+
+@admin_router.post("/api-keys", response_model=ApiKeyResponse, status_code=201)
+async def create_api_key(data: CreateApiKeyRequest, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    is_admin(user)
+    from src.models.api_key import ApiKey
+    import secrets
+    k = ApiKey(name=data.name, key=secrets.token_hex(24))
+    db.add(k)
+    await db.flush()
+    await db.commit()
+    return ApiKeyResponse(id=k.id, key=k.key, name=k.name, is_active=k.is_active, created_at=k.created_at.isoformat() if k.created_at else "")
+
+
+@admin_router.patch("/api-keys/{key_id}")
+async def toggle_api_key(key_id: int, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    is_admin(user)
+    from src.models.api_key import ApiKey
+    k = await db.get(ApiKey, key_id)
+    if not k:
+        raise HTTPException(404)
+    k.is_active = not k.is_active
+    await db.commit()
+    return {"ok": True, "is_active": k.is_active}
+
+
+@admin_router.delete("/api-keys/{key_id}")
+async def delete_api_key(key_id: int, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    is_admin(user)
+    from src.models.api_key import ApiKey
+    k = await db.get(ApiKey, key_id)
+    if not k:
+        raise HTTPException(404)
+    await db.delete(k)
+    await db.commit()
+    return {"ok": True}

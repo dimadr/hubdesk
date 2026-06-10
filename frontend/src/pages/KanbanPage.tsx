@@ -1,0 +1,182 @@
+import React, { useEffect, useState } from 'react';
+import { api, TicketResponse } from '../api/client';
+
+interface Task {
+  id: number; title: string; description: string; column: string;
+  position: number; ticket_id: number | null;
+  ticket_subject: string | null; ticket_status: string | null;
+  created_at: string;
+}
+
+interface UserInfo { id: number; name: string; role: string; }
+
+const COLUMNS = [
+  { key: 'project', label: 'В проекте', color: '#34d399', bg: 'rgba(52,211,153,.08)' },
+  { key: 'todo', label: 'Дела', color: '#fbbf24', bg: 'rgba(251,191,36,.08)' },
+  { key: 'in_progress', label: 'В работе', color: '#ec4899', bg: 'rgba(236,72,153,.08)' },
+  { key: 'done', label: 'Завершённые', color: '#60a5fa', bg: 'rgba(96,165,250,.08)' },
+];
+
+export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[] }> = ({ role, users = [] }) => {
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tickets, setTickets] = useState<TicketResponse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [newTitle, setNewTitle] = useState('');
+  const [addingCol, setAddingCol] = useState<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
+  const [selectedUser, setSelectedUser] = useState<number | ''>('');
+  const currentUserId = Number(localStorage.getItem('currentUserId') || 0);
+  const targetId = (role === 'admin' && selectedUser) ? Number(selectedUser) : (role === 'admin' ? currentUserId : 0);
+
+  useEffect(() => { loadTasks(); }, [selectedUser]);
+
+  const ticketToColumn = (status: string) => {
+    if (status === 'ASSIGNED') return 'project';
+    if (status === 'ACCEPTED') return 'todo';
+    if (status === 'ON_THE_WAY' || status === 'ARRIVED' || status === 'IN_PROGRESS') return 'in_progress';
+    if (status === 'REVIEW' || status === 'COMPLETED') return 'done';
+    return 'project';
+  };
+
+  const loadTasks = () => {
+    const tgtUserId = (role === 'admin' && selectedUser) ? selectedUser : currentUserId;
+    const params: any = {};
+    if (role === 'admin' && selectedUser) params.user_id = selectedUser;
+    Promise.all([
+      api.get('/personal-tasks', { params }),
+      api.get('/tickets', { params: { assignee_id: tgtUserId, limit: 200 } }),
+    ]).then(([pt, t]) => {
+      setTasks(pt.data);
+      setTickets(t.data);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  };
+
+  const addTask = async (column: string) => {
+    if (!newTitle.trim()) return;
+    await api.post('/personal-tasks', { title: newTitle, column });
+    setNewTitle('');
+    setAddingCol(null);
+    loadTasks();
+  };
+
+  const moveTask = async (taskId: number, toColumn: string) => {
+    await api.patch(`/personal-tasks/${taskId}`, { column: toColumn });
+    loadTasks();
+  };
+
+  const deleteTask = async (taskId: number) => {
+    await api.delete(`/personal-tasks/${taskId}`);
+    loadTasks();
+  };
+
+  const handleDragStart = (e: React.DragEvent, taskId: number) => {
+    e.dataTransfer.setData('taskId', String(taskId));
+  };
+
+  const handleDrop = async (e: React.DragEvent, column: string) => {
+    e.preventDefault();
+    setDragOverCol(null);
+    const taskId = Number(e.dataTransfer.getData('taskId'));
+    if (taskId) await moveTask(taskId, column);
+  };
+
+  if (loading) return <div className="loading">Загрузка...</div>;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Моя доска</h2>
+        {role === 'admin' && (
+          <select
+            value={selectedUser ?? ''}
+            onChange={e => setSelectedUser(e.target.value ? Number(e.target.value) : '')}
+            style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-surface)', color: 'var(--text)', fontSize: 12 }}
+          >
+            <option value="">— Моя доска —</option>
+            {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+        )}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+        {COLUMNS.map(col => (
+          <div
+            key={col.key}
+            style={{
+              background: col.bg, borderRadius: 10, padding: 12,
+              border: dragOverCol === col.key ? '2px dashed var(--primary)' : '2px solid transparent',
+              minHeight: 200,
+            }}
+            onDragOver={e => { e.preventDefault(); setDragOverCol(col.key); }}
+            onDragLeave={() => setDragOverCol(null)}
+            onDrop={e => handleDrop(e, col.key)}
+          >
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, color: col.color }}>
+              {col.label} ({tasks.filter(t => t.column === col.key).length + tickets.filter(t => ticketToColumn(t.status) === col.key).length})
+            </div>
+            {tickets.filter(t => ticketToColumn(t.status) === col.key).map(t => (
+              <div
+                key={`ticket-${t.id}`}
+                draggable
+                onDragStart={e => e.dataTransfer.setData('text', String(t.id))}
+                style={{
+                  background: 'var(--bg-card)', borderRadius: 7, padding: 10, marginBottom: 8,
+                  cursor: 'grab', border: '1px solid var(--border)', fontSize: 13,
+                  borderLeft: `3px solid ${t.priority === 'critical' ? '#f87171' : t.priority === 'high' ? '#fbbf24' : 'var(--border)'}`,
+                }}
+              >
+                <div style={{ fontWeight: 600, marginBottom: 4, fontSize: 12 }}>
+                  <span style={{ color: 'var(--text-muted)' }}>#{t.number}</span> {t.subject}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{t.priority === 'critical' ? 'Критический' : t.priority === 'high' ? 'Высокий' : t.priority === 'medium' ? 'Средний' : 'Низкий'}</div>
+              </div>
+            ))}
+            {tasks.filter(t => t.column === col.key).map(t => (
+              <div
+                key={t.id}
+                draggable
+                onDragStart={e => handleDragStart(e, t.id)}
+                style={{
+                  background: 'var(--bg-card)', borderRadius: 7, padding: 10, marginBottom: 8,
+                  cursor: 'grab', border: '1px solid var(--border)', fontSize: 13,
+                }}
+              >
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>{t.title}</div>
+                {t.ticket_subject && (
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    #{t.ticket_id} {t.ticket_subject}
+                  </div>
+                )}
+                {t.description && (
+                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{t.description}</div>
+                )}
+                <button
+                  onClick={() => deleteTask(t.id)}
+                  style={{ marginTop: 6, padding: '0 4px', fontSize: 10, background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                >удалить</button>
+              </div>
+            ))}
+            {addingCol === col.key ? (
+              <div style={{ display: 'flex', gap: 4 }}>
+                <input
+                  autoFocus
+                  value={newTitle}
+                  onChange={e => setNewTitle(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') addTask(col.key); if (e.key === 'Escape') setAddingCol(null); }}
+                  placeholder="Название задачи"
+                  style={{ flex: 1, padding: '4px 8px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 5, background: 'var(--bg-surface)', color: 'var(--text)' }}
+                />
+                <button onClick={() => addTask(col.key)} style={{ padding: '2px 6px', fontSize: 11 }}>✓</button>
+              </div>
+            ) : (
+              <button
+                onClick={() => { setAddingCol(col.key); setNewTitle(''); }}
+                style={{ padding: '4px 8px', fontSize: 11, background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', width: '100%', textAlign: 'left' }}
+              >+ добавить</button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};

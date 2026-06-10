@@ -55,7 +55,7 @@ class Ticket(Base):
     is_internal: Mapped[bool] = mapped_column(Boolean, default=False)
 
     customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"))
-    location_id: Mapped[int] = mapped_column(ForeignKey("asset_locations.id"))
+    location_id: Mapped[int | None] = mapped_column(ForeignKey("asset_locations.id"), nullable=True)
     equipment_id: Mapped[int | None] = mapped_column(ForeignKey("equipment.id"), nullable=True)
     assignee_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     group_id: Mapped[int | None] = mapped_column(ForeignKey("groups.id"), nullable=True)

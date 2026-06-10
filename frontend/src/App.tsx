@@ -6,6 +6,7 @@ import { LocationsPage } from './pages/LocationsPage';
 import { AdminPage } from './pages/AdminPage';
 import { CalendarPage } from './pages/CalendarPage';
 import { ReportsPage } from './pages/ReportsPage';
+import { KanbanPage } from './pages/KanbanPage';
 import { L } from './locale';
 
 interface Location {
@@ -17,7 +18,7 @@ interface Location {
 }
 
 interface UserInfo {
-  id: number; email: string; name: string; phone?: string; role: string; status?: string;
+  id: number; email: string; name: string; phone?: string; patronymic?: string; role: string; status?: string;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -30,6 +31,7 @@ const AuthPage: React.FC<{ onLogin: (token: string, user: any) => void }> = ({ o
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [patronymic, setPatronymic] = useState('');
   const [role, setRole] = useState('dispatcher');
   const [consent, setConsent] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
@@ -41,7 +43,7 @@ const AuthPage: React.FC<{ onLogin: (token: string, user: any) => void }> = ({ o
     setSuccessMsg('');
     try {
       const url = isLogin ? '/login' : '/signup';
-      const body: any = isLogin ? { email, password, remember_me: rememberMe } : { email, password, name, role, consent_given: consent };
+      const body: any = isLogin ? { email, password, remember_me: rememberMe } : { email, password, name, patronymic, role, consent_given: consent };
       const { data } = await api.post(url, body);
       if (!isLogin && !data.token) {
         setSuccessMsg('Заявка отправлена администратору на утверждение. После подтверждения вы сможете войти.');
@@ -72,6 +74,7 @@ const AuthPage: React.FC<{ onLogin: (token: string, user: any) => void }> = ({ o
         {!isLogin && (
           <>
             <input placeholder={L.name} value={name} onChange={e => setName(e.target.value)} />
+            <input placeholder="Отчество" value={patronymic} onChange={e => setPatronymic(e.target.value)} />
             <select value={role} onChange={e => setRole(e.target.value)}>
               <option value="dispatcher">{L.dispatcher}</option>
               <option value="engineer">Инженер</option>
@@ -110,22 +113,17 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
   const [equipmentId, setEquipmentId] = useState<number | ''>('');
   const [priority, setPriority] = useState('medium');
   const [resolutionDeadline, setResolutionDeadline] = useState('');
-  const [scheduledStart, setScheduledStart] = useState('');
-  const [scheduledEnd, setScheduledEnd] = useState('');
   const [assigneeId, setAssigneeId] = useState<number | ''>('');
-  const [groupId, setGroupId] = useState<number | ''>('');
   const [siteContactName, setSiteContactName] = useState('');
   const [siteContactPhone, setSiteContactPhone] = useState('');
   const [isInternal, setIsInternal] = useState(false);
   const [locations, setLocations] = useState<Location[]>([]);
   const [equipment, setEquipment] = useState<any[]>([]);
-  const [groups, setGroups] = useState<any[]>([]);
   const [error, setError] = useState('');
 
   useEffect(() => {
     api.get('/locations').then(r => setLocations(r.data)).catch(() => {});
     api.get('/equipment').then(r => setEquipment(r.data)).catch(() => {});
-    api.get('/groups').then(r => setGroups(r.data)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -152,10 +150,7 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
         equipment_id: equipmentId ? Number(equipmentId) : undefined,
         priority,
         resolution_deadline: resolutionDeadline ? new Date(resolutionDeadline).toISOString() : undefined,
-        scheduled_start: scheduledStart ? new Date(scheduledStart).toISOString() : undefined,
-        scheduled_end: scheduledEnd ? new Date(scheduledEnd).toISOString() : undefined,
         assignee_id: assigneeId ? Number(assigneeId) : undefined,
-        group_id: groupId ? Number(groupId) : undefined,
         site_contact_name: siteContactName || undefined,
         site_contact_phone: siteContactPhone || undefined,
         is_internal: isInternal,
@@ -228,29 +223,13 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
             <label>Срок исполнения</label>
             <input type="datetime-local" value={resolutionDeadline} onChange={e => setResolutionDeadline(e.target.value)} />
           </div>
-          <div>
-            <label>Плановый выезд с</label>
-            <input type="datetime-local" value={scheduledStart} onChange={e => setScheduledStart(e.target.value)} />
-          </div>
-          <div>
-            <label>Плановый выезд по</label>
-            <input type="datetime-local" value={scheduledEnd} onChange={e => setScheduledEnd(e.target.value)} />
-          </div>
+          <div></div>
           <div>
             <label>Исполнитель</label>
             <select value={assigneeId} onChange={e => setAssigneeId(Number(e.target.value) || '')}>
               <option value="">— Назначить позже —</option>
               {engineers.map(u => (
                 <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label>Группа</label>
-            <select value={groupId} onChange={e => setGroupId(Number(e.target.value) || '')}>
-              <option value="">— Не выбрана —</option>
-              {groups.map(g => (
-                <option key={g.id} value={g.id}>{g.name}</option>
               ))}
             </select>
           </div>
@@ -287,23 +266,18 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
   const [equipmentId, setEquipmentId] = useState<number | ''>(ticket.equipment_id ?? '');
   const [priority, setPriority] = useState(ticket.priority);
   const [resolutionDeadline, setResolutionDeadline] = useState(ticket.resolution_deadline ? ticket.resolution_deadline.substring(0, 16) : '');
-  const [scheduledStart, setScheduledStart] = useState(ticket.scheduled_start ? ticket.scheduled_start.substring(0, 16) : '');
-  const [scheduledEnd, setScheduledEnd] = useState(ticket.scheduled_end ? ticket.scheduled_end.substring(0, 16) : '');
   const [assigneeId, setAssigneeId] = useState<number | ''>(ticket.assignee_id ?? '');
-  const [groupId, setGroupId] = useState<number | ''>(ticket.group_id ?? '');
   const [siteContactName, setSiteContactName] = useState(ticket.site_contact_name || '');
   const [siteContactPhone, setSiteContactPhone] = useState(ticket.site_contact_phone || '');
   const [isInternal, setIsInternal] = useState(ticket.is_internal);
   const [locations, setLocations] = useState<Location[]>([]);
   const [equipment, setEquipment] = useState<any[]>([]);
-  const [groups, setGroups] = useState<any[]>([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     api.get('/locations').then(r => setLocations(r.data)).catch(() => {});
     api.get('/equipment').then(r => setEquipment(r.data)).catch(() => {});
-    api.get('/groups').then(r => setGroups(r.data)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -332,10 +306,7 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
         equipment_id: equipmentId ? Number(equipmentId) : undefined,
         priority,
         resolution_deadline: resolutionDeadline ? new Date(resolutionDeadline).toISOString() : undefined,
-        scheduled_start: scheduledStart ? new Date(scheduledStart).toISOString() : undefined,
-        scheduled_end: scheduledEnd ? new Date(scheduledEnd).toISOString() : undefined,
         assignee_id: assigneeId ? Number(assigneeId) : undefined,
-        group_id: groupId ? Number(groupId) : undefined,
         site_contact_name: siteContactName || undefined,
         site_contact_phone: siteContactPhone || undefined,
         is_internal: isInternal,
@@ -408,29 +379,13 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
             <label>Срок исполнения</label>
             <input type="datetime-local" value={resolutionDeadline} onChange={e => setResolutionDeadline(e.target.value)} />
           </div>
-          <div>
-            <label>Плановый выезд с</label>
-            <input type="datetime-local" value={scheduledStart} onChange={e => setScheduledStart(e.target.value)} />
-          </div>
-          <div>
-            <label>Плановый выезд по</label>
-            <input type="datetime-local" value={scheduledEnd} onChange={e => setScheduledEnd(e.target.value)} />
-          </div>
+          <div></div>
           <div>
             <label>Исполнитель</label>
             <select value={assigneeId} onChange={e => setAssigneeId(Number(e.target.value) || '')}>
               <option value="">— Назначить позже —</option>
               {engineers.map(u => (
                 <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label>Группа</label>
-            <select value={groupId} onChange={e => setGroupId(Number(e.target.value) || '')}>
-              <option value="">— Не выбрана —</option>
-              {groups.map(g => (
-                <option key={g.id} value={g.id}>{g.name}</option>
               ))}
             </select>
           </div>
@@ -460,10 +415,108 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
   );
 };
 
+const TICKET_STATUS_LABELS: Record<string, string> = {
+  ASSIGNED: 'Назначена', ACCEPTED: 'Принята', ON_THE_WAY: 'В пути',
+  ARRIVED: 'На месте', IN_PROGRESS: 'В работе', REVIEW: 'Проверка', COMPLETED: 'Завершена',
+};
+const TICKET_PRIORITY_LABELS: Record<string, string> = {
+  low: 'Низкий', medium: 'Средний', high: 'Высокий', critical: 'Критический',
+};
+const TICKET_TYPE_LABELS: Record<string, string> = {
+  repair: 'Ремонт', installation: 'Монтаж', maintenance: 'ТО', inspection: 'Инспекция', emergency: 'Авария',
+};
+
+const TicketDetailModal: React.FC<{ ticket: TicketResponse; onClose: () => void }> = ({ ticket, onClose }) => {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card modal-card-wide" onClick={e => e.stopPropagation()} style={{ maxHeight: '85vh', overflow: 'auto' }}>
+        <h3>#{ticket.number} {ticket.subject}</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 13, marginTop: 12 }}>
+          <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Статус</span><div>{TICKET_STATUS_LABELS[ticket.status] || ticket.status}</div></div>
+          <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Приоритет</span><div>{TICKET_PRIORITY_LABELS[ticket.priority] || ticket.priority}</div></div>
+          {ticket.type && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Тип заявки</span><div>{TICKET_TYPE_LABELS[ticket.type] || ticket.type}</div></div>}
+          <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Создана</span><div>{new Date(ticket.created_at).toLocaleString('ru-RU')}</div></div>
+          {ticket.resolution_deadline && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Срок исполнения</span><div>{new Date(ticket.resolution_deadline).toLocaleString('ru-RU')}</div></div>}
+          {ticket.scheduled_end && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Плановый выезд по</span><div>{new Date(ticket.scheduled_end).toLocaleString('ru-RU')}</div></div>}
+          {ticket.site_contact_name && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Контакты на объекте</span><div>{ticket.site_contact_name}{ticket.site_contact_phone ? `, ${ticket.site_contact_phone}` : ''}</div></div>}
+          {ticket.source_description && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Источник обращения</span><div>{ticket.source_description}</div></div>}
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Описание</span>
+          <div style={{ marginTop: 4, padding: 10, background: 'var(--bg-surface)', borderRadius: 7, whiteSpace: 'pre-wrap', fontSize: 13 }}>{ticket.body || '—'}</div>
+        </div>
+        <div className="modal-actions">
+          <button className="btn btn-secondary" onClick={onClose}>Закрыть</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const CompleteTicketModal: React.FC<{ ticket: TicketResponse; onConfirm: (comment: string) => void; onClose: () => void }> = ({ ticket, onConfirm, onClose }) => {
+  const [comment, setComment] = useState('');
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState('');
+  const [uploading, setUploading] = useState(false);
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setPhotoFile(file);
+      const reader = new FileReader();
+      reader.onload = (ev) => setPhotoPreview(ev.target?.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const submit = async () => {
+    setUploading(true);
+    let photoUrl = '';
+    if (photoFile) {
+      try {
+        const form = new FormData();
+        form.append('file', photoFile);
+        form.append('ticket_id', String(ticket.id));
+        const resp = await api.post('/attachments', form);
+        photoUrl = resp.data?.file_url || `(файл: ${photoFile.name})`;
+      } catch {
+        photoUrl = `(файл: ${photoFile.name})`;
+      }
+    }
+    const fullComment = [comment, photoUrl ? `Фото: ${photoUrl}` : ''].filter(Boolean).join('\n\n');
+    onConfirm(fullComment);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={e => e.stopPropagation()}>
+        <h3>Завершить заявку #{ticket.number}</h3>
+        <label>Комментарий о выполненной работе</label>
+        <textarea value={comment} onChange={e => setComment(e.target.value)} placeholder="Опишите что сделано..." rows={4} style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 7, fontSize: 13, background: 'var(--bg-surface)', color: 'var(--text)', resize: 'vertical', fontFamily: 'inherit' }} />
+        <label style={{ marginTop: 10 }}>Фото</label>
+        <input type="file" accept="image/*" onChange={handlePhotoChange} style={{ fontSize: 12, color: 'var(--text-secondary)' }} />
+        {photoPreview && (
+          <div style={{ marginTop: 6, maxWidth: 200, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
+            <img src={photoPreview} alt="preview" style={{ width: '100%', display: 'block' }} />
+          </div>
+        )}
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>Комментарий будет добавлен как внутренний вместе с фото.</p>
+        <div className="modal-actions">
+          <button className="btn btn-success" onClick={submit} disabled={uploading}>
+            {uploading ? 'Загрузка...' : '✓ Завершить'}
+          </button>
+          <button className="btn btn-secondary" onClick={onClose}>Отмена</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AddEmployeeModal: React.FC<{ onClose: () => void; onAdded: () => void }> = ({ onClose, onAdded }) => {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [patronymic, setPatronymic] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('engineer');
   const [consent, setConsent] = useState(false);
@@ -473,7 +526,7 @@ const AddEmployeeModal: React.FC<{ onClose: () => void; onAdded: () => void }> =
     if (!email || !name || !password) { setError('Все поля обязательны'); return; }
     if (!consent) { setError('Требуется согласие на обработку персональных данных'); return; }
     try {
-      await api.post('/signup', { email, name, phone, password, role, consent_given: true });
+      await api.post('/signup', { email, name, phone, patronymic, password, role, consent_given: true });
       onAdded();
     } catch (e: any) { setError(e.response?.data?.detail || 'Ошибка'); }
   };
@@ -483,8 +536,10 @@ const AddEmployeeModal: React.FC<{ onClose: () => void; onAdded: () => void }> =
       <div className="modal-card" onClick={e => e.stopPropagation()}>
         <h3>Добавить сотрудника</h3>
         {error && <p style={{ color: 'var(--danger)', fontSize: 13, background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 6, marginBottom: 10 }}>{error}</p>}
-        <label>ФИО</label>
-        <input placeholder="Иванов Иван Иванович" value={name} onChange={e => setName(e.target.value)} />
+        <label>Фамилия Имя</label>
+        <input placeholder="Иванов Иван" value={name} onChange={e => setName(e.target.value)} />
+        <label>Отчество</label>
+        <input placeholder="Иванович" value={patronymic} onChange={e => setPatronymic(e.target.value)} />
         <label>Email</label>
         <input placeholder="ivan@example.com" value={email} onChange={e => setEmail(e.target.value)} />
         <label>Телефон</label>
@@ -520,6 +575,7 @@ const NAV_ITEMS = [
   { key: 'warehouse', label: 'Склад', icon: '📦' },
   { key: 'reports', label: 'Отчёты', icon: '📊' },
   { key: 'calendar', label: 'Календарь', icon: '📅' },
+  { key: 'kanban', label: 'Моя доска', icon: '📌' },
   { key: 'admin', label: 'Админка', icon: '⚙️', adminOnly: true },
 ] as const;
 
@@ -531,9 +587,46 @@ const App: React.FC = () => {
   const [showCreate, setShowCreate] = useState(false);
   const [showAddEmployee, setShowAddEmployee] = useState(false);
   const [editTicket, setEditTicket] = useState<TicketResponse | null>(null);
+  const [detailTicket, setDetailTicket] = useState<TicketResponse | null>(null);
+  const [confirmStatusTicket, setConfirmStatusTicket] = useState<{ ticket: TicketResponse; target: string } | null>(null);
+
+  const handleStatusChange = async (ticket: TicketResponse, target: string) => {
+    if (target === 'COMPLETED') {
+      setConfirmStatusTicket({ ticket, target });
+      return;
+    }
+    try {
+      await api.patch(`/tickets/${ticket.id}/status`, { status: target });
+      setRefreshKey(k => k + 1);
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Ошибка');
+    }
+  };
+
+  const confirmComplete = async (comment: string) => {
+    if (!confirmStatusTicket) return;
+    try {
+      await api.patch(`/tickets/${confirmStatusTicket.ticket.id}/status`, { status: 'COMPLETED' });
+      if (comment) {
+        await api.post(`/tickets/${confirmStatusTicket.ticket.id}/comments`, { body: comment, is_internal: true });
+      }
+      setConfirmStatusTicket(null);
+      setRefreshKey(k => k + 1);
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Ошибка');
+    }
+  };
   const [refreshKey, setRefreshKey] = useState(0);
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [stats, setStats] = useState<{ total: number; open: number; urgent: number }>({ total: 0, open: 0, urgent: 0 });
+
+  const getInitialTheme = () => localStorage.getItem('theme') || 'dark';
+  const [theme, setTheme] = useState(getInitialTheme);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -561,6 +654,7 @@ const App: React.FC = () => {
   const handleLogin = (token: string, user: any) => {
     api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     localStorage.setItem('user', JSON.stringify(user));
+    localStorage.setItem('currentUserId', String(user.user_id));
     setAuth({ token, user });
   };
 
@@ -585,6 +679,7 @@ const App: React.FC = () => {
           <div className="nav-section">Навигация</div>
           {NAV_ITEMS.filter(item => !(item as any).adminOnly || user.role === 'admin')
             .filter(item => item.key !== 'reports' || user.role === 'admin' || user.role === 'dispatcher' || user.role === 'accountant')
+            .filter(item => item.key !== 'kanban' || (user.role === 'admin' || user.role === 'dispatcher' || user.role === 'engineer'))
             .map(item => (
             <button
               key={item.key}
@@ -600,6 +695,9 @@ const App: React.FC = () => {
           <div className="user-name">{user.name}</div>
           <div className="user-email">{user.email}</div>
           <div className="user-role">{ROLE_LABELS[user.role] || user.role}</div>
+          <button className="theme-toggle" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
           <button className="logout-btn" onClick={handleLogout}>Выйти</button>
         </div>
       </aside>
@@ -609,6 +707,7 @@ const App: React.FC = () => {
           <h1>
             {page === 'tickets' ? 'Заявки' :
              page === 'calendar' ? 'Календарь' :
+             page === 'kanban' ? 'Моя доска' :
              page === 'reports' ? 'Отчёты' :
              page === 'locations' ? 'Объекты' :
              page === 'employees' ? 'Сотрудники' :
@@ -643,10 +742,11 @@ const App: React.FC = () => {
                 + Создать заявку
               </button>
             </div>
-            <TicketGrid key={refreshKey} users={users} onEdit={t => setEditTicket(t)} />
+            <TicketGrid key={refreshKey} users={users} onEdit={t => setEditTicket(t)} onDetail={t => setDetailTicket(t)} onStatusChange={handleStatusChange} currentUserId={user.user_id} />
           </>
         )}
         {page === 'calendar' && <CalendarPage />}
+        {page === 'kanban' && <KanbanPage role={user.role} users={users} />}
         {page === 'reports' && <ReportsPage />}
         {page === 'warehouse' && <WarehousePage />}
         {page === 'locations' && <LocationsPage />}
@@ -654,6 +754,8 @@ const App: React.FC = () => {
         {page === 'admin' && <AdminPage />}
         {showCreate && <CreateTicketModal onClose={() => setShowCreate(false)} onCreated={() => setRefreshKey(k => k + 1)} users={users} />}
         {editTicket && <EditTicketModal ticket={editTicket} onClose={() => setEditTicket(null)} onSaved={() => { setEditTicket(null); setRefreshKey(k => k + 1); }} users={users} />}
+        {detailTicket && <TicketDetailModal ticket={detailTicket} onClose={() => setDetailTicket(null)} />}
+        {confirmStatusTicket && <CompleteTicketModal ticket={confirmStatusTicket.ticket} onConfirm={confirmComplete} onClose={() => setConfirmStatusTicket(null)} />}
         {showAddEmployee && <AddEmployeeModal onClose={() => setShowAddEmployee(false)} onAdded={() => { setShowAddEmployee(false); setRefreshKey(k => k + 1); }} />}
       </main>
     </div>
@@ -689,7 +791,7 @@ const EmployeesPage: React.FC<{ onAdd: () => void; refreshKey: number; isAdmin: 
             {users.map(u => (
               <tr key={u.id}>
                 <td className="mono" style={{ color: 'var(--text-muted)' }}>#{u.id}</td>
-                <td style={{ fontWeight: 600 }}>{u.name}</td>
+                <td style={{ fontWeight: 600 }}>{u.name} {u.patronymic || ''}</td>
                 <td style={{ color: 'var(--text-secondary)' }}>{u.phone || '—'}</td>
                 <td>{u.email}</td>
                 <td><span className="status-pill" style={{ background: 'var(--primary-bg)', color: 'var(--primary)' }}>{ROLE_LABELS[u.role] || u.role}</span></td>

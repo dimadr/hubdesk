@@ -1,11 +1,11 @@
 from datetime import datetime, timedelta
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from src.config import settings
-from src.database import get_db
+from src.database import get_db, async_session
 from src.models.user import User
 
 security = HTTPBearer(auto_error=False)
@@ -43,3 +43,16 @@ def create_token(user_id: int, ttl: int | None = None) -> str:
         settings.secret_key,
         algorithm="HS256",
     )
+
+
+async def get_api_key(request: Request):
+    from src.models.api_key import ApiKey
+    key = request.headers.get("X-Api-Key") or request.headers.get("Authorization", "").removeprefix("Bearer ")
+    if not key:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key required")
+    async with async_session() as db:
+        result = await db.execute(select(ApiKey).where(ApiKey.key == key, ApiKey.is_active == True))
+        api_key = result.scalar_one_or_none()
+        if not api_key:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+        return api_key

@@ -7,6 +7,7 @@ from sqlalchemy import select
 from src.models.mailbox import MailboxConfig
 from src.models.customer import Customer
 from src.models.ticket import Ticket
+from src.models.equipment import AssetLocation
 from src.models.user import User, UserRole
 from src.config import settings
 
@@ -67,6 +68,10 @@ class MailService:
                     first_cust = cust_result.scalar_one_or_none()
                     customer_id = first_cust.id if first_cust else 1
 
+                loc_result = await db.execute(select(AssetLocation).limit(1))
+                first_loc = loc_result.scalar_one_or_none()
+                location_id = first_loc.id if first_loc else None
+
                 last_num_result = await db.execute(
                     select(Ticket.number).order_by(Ticket.number.desc()).limit(1)
                 )
@@ -76,7 +81,7 @@ class MailService:
                     subject=subject[:500],
                     body=f"От: {sender}\n\n{body}"[:5000],
                     customer_id=customer_id,
-                    location_id=1,
+                    location_id=location_id,
                     source_description=f"Email от {sender}",
                 )
                 db.add(ticket)

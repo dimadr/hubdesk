@@ -4,9 +4,10 @@ import { TicketResponse } from '../../api/client';
 interface RowStyleProps {
   ticket: TicketResponse;
   children: React.ReactNode;
+  onClick?: () => void;
 }
 
-export const RowStyle: React.FC<RowStyleProps> = ({ ticket, children }) => {
+export const RowStyle: React.FC<RowStyleProps> = ({ ticket, children, onClick }) => {
   const cls: string[] = ['ticket-row'];
 
   if (ticket.response_overdue || ticket.resolution_overdue) {
@@ -17,5 +18,5 @@ export const RowStyle: React.FC<RowStyleProps> = ({ ticket, children }) => {
   }
   cls.push(`row-priority-${ticket.priority}`);
 
-  return <tr className={cls.join(' ')}>{children}</tr>;
+  return <tr className={cls.join(' ')} onClick={onClick} style={onClick ? { cursor: 'pointer' } : undefined}>{children}</tr>;
 };

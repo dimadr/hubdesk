@@ -104,7 +104,7 @@ class TicketResponse(BaseModel):
     type: Optional[str] = None
     is_internal: bool
     customer_id: int
-    location_id: int
+    location_id: Optional[int] = None
     equipment_id: Optional[int]
     assignee_id: Optional[int]
     group_id: Optional[int]

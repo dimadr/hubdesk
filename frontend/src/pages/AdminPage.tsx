@@ -9,7 +9,7 @@ interface Stats {
 }
 
 interface CustomerData { id: number; name: string; type: string; locations_count: number; }
-interface UserInfo { id: number; email: string; name: string; phone?: string; role: string; status?: string; }
+interface UserInfo { id: number; email: string; name: string; phone?: string; patronymic?: string; role: string; status?: string; }
 interface PendingUser { id: number; email: string; name: string; role: string; status: string; consent_given: boolean; consent_date: string | null; }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -18,7 +18,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export const AdminPage: React.FC = () => {
-  const [tab, setTab] = useState<'dashboard' | 'users' | 'moderation' | 'customers' | 'history' | 'mailbox'>('dashboard');
+  const [tab, setTab] = useState<'dashboard' | 'users' | 'moderation' | 'customers' | 'history' | 'mailbox' | 'apikeys'>('dashboard');
 
   return (
     <div>
@@ -30,6 +30,7 @@ export const AdminPage: React.FC = () => {
           { key: 'customers', label: 'Клиенты', icon: '🏢' },
           { key: 'history', label: 'История', icon: '📜' },
           { key: 'mailbox', label: 'Почта', icon: '📧' },
+          { key: 'apikeys', label: 'API-ключи', icon: '🔑' },
         ] as const).map(t => (
           <button key={t.key} className={`tab ${tab === t.key ? 'active' : ''}`} onClick={() => setTab(t.key)}>
             {t.icon} {t.label}
@@ -43,6 +44,7 @@ export const AdminPage: React.FC = () => {
       {tab === 'customers' && <CustomersTab />}
       {tab === 'history' && <HistoryTab />}
       {tab === 'mailbox' && <MailboxTab />}
+      {tab === 'apikeys' && <ApiKeysTab />}
     </div>
   );
 };
@@ -138,7 +140,7 @@ const UsersTab: React.FC = () => {
             {users.map(u => (
               <tr key={u.id}>
                 <td className="mono" style={{ color: 'var(--text-muted)' }}>#{u.id}</td>
-                <td style={{ fontWeight: 600 }}>{u.name}</td>
+                <td style={{ fontWeight: 600 }}>{u.name} {u.patronymic || ''}</td>
                 <td style={{ color: 'var(--text-secondary)' }}>{u.phone || '—'}</td>
                 <td>{u.email}</td>
                 <td>
@@ -170,6 +172,7 @@ const UsersTab: React.FC = () => {
 
 const UserEditModal: React.FC<{ user: UserInfo; onClose: () => void; onSaved: () => void }> = ({ user, onClose, onSaved }) => {
   const [name, setName] = useState(user.name);
+  const [patronymic, setPatronymic] = useState(user.patronymic || '');
   const [email, setEmail] = useState(user.email);
   const [phone, setPhone] = useState(user.phone || '');
   const [role, setRole] = useState(user.role);
@@ -183,6 +186,7 @@ const UserEditModal: React.FC<{ user: UserInfo; onClose: () => void; onSaved: ()
     try {
       const body: any = {};
       if (name !== user.name) body.name = name;
+      if (patronymic !== (user.patronymic || '')) body.patronymic = patronymic;
       if (email !== user.email) body.email = email;
       if (phone !== (user.phone || '')) body.phone = phone;
       if (role !== user.role) body.role = role;
@@ -198,10 +202,12 @@ const UserEditModal: React.FC<{ user: UserInfo; onClose: () => void; onSaved: ()
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={e => e.stopPropagation()}>
-        <h3>Редактировать: {user.name}</h3>
+        <h3>Редактировать: {user.name} {user.patronymic || ''}</h3>
         {error && <p style={{ color: 'var(--danger)', fontSize: 13, background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 6 }}>{error}</p>}
-        <label>ФИО</label>
+        <label>Фамилия Имя</label>
         <input value={name} onChange={e => setName(e.target.value)} />
+        <label>Отчество</label>
+        <input value={patronymic} onChange={e => setPatronymic(e.target.value)} />
         <label>Email</label>
         <input value={email} onChange={e => setEmail(e.target.value)} />
         <label>Телефон</label>
@@ -483,6 +489,68 @@ const MailboxTab: React.FC = () => {
         <button className="btn btn-secondary" onClick={fetchNow} disabled={!cfg?.enabled}>Проверить сейчас</button>
         {fetchResult && <span style={{ fontSize: 13, color: fetchResult.includes('Ошибка') ? 'var(--danger)' : 'var(--success)' }}>{fetchResult}</span>}
         {cfg?.last_check_at && <span className="text-muted" style={{ fontSize: 11, marginLeft: 'auto' }}>Последняя проверка: {new Date(cfg.last_check_at).toLocaleString('ru-RU')}</span>}
+      </div>
+    </div>
+  );
+};
+
+const ApiKeysTab: React.FC = () => {
+  const [keys, setKeys] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [newName, setNewName] = useState('');
+
+  const load = () => {
+    api.get('/admin/api-keys').then(r => { setKeys(r.data); setLoading(false); }).catch(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const create = async () => {
+    if (!newName.trim()) return;
+    try { await api.post('/admin/api-keys', { name: newName }); setNewName(''); load(); } catch {}
+  };
+
+  const toggle = async (id: number) => {
+    try { await api.patch(`/admin/api-keys/${id}`); load(); } catch {}
+  };
+
+  const remove = async (id: number) => {
+    if (!confirm('Удалить ключ?')) return;
+    try { await api.delete(`/admin/api-keys/${id}`); load(); } catch {}
+  };
+
+  if (loading) return <div className="loading">Загрузка...</div>;
+
+  return (
+    <div>
+      <div className="page-header"><h2>API-ключи</h2></div>
+      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+        Используйте для автоматического создания заявок: <code>POST /api/v1/tickets</code> с заголовком <code>X-Api-Key: ваш_ключ</code>
+      </p>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        <input placeholder="Название (например: 1С, Мониторинг)" value={newName} onChange={e => setNewName(e.target.value)}
+          style={{ flex: 1, padding: '6px 10px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-surface)', color: 'var(--text)' }} />
+        <button className="btn btn-primary" onClick={create} style={{ padding: '6px 14px', fontSize: 12 }}>Создать</button>
+      </div>
+      <div className="table-wrapper">
+        <table>
+          <thead><tr><th>Название</th><th>Ключ</th><th>Статус</th><th>Создан</th><th></th></tr></thead>
+          <tbody>
+            {keys.map(k => (
+              <tr key={k.id}>
+                <td style={{ fontWeight: 600 }}>{k.name}</td>
+                <td><code style={{ fontSize: 11, background: 'var(--bg-surface)', padding: '2px 6px', borderRadius: 4 }}>{k.key}</code></td>
+                <td><span className="status-pill" style={{ background: k.is_active ? 'var(--success-bg)' : 'var(--danger-bg)', color: k.is_active ? 'var(--success)' : 'var(--danger)' }}>{k.is_active ? 'Активен' : 'Отключён'}</span></td>
+                <td style={{ color: 'var(--text-muted)', fontSize: 11 }}>{new Date(k.created_at).toLocaleString('ru-RU')}</td>
+                <td>
+                  <button className="btn btn-secondary" onClick={() => toggle(k.id)} style={{ padding: '3px 8px', fontSize: 10 }}>{k.is_active ? 'Откл' : 'Вкл'}</button>
+                  <button className="btn btn-danger" onClick={() => remove(k.id)} style={{ padding: '3px 8px', fontSize: 10, marginLeft: 4 }}>✕</button>
+                </td>
+              </tr>
+            ))}
+            {keys.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)' }}>Нет ключей</td></tr>}
+          </tbody>
+        </table>
       </div>
     </div>
   );
