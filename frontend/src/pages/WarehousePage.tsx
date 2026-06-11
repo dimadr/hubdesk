@@ -371,6 +371,7 @@ const InsertTab: React.FC = () => {
   const [products, setProducts] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
+  const [locations, setLocations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
@@ -379,11 +380,17 @@ const InsertTab: React.FC = () => {
 
   const load = () => {
     setLoading(true);
-    Promise.all([api.get('/insert/products'), api.get('/insert/transactions'), api.get('/users/list')])
-      .then(([p, t, u]) => { setProducts(p.data); setTransactions(t.data); setUsers(u.data); setLoading(false); })
+    Promise.all([
+      api.get('/insert/products').catch(() => ({ data: [] })),
+      api.get('/insert/transactions').catch(() => ({ data: [] })),
+    ]).then(([p, t]) => { setProducts(p.data); setTransactions(t.data); setLoading(false); })
       .catch(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    api.get('/users/list').then(r => setUsers(r.data)).catch(() => {});
+    api.get('/locations').then(r => setLocations(r.data)).catch(() => {});
+  }, []);
 
   const prodName = (id: number) => products.find(p => p.id === id)?.name || `#${id}`;
 
@@ -415,7 +422,7 @@ const InsertTab: React.FC = () => {
         });
       }
       setShowForm(false); load();
-    } catch (e: any) { setError(e.response?.data?.detail || 'Ошибка'); }
+    } catch (e: any) { setError(e.response?.data?.detail || e.message || 'Ошибка'); }
   };
 
   const delProduct = async (id: number) => { if (!confirm('Удалить?')) return; try { await api.delete(`/insert/products/${id}`); load(); } catch {} };
@@ -532,7 +539,7 @@ const InsertTab: React.FC = () => {
                   {products.map(p => <option key={p.id} value={p.id}>{p.name} (остаток: {p.balance})</option>)}
                 </select>
                 <label>Количество</label>
-                <input type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} min="0.5" step="0.5" />
+                <input type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} min="1" step="1" />
                 {form.type !== 'incoming' && (
                   <>
                     <label>Кто взял</label>
@@ -541,9 +548,10 @@ const InsertTab: React.FC = () => {
                       {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                     </select>
                     <label>Объект</label>
-                    <select value={form.location_id} onChange={e => setForm({ ...form, location_id: e.target.value })}>
-                      <option value="">— Не выбран —</option>
-                    </select>
+                     <select value={form.location_id} onChange={e => setForm({ ...form, location_id: e.target.value })}>
+                       <option value="">— Не выбран —</option>
+                       {locations.map(l => <option key={l.id} value={l.id}>{l.name} ({l.customer_name})</option>)}
+                     </select>
                     <label>Назначение / проект</label>
                     <input value={form.destination} onChange={e => setForm({ ...form, destination: e.target.value })} placeholder="Проект #..." />
                   </>

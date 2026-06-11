@@ -53,4 +53,11 @@ archive.sh
 test.html
 screenshot.png
 API.md
-INSTRUCTION_INSERT_STOCK.md
+Sklad_vstavok.md
+AGENTS.md
+INSTRUCTION.md
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+mobile/android/
+mobile/ios/

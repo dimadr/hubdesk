@@ -238,7 +238,7 @@ async def approve_user(user_id: int, admin=Depends(get_current_user), db: AsyncS
     await db.commit()
 
     log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "history.log")
-    ts = __import__("datetime").datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    ts = __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(log_path, "a", encoding="utf-8") as f:
         f.write(f"[{ts}] {admin.name} — Утвердил пользователя: {target.name} ({target.email}), роль: {target.role.value}\n")
 
@@ -255,7 +255,7 @@ async def reject_user(user_id: int, admin=Depends(get_current_user), db: AsyncSe
     await db.commit()
 
     log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "history.log")
-    ts = __import__("datetime").datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    ts = __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(log_path, "a", encoding="utf-8") as f:
         f.write(f"[{ts}] {admin.name} — Отклонил пользователя: {target.name} ({target.email}), роль: {target.role.value}\n")
 

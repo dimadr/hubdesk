@@ -17,7 +17,7 @@ def log(action: str, detail: str, user: User):
     try:
         p = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "history.log")
         with open(p, "a", encoding="utf-8") as f:
-            f.write(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] {user.name} — {action}: {detail}\n")
+            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {user.name} — {action}: {detail}\n")
     except:
         pass
 
@@ -37,7 +37,7 @@ class ProductResponse(BaseModel):
     diameter: str | None = None
     length: str | None = None
     flange_type: str | None = None
-    balance: float = 0
+    balance: int = 0
     created_at: str = ""
 
     model_config = {"from_attributes": True}
@@ -101,7 +101,7 @@ async def delete_product(product_id: int, user=Depends(get_current_user), db: As
 class TransactionCreate(BaseModel):
     type: str  # incoming, outgoing, return
     product_id: int
-    quantity: float
+    quantity: int
     taken_by_id: int | None = None
     location_id: int | None = None
     destination: str | None = None
@@ -127,20 +127,20 @@ class TransactionResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-async def _balance(db: AsyncSession, product_id: int) -> float:
+async def _balance(db: AsyncSession, product_id: int) -> int:
     inc = await db.execute(
-        sa_select(sa_func.coalesce(sa_func.sum(InsertTransaction.quantity), 0))
+        select(sa_func.coalesce(sa_func.sum(InsertTransaction.quantity), 0))
         .where(InsertTransaction.product_id == product_id, InsertTransaction.type == "incoming")
     )
     out = await db.execute(
-        sa_select(sa_func.coalesce(sa_func.sum(InsertTransaction.quantity), 0))
+        select(sa_func.coalesce(sa_func.sum(InsertTransaction.quantity), 0))
         .where(InsertTransaction.product_id == product_id, InsertTransaction.type == "outgoing")
     )
     ret = await db.execute(
-        sa_select(sa_func.coalesce(sa_func.sum(InsertTransaction.quantity), 0))
+        select(sa_func.coalesce(sa_func.sum(InsertTransaction.quantity), 0))
         .where(InsertTransaction.product_id == product_id, InsertTransaction.type == "return")
     )
-    return float(inc.scalar() or 0) - float(out.scalar() or 0) + float(ret.scalar() or 0)
+    return int(inc.scalar() or 0) - int(out.scalar() or 0) + int(ret.scalar() or 0)
 
 
 @insert_v2_router.get("/transactions", response_model=list[TransactionResponse])
@@ -166,6 +166,10 @@ async def list_transactions(user=Depends(get_current_user), db: AsyncSession = D
 
 @insert_v2_router.post("/transactions", status_code=201, response_model=TransactionResponse)
 async def create_transaction(data: TransactionCreate, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if data.type in ("outgoing", "return"):
+        bal = await _balance(db, data.product_id)
+        if data.type == "outgoing" and bal < data.quantity:
+            raise HTTPException(400, f"На складе недостаточно (остаток: {int(bal)})")
     t = InsertTransaction(
         type=data.type, product_id=data.product_id, quantity=data.quantity,
         taken_by_id=data.taken_by_id, location_id=data.location_id,

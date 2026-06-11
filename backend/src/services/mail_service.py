@@ -100,7 +100,7 @@ class MailService:
                 try:
                     log_path = "/tmp/email_history.log"
                     with open(log_path, "a") as f:
-                        f.write(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] Почта — создано {created} заявок из ящика {cfg.email}\n")
+                        f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Почта — создано {created} заявок из ящика {cfg.email}\n")
                 except:
                     pass
 

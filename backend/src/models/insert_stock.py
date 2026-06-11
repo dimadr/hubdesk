@@ -22,7 +22,7 @@ class InsertTransaction(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     type: Mapped[str] = mapped_column(String(20))  # incoming, outgoing, return
     product_id: Mapped[int] = mapped_column(ForeignKey("insert_products.id"))
-    quantity: Mapped[float] = mapped_column()
+    quantity: Mapped[int] = mapped_column()
     taken_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     location_id: Mapped[int | None] = mapped_column(ForeignKey("asset_locations.id"), nullable=True)
     destination: Mapped[str | None] = mapped_column(String(500), nullable=True)

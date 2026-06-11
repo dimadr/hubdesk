@@ -102,7 +102,7 @@ async def signup(data: SignupRequest, db: AsyncSession = Depends(get_db)):
     try:
         log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "history.log")
         with open(log_path, "a") as f:
-            f.write(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] СИСТЕМА — Заявка на регистрацию: {user.name} ({user.email}), роль: {data.role}, ожидает утверждения админом\n")
+            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] СИСТЕМА — Заявка на регистрацию: {user.name} ({user.email}), роль: {data.role}, ожидает утверждения админом\n")
     except:
         pass
 

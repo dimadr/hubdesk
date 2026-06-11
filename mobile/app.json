@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "name": "HubDesk",
+    "slug": "hubdesk",
+    "version": "2.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#080a12"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.hubdesk.app"
+    },
+    "android": {
+      "package": "com.hubdesk.app",
+      "versionCode": 2,
+       "softwareKeyboardLayoutMode": "adjustResize",
+       "permissions": [
+        "CAMERA",
+        "INTERNET",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+     "plugins": [
+       [
+         "expo-camera",
+         {
+           "cameraPermission": "Разрешение на использование камеры для фото заявок"
+         }
+       ],
+       "expo-asset",
+       "expo-font",
+       [
+         "expo-build-properties",
+         {
+           "android": {
+             "usesCleartextTraffic": true
+           }
+         }
+       ]
+     ],
+    "extra": {
+      "eas": {
+        "projectId": "01978e1c-a7f9-4f8a-a6e0-de464db2d673"
+      }
+    },
+    "owner": "snakedrs-team"
+  }
+}

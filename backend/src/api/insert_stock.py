@@ -15,7 +15,7 @@ def log(action: str, detail: str, user: User):
     try:
         p = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "history.log")
         with open(p, "a", encoding="utf-8") as f:
-            f.write(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] {user.name} — {action}: {detail}\n")
+            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {user.name} — {action}: {detail}\n")
     except:
         pass
 
