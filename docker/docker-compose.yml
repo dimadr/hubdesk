@@ -8,8 +8,23 @@ services:
       POSTGRES_PASSWORD: fsm
     ports: ["5432:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
+
   redis:
     image: redis:7-alpine
     ports: ["6379:6379"]
+
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports: ["8002:8000"]
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://fsm:fsm@db:5432/fsm"
+      REDIS_URL: "redis://redis:6379/0"
+      SECRET_KEY: "change-me-in-production"
+    depends_on:
+      - db
+      - redis
+
 volumes:
   pgdata:

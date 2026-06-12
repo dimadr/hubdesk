@@ -29,6 +29,7 @@ class ProductCreate(BaseModel):
     diameter: str | None = None
     length: str | None = None
     flange_type: str | None = None
+    quantity: float = 0
 
 
 class ProductResponse(BaseModel):
@@ -37,7 +38,8 @@ class ProductResponse(BaseModel):
     diameter: str | None = None
     length: str | None = None
     flange_type: str | None = None
-    balance: int = 0
+    quantity: float = 0
+    balance: float = 0
     created_at: str = ""
 
     model_config = {"from_attributes": True}
@@ -50,7 +52,7 @@ async def list_products(user=Depends(get_current_user), db: AsyncSession = Depen
     out = []
     for p in products:
         bal = await _balance(db, p.id)
-        out.append(ProductResponse(id=p.id, name=p.name, diameter=p.diameter, length=p.length,
+        out.append(ProductResponse(id=p.id, name=p.name, diameter=p.diameter, length=p.length, quantity=p.quantity,
                                    flange_type=p.flange_type, balance=bal,
                                    created_at=p.created_at.isoformat() if p.created_at else ""))
     return out
@@ -64,12 +66,12 @@ async def create_product(data: ProductCreate, user=Depends(get_current_user), db
     dup = existing.scalar_one_or_none()
     if dup:
         raise HTTPException(400, f"Продукт с таким названием уже существует (ID: {dup.id}, остаток: {await _balance(db, dup.id)})")
-    p = InsertProduct(name=data.name.strip(), diameter=data.diameter, length=data.length, flange_type=data.flange_type)
+    p = InsertProduct(name=data.name.strip(), diameter=data.diameter, length=data.length, flange_type=data.flange_type, quantity=data.quantity)
     db.add(p)
     await db.flush()
     await db.commit()
     log("Склад вставок", f"Добавлен продукт: {p.name}", user)
-    return ProductResponse(id=p.id, name=p.name, diameter=p.diameter, length=p.length,
+    return ProductResponse(id=p.id, name=p.name, diameter=p.diameter, length=p.length, quantity=p.quantity,
                            flange_type=p.flange_type, balance=0,
                            created_at=p.created_at.isoformat() if p.created_at else "")
 
@@ -83,10 +85,11 @@ async def update_product(product_id: int, data: ProductCreate, user=Depends(get_
     p.diameter = data.diameter
     p.length = data.length
     p.flange_type = data.flange_type
+    p.quantity = data.quantity
     await db.commit()
     bal = await _balance(db, p.id)
     log("Склад вставок", f"Обновлён продукт: {p.name}", user)
-    return ProductResponse(id=p.id, name=p.name, diameter=p.diameter, length=p.length,
+    return ProductResponse(id=p.id, name=p.name, diameter=p.diameter, length=p.length, quantity=p.quantity,
                            flange_type=p.flange_type, balance=bal,
                            created_at=p.created_at.isoformat() if p.created_at else "")
 
@@ -107,7 +110,7 @@ async def delete_product(product_id: int, user=Depends(get_current_user), db: As
 class TransactionCreate(BaseModel):
     type: str  # incoming, outgoing, return
     product_id: int
-    quantity: int
+    quantity: float
     taken_by_id: int | None = None
     location_id: int | None = None
     destination: str | None = None
@@ -133,7 +136,9 @@ class TransactionResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-async def _balance(db: AsyncSession, product_id: int) -> int:
+async def _balance(db: AsyncSession, product_id: int) -> float:
+    prod = await db.get(InsertProduct, product_id)
+    base = prod.quantity if prod else 0
     inc = await db.execute(
         select(sa_func.coalesce(sa_func.sum(InsertTransaction.quantity), 0))
         .where(InsertTransaction.product_id == product_id, InsertTransaction.type == "incoming")
@@ -146,7 +151,7 @@ async def _balance(db: AsyncSession, product_id: int) -> int:
         select(sa_func.coalesce(sa_func.sum(InsertTransaction.quantity), 0))
         .where(InsertTransaction.product_id == product_id, InsertTransaction.type == "return")
     )
-    return int(inc.scalar() or 0) - int(out.scalar() or 0) + int(ret.scalar() or 0)
+    return base + float(inc.scalar() or 0) - float(out.scalar() or 0) + float(ret.scalar() or 0)
 
 
 @insert_v2_router.get("/transactions", response_model=list[TransactionResponse])

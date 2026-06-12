@@ -12,6 +12,7 @@ class InsertProduct(Base):
     diameter: Mapped[str | None] = mapped_column(String(50), nullable=True)
     length: Mapped[str | None] = mapped_column(String(50), nullable=True)
     flange_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    quantity: Mapped[float] = mapped_column(default=0)  # начальное кол-во на складе
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 

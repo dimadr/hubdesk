@@ -5,7 +5,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import text
+from sqlalchemy import text, select
+from datetime import datetime
 
 from src.api.router import api_router
 from src.database import Base, async_session, engine
@@ -43,6 +44,24 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+    # --- seed admin if not exists ---
+    from passlib.hash import bcrypt as bcrypt_hash
+    async with async_session() as _s:
+        _existing = (await _s.execute(select(User).where(User.email == "admin@hubdesk.local"))).scalar_one_or_none()
+        if not _existing:
+            _admin = User(
+                email="admin@hubdesk.local",
+                name="Администратор",
+                role=UserRole.admin,
+                password_hash=bcrypt_hash.hash("admin123"),
+                status=UserStatus.active,
+                consent_given=True,
+                consent_date=datetime.utcnow(),
+            )
+            _s.add(_admin)
+            await _s.commit()
+    # --- end seed ---
+
     new_columns = [
         ("type", "VARCHAR(50)"),
         ("site_contact_name", "VARCHAR(255)"),
@@ -64,6 +83,14 @@ async def lifespan(app: FastAPI):
                 )
         except Exception:
             pass
+
+    # --- add quantity to insert_products if missing ---
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE insert_products ADD COLUMN quantity DOUBLE PRECISION DEFAULT 0"))
+    except Exception:
+        pass
+    # --- end migration ---
 
     import asyncio as _asyncio
 
