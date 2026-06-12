@@ -466,7 +466,7 @@ const InsertTab: React.FC = () => {
       {tab === 'catalog' && (
         <div>
           <div className="table-wrapper">
-            <table><thead><tr><th>Название</th><th>Диаметр</th><th>Длина</th><th>Фланец</th><th>Кол-во</th><th>Остаток</th><th></th></tr></thead>
+            <table><thead><tr><th>Название</th><th>Диаметр</th><th>Длина</th><th>Фланец</th><th>Остаток</th><th></th></tr></thead>
               <tbody>
                 {products.map(p => (
                   <tr key={p.id}>
@@ -474,7 +474,6 @@ const InsertTab: React.FC = () => {
                     <td>{p.diameter || '—'}</td>
                     <td>{p.length || '—'}</td>
                     <td>{p.flange_type || '—'}</td>
-                    <td className="mono">{p.quantity ?? 0}</td>
                     <td className="mono" style={{ fontWeight: 700, color: p.balance > 0 ? 'var(--success)' : p.balance < 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{p.balance}</td>
                     <td>
                       <button className="btn btn-success" onClick={() => setQuick({ prodId: p.id, action: 'incoming', qty: '1' })} style={{ padding: '2px 6px', fontSize: 11, marginRight: 2 }} title="Приход">+</button>

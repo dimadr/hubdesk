@@ -99,6 +99,10 @@ async def delete_product(product_id: int, user=Depends(get_current_user), db: As
     p = await db.get(InsertProduct, product_id)
     if not p:
         raise HTTPException(404)
+    # удалить связанные транзакции вручную
+    txs = await db.execute(select(InsertTransaction).where(InsertTransaction.product_id == product_id))
+    for tx in txs.scalars().all():
+        await db.delete(tx)
     await db.delete(p)
     await db.commit()
     log("Склад вставок", f"Удалён продукт: {p.name}", user)
