@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, ScrollView, FlatList, TouchableOpacity, TextInput, StyleSheet, ActivityIndicator, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { api } from '../api/client';
 import { TicketResponse, STATUS_LABELS, PRIORITY_LABELS, FILTER_TABS } from '../api/types';
 
@@ -17,12 +18,21 @@ export const TicketsScreen: React.FC<{ onOpen: (ticket: TicketResponse) => void 
   const [search, setSearch] = useState('');
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+    };
+  }, []);
 
   const fetchTickets = useCallback(async (currentTab: string, currentSearch: string, isRefresh = false) => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    
+
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
@@ -33,43 +43,45 @@ export const TicketsScreen: React.FC<{ onOpen: (ticket: TicketResponse) => void 
       if (currentTab === 'overdue') params.overdue = true;
       else if (currentTab === 'archive') params.archived = true;
       else if (currentTab !== 'all') params.status = currentTab;
-      
+
       if (currentSearch.trim()) params.q = currentSearch.trim();
 
-      const { data } = await api.get('/tickets', { 
+      const { data } = await api.get('/tickets', {
         params,
         signal: controller.signal
       });
 
-      setTickets(data.filter((t: TicketResponse) => currentTab !== 'all' || !t.is_archived));
+      if (isMountedRef.current) {
+        setTickets(data.filter((t: TicketResponse) => currentTab !== 'all' || !t.is_archived));
+      }
     } catch (err: any) {
       if (err.name !== 'CanceledError' && err.message !== 'canceled') {
         console.error(err);
       }
     } finally {
-      if (abortControllerRef.current === controller) {
+      if (isMountedRef.current && abortControllerRef.current === controller) {
         setLoading(false);
       }
     }
   }, []);
 
-  useEffect(() => {
-    if (!search) {
-      fetchTickets(tab, search);
-      return;
-    }
-
-    const delayDebounce = setTimeout(() => {
-      fetchTickets(tab, search);
-    }, 400);
-
-    return () => clearTimeout(delayDebounce);
-  }, [tab, search, fetchTickets]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!search.trim()) {
+        fetchTickets(tab, '');
+        return;
+      }
+      const delayDebounce = setTimeout(() => {
+        fetchTickets(tab, search);
+      }, 400);
+      return () => clearTimeout(delayDebounce);
+    }, [tab, search])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchTickets(tab, search, true);
-    setRefreshing(false);
+    if (isMountedRef.current) setRefreshing(false);
   };
 
   const renderTicket = ({ item }: { item: TicketResponse }) => (
@@ -90,17 +102,18 @@ export const TicketsScreen: React.FC<{ onOpen: (ticket: TicketResponse) => void 
   return (
     <SafeAreaView style={styles.container}>
       <Text style={styles.title}>Заявки</Text>
-      
+
       <View style={styles.tabsContainer}>
-        <ScrollView 
-          horizontal 
+        <ScrollView
+          horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.tabsContent}
+          keyboardShouldPersistTaps="handled"
         >
           {FILTER_TABS.map((item) => (
-            <TouchableOpacity 
+            <TouchableOpacity
               key={item.key}
-              style={[styles.tab, tab === item.key && styles.tabActive]} 
+              style={[styles.tab, tab === item.key && styles.tabActive]}
               onPress={() => setTab(item.key)}
             >
               <Text style={[styles.tabText, tab === item.key && styles.tabTextActive]}>
@@ -111,24 +124,30 @@ export const TicketsScreen: React.FC<{ onOpen: (ticket: TicketResponse) => void 
         </ScrollView>
       </View>
 
-      <TextInput 
-        style={styles.search} 
-        placeholder="Поиск по теме..." 
+      <TextInput
+        style={styles.search}
+        placeholder="Поиск по теме..."
         placeholderTextColor="#5f6690"
-        value={search} 
+        value={search}
         onChangeText={setSearch}
         autoCorrect={false}
+        clearButtonMode="always"
       />
 
       {loading && !refreshing ? (
         <ActivityIndicator color="#8b5cf6" size="large" style={{ marginTop: 40 }} />
       ) : (
-        <FlatList 
-          data={tickets} 
-          keyExtractor={(t) => String(t.id)} 
+        <FlatList
+          data={tickets}
+          keyExtractor={(t) => String(t.id)}
           renderItem={renderTicket}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#8b5cf6" colors={['#8b5cf6']} />
+            <RefreshControl 
+              refreshing={refreshing} 
+              onRefresh={onRefresh} 
+              tintColor="#8b5cf6" 
+              colors={['#8b5cf6']}
+            />
           }
           contentContainerStyle={{ paddingBottom: 30 }}
           ListEmptyComponent={<Text style={styles.empty}>Нет заявок</Text>}
@@ -143,7 +162,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#080a12', paddingHorizontal: 14 },
   title: { fontSize: 26, fontWeight: '800', color: '#eaf0ff', marginTop: 10, marginBottom: 10 },
   tabsContainer: { height: 38, marginBottom: 12 },
-  tabsContent: { gap: 6, paddingRight: 14 },
+  tabsContent: { gap: 6, paddingRight: 24 },
   tab: { paddingHorizontal: 14, justifyContent: 'center', borderRadius: 8, backgroundColor: '#0d1020', height: 36 },
   tabActive: { backgroundColor: '#8b5cf6' },
   tabText: { fontSize: 13, fontWeight: '600', color: '#9097b8' },

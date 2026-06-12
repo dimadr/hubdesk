@@ -58,7 +58,13 @@ async def list_products(user=Depends(get_current_user), db: AsyncSession = Depen
 
 @insert_v2_router.post("/products", status_code=201, response_model=ProductResponse)
 async def create_product(data: ProductCreate, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    p = InsertProduct(name=data.name, diameter=data.diameter, length=data.length, flange_type=data.flange_type)
+    existing = await db.execute(
+        select(InsertProduct).where(sa_func.lower(InsertProduct.name) == data.name.strip().lower())
+    )
+    dup = existing.scalar_one_or_none()
+    if dup:
+        raise HTTPException(400, f"Продукт с таким названием уже существует (ID: {dup.id}, остаток: {await _balance(db, dup.id)})")
+    p = InsertProduct(name=data.name.strip(), diameter=data.diameter, length=data.length, flange_type=data.flange_type)
     db.add(p)
     await db.flush()
     await db.commit()

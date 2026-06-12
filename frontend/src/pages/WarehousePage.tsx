@@ -375,8 +375,9 @@ const InsertTab: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
-  const [form, setForm] = useState({ name: '', diameter: '', length: '', flange_type: '', type: 'incoming', quantity: '1', product_id: '', taken_by_id: '', location_id: '', destination: '', comment: '', document: '' });
+  const [form, setForm] = useState({ name: '', diameter: '', length: '', flange_type: '', quantity: '1', type: 'incoming', product_id: '', taken_by_id: '', location_id: '', destination: '', comment: '', document: '' });
   const [error, setError] = useState('');
+  const [quick, setQuick] = useState<{ prodId: number; action: string; qty: string } | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -396,7 +397,7 @@ const InsertTab: React.FC = () => {
 
   const openProductForm = (p?: any) => {
     if (p) { setEditId(p.id); setForm({ ...form, name: p.name, diameter: p.diameter || '', length: p.length || '', flange_type: p.flange_type || '' }); }
-    else { setEditId(null); setForm({ name: '', diameter: '', length: '', flange_type: '', type: 'incoming', quantity: '1', product_id: '', taken_by_id: '', location_id: '', destination: '', comment: '', document: '' }); }
+    else { setEditId(null); setForm({ name: '', diameter: '', length: '', flange_type: '', quantity: '1', type: 'incoming', product_id: '', taken_by_id: '', location_id: '', destination: '', comment: '', document: '' }); }
     setShowForm(true); setError('');
   };
 
@@ -410,8 +411,22 @@ const InsertTab: React.FC = () => {
       if (tab === 'catalog') {
         if (!form.name.trim()) { setError('Название обязательно'); return; }
         const body = { name: form.name, diameter: form.diameter || null, length: form.length || null, flange_type: form.flange_type || null };
-        if (editId) await api.patch(`/insert/products/${editId}`, body);
-        else await api.post('/insert/products', body);
+        let prodId = editId;
+        if (editId) {
+          await api.patch(`/insert/products/${editId}`, body);
+        } else {
+          const existing = products.find(p => p.name.toLowerCase() === form.name.trim().toLowerCase());
+          if (existing) {
+            prodId = existing.id;
+          } else {
+            const resp = await api.post('/insert/products', body);
+            prodId = resp.data.id;
+          }
+        }
+        const qty = parseInt(form.quantity);
+        if (qty > 0) {
+          await api.post('/insert/transactions', { type: 'incoming', product_id: prodId, quantity: qty });
+        }
       } else {
         if (!form.product_id || !form.quantity) { setError('Выберите продукт и укажите количество'); return; }
         await api.post('/insert/transactions', {
@@ -448,8 +463,9 @@ const InsertTab: React.FC = () => {
         {tab === 'balance' && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Баланс рассчитывается из транзакций</span>}
       </div>
 
-      {tab === 'catalog' && (
-        <div className="table-wrapper">
+        {tab === 'catalog' && (
+        <div>
+          <div className="table-wrapper">
           <table><thead><tr><th>Название</th><th>Диаметр</th><th>Длина</th><th>Фланец</th><th>Остаток</th><th></th></tr></thead>
             <tbody>
               {products.map(p => (
@@ -459,11 +475,51 @@ const InsertTab: React.FC = () => {
                   <td>{p.length || '—'}</td>
                   <td>{p.flange_type || '—'}</td>
                   <td className="mono" style={{ fontWeight: 700, color: p.balance > 0 ? 'var(--success)' : p.balance < 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{p.balance}</td>
-                  <td><button className="btn btn-secondary" onClick={() => openProductForm(p)} style={{ padding: '3px 8px', fontSize: 10 }}>✎</button><button className="btn btn-danger" onClick={() => delProduct(p.id)} style={{ padding: '3px 8px', fontSize: 10, marginLeft: 4 }}>✕</button></td>
+                  <td>
+                    <button className="btn btn-success" onClick={() => setQuick({ prodId: p.id, action: 'incoming', qty: '1' })} style={{ padding: '2px 6px', fontSize: 11, marginRight: 2 }} title="Приход">+</button>
+                    <button className="btn btn-secondary" onClick={() => setQuick({ prodId: p.id, action: 'outgoing', qty: '1' })} style={{ padding: '2px 6px', fontSize: 11, marginRight: 2 }} title="Выдача">−</button>
+                    <button className="btn btn-secondary" onClick={() => openProductForm(p)} style={{ padding: '2px 6px', fontSize: 11 }}>✎</button>
+                    <button className="btn btn-danger" onClick={() => delProduct(p.id)} style={{ padding: '2px 6px', fontSize: 11, marginLeft: 2 }}>✕</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+
+        {quick && (
+          <div className="modal-overlay" onClick={() => setQuick(null)}>
+            <div className="modal-card" onClick={e => e.stopPropagation()} style={{ width: 320 }}>
+              <h3>{quick.action === 'incoming' ? 'Приход' : 'Выдача'}</h3>
+              <label>Количество</label>
+              <input type="number" value={quick.qty} onChange={e => setQuick({ ...quick, qty: e.target.value })} min="1" step="1" autoFocus />
+              {quick.action === 'outgoing' && (
+                <>
+                  <label>Кто взял</label>
+                  <select value={form.taken_by_id} onChange={e => setForm({ ...form, taken_by_id: e.target.value })}>
+                    <option value="">— Выберите —</option>
+                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                </>
+              )}
+              <div className="modal-actions">
+                <button className="btn btn-primary" onClick={async () => {
+                  const qty = parseInt(quick.qty);
+                  if (!qty || qty < 1) return;
+                  try {
+                    await api.post('/insert/transactions', {
+                      type: quick.action, product_id: quick.prodId, quantity: qty,
+                      taken_by_id: quick.action === 'outgoing' ? (form.taken_by_id ? Number(form.taken_by_id) : null) : null,
+                    });
+                    setQuick(null);
+                    load();
+                  } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка'); }
+                }}>OK</button>
+                <button className="btn btn-secondary" onClick={() => setQuick(null)}>Отмена</button>
+              </div>
+            </div>
+          </div>
+        )}
         </div>
       )}
 
@@ -526,6 +582,8 @@ const InsertTab: React.FC = () => {
                 </div>
                 <label>Тип</label>
                 <select value={form.flange_type} onChange={e => setForm({ ...form, flange_type: e.target.value })}><option value="">—</option><option value="Фланцевый">Фланцевый</option><option value="Сэндвич">Сэндвич</option></select>
+                <label>Начальное количество</label>
+                <input type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} min="0" step="1" placeholder="0" />
               </>
             ) : (
               <>

@@ -23,9 +23,10 @@ function valColor(v: number, good: number, warn: number): string {
 }
 
 export const ReportsPage: React.FC = () => {
-  const [tab, setTab] = useState<'objects' | 'tickets' | 'engineers'>('tickets');
+  const [tab, setTab] = useState<'tickets' | 'objects' | 'engineers' | 'inserts' | 'devices'>('tickets');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [reportQ, setReportQ] = useState('');
   const [objects, setObjects] = useState<ObjectRow[]>([]);
   const [ticketStats, setTicketStats] = useState<TicketStats | null>(null);
   const [engineers, setEngineers] = useState<EngineerRow[]>([]);
@@ -62,6 +63,10 @@ export const ReportsPage: React.FC = () => {
         <input type="date" value={from} onChange={e => setFrom(e.target.value)} style={{ margin: '0 6px', padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-surface)', color: 'var(--text)', fontSize: 12 }} />
         <span className="text-muted" style={{ fontSize: 13 }}>по</span>
         <input type="date" value={to} onChange={e => setTo(e.target.value)} style={{ margin: '0 6px', padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-surface)', color: 'var(--text)', fontSize: 12 }} />
+        {tab === 'inserts' && (
+          <input type="text" placeholder="Поиск..." value={reportQ} onChange={e => setReportQ(e.target.value)}
+            style={{ marginLeft: 8, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-surface)', color: 'var(--text)', fontSize: 12, width: 160 }} />
+        )}
         <button className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: 12 }} onClick={loadAll}>Обновить</button>
       </div>
 
@@ -70,6 +75,8 @@ export const ReportsPage: React.FC = () => {
           { key: 'tickets', label: 'Заявки' },
           { key: 'objects', label: 'Объекты' },
           { key: 'engineers', label: 'Инженеры' },
+          { key: 'inserts', label: 'Вставки' },
+          { key: 'devices', label: 'Приборы' },
         ] as const).map(t => (
           <button key={t.key} className={`tab ${tab === t.key ? 'active' : ''}`} onClick={() => setTab(t.key)}>
             {t.label}
@@ -164,8 +171,85 @@ export const ReportsPage: React.FC = () => {
               </table>
             </div>
           )}
+
+          {tab === 'inserts' && <InsertsReport q={reportQ} />}
+          {tab === 'devices' && <DevicesReport />}
         </>
       )}
+    </div>
+  );
+};
+
+const TX_LABELS: Record<string, string> = { incoming: 'Приход', outgoing: 'Выдача', return: 'Возврат' };
+const TX_COLORS: Record<string, string> = { incoming: 'var(--success)', outgoing: 'var(--warning)', return: 'var(--info)' };
+
+const InsertsReport: React.FC<{ q: string }> = ({ q }) => {
+  const [rows, setRows] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const load = () => {
+    setLoading(true);
+    api.get('/insert/transactions', { params: { limit: 500 } })
+      .then(r => { setRows(r.data); setLoading(false); })
+      .catch(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, []);
+  if (loading) return <div className="loading">Загрузка...</div>;
+  const filtered = q.trim()
+    ? rows.filter(r =>
+        (r.product_name || '').toLowerCase().includes(q.toLowerCase()) ||
+        (r.taken_by_name || '').toLowerCase().includes(q.toLowerCase()) ||
+        (r.destination || '').toLowerCase().includes(q.toLowerCase())
+      )
+    : rows;
+  return (
+    <div className="table-wrapper">
+      <table><thead><tr><th>Дата</th><th>Тип</th><th>Продукт</th><th>Кол-во</th><th>Кто</th><th>Куда</th><th>Назначение</th></tr></thead>
+        <tbody>
+          {filtered.map(r => (
+            <tr key={r.id}>
+              <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(r.created_at).toLocaleString('ru-RU')}</td>
+              <td><span className="status-pill" style={{ background: `${TX_COLORS[r.type]}18`, color: TX_COLORS[r.type] }}>{TX_LABELS[r.type]}</span></td>
+              <td>{r.product_name}</td>
+              <td className="mono" style={{ fontWeight: 600 }}>{r.quantity}</td>
+              <td>{r.taken_by_name || '—'}</td>
+              <td>{r.location_name || '—'}</td>
+              <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{r.destination || '—'}</td>
+            </tr>
+          ))}
+          {filtered.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)' }}>{q ? 'Ничего не найдено' : 'Нет транзакций'}</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+const DevicesReport: React.FC = () => {
+  const [rows, setRows] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const load = () => {
+    setLoading(true);
+    api.get('/replacement-devices')
+      .then(r => { setRows(r.data); setLoading(false); })
+      .catch(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, []);
+  if (loading) return <div className="loading">Загрузка...</div>;
+  return (
+    <div className="table-wrapper">
+      <table><thead><tr><th>Прибор</th><th>Поверка до</th><th>У кого</th><th>Объект</th><th>Возврат</th></tr></thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.id}>
+              <td style={{ fontWeight: 600 }}>{r.name}</td>
+              <td style={{ color: r.verification_expiry && new Date(r.verification_expiry) < new Date() ? 'var(--danger)' : 'var(--text-secondary)' }}>{r.verification_expiry ? new Date(r.verification_expiry).toLocaleDateString('ru-RU') : '—'}</td>
+              <td>{r.taken_by_name || '—'}</td>
+              <td>{r.location_name || '—'}</td>
+              <td>{r.return_date ? new Date(r.return_date).toLocaleDateString('ru-RU') : '—'}</td>
+            </tr>
+          ))}
+          {rows.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)' }}>Нет приборов</td></tr>}
+        </tbody>
+      </table>
     </div>
   );
 };
