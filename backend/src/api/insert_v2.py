@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func as sa_func
+from sqlalchemy import select, delete as sa_delete, func as sa_func
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from datetime import datetime
@@ -96,9 +96,12 @@ async def delete_product(product_id: int, user=Depends(get_current_user), db: As
     p = await db.get(InsertProduct, product_id)
     if not p:
         raise HTTPException(404)
+    await db.execute(
+        sa_delete(InsertTransaction).where(InsertTransaction.product_id == product_id)
+    )
     await db.delete(p)
     await db.commit()
-    log("Склад вставок", f"Удалён продукт: {p.name}", user)
+    log("Склад вставок", f"Удалён продукт: {p.name} (с транзакциями)", user)
     return {"ok": True}
 
 

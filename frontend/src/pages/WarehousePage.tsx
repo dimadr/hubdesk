@@ -440,8 +440,8 @@ const InsertTab: React.FC = () => {
     } catch (e: any) { setError(e.response?.data?.detail || e.message || 'Ошибка'); }
   };
 
-  const delProduct = async (id: number) => { if (!confirm('Удалить?')) return; try { await api.delete(`/insert/products/${id}`); load(); } catch {} };
-  const delTx = async (id: number) => { if (!confirm('Удалить транзакцию?')) return; try { await api.delete(`/insert/transactions/${id}`); load(); } catch {} };
+  const delProduct = async (id: number) => { if (!confirm('Удалить продукт и все его транзакции?')) return; try { await api.delete(`/insert/products/${id}`); load(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка удаления'); } };
+  const delTx = async (id: number) => { if (!confirm('Удалить транзакцию?')) return; try { await api.delete(`/insert/transactions/${id}`); load(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка удаления'); } };
 
   if (loading) return <div className="loading">Загрузка...</div>;
 
