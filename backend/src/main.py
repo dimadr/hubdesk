@@ -1,4 +1,6 @@
 import os
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 import httpx
@@ -6,113 +8,75 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import text
 
 from src.api.router import api_router
-from src.database import Base, async_session, engine
+from src.database import async_session, engine
 from src.core.http_client import set_http_client
 
-from src.models.customer import Customer
-from src.models.equipment import AssetLocation
-from src.models.ticket import Ticket, TicketPriority, TicketStatus, TicketType
-from src.models.user import User, UserRole, UserStatus
-from src.models.warehouse import (
-    AccountingDocument,
-    DocStatus,
-    DocType,
-    DocumentLine,
-    Nomenclature,
-    NomenclatureType,
-    StockBalance,
-    Warehouse,
-    WarehouseType,
-)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 FRONTEND_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "frontend",
     "dist",
 )
-STATIC_DIR = (
-    os.path.join(FRONTEND_DIR, "assets")
-    if os.path.exists(os.path.join(FRONTEND_DIR, "assets"))
-    else None
-)
+STATIC_DIR = os.path.join(FRONTEND_DIR, "assets") if os.path.exists(os.path.join(FRONTEND_DIR, "assets")) else None
 
 
-http_client: httpx.AsyncClient | None = None
+async def mail_worker_loop():
+    from src.services.mail_service import MailService
+
+    logger.info("Фоновый почтовый воркер успешно запущен.")
+    while True:
+        try:
+            async with async_session() as session:
+                await MailService.fetch_and_create_tickets(session)
+        except asyncio.CancelledError:
+            logger.info("Получен сигнал остановки почтового воркера.")
+            break
+        except Exception as e:
+            logger.error(f"Ошибка в работе почтового воркера: {e}", exc_info=True)
+
+        await asyncio.sleep(120)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global http_client
-    http_client = httpx.AsyncClient(timeout=10)
+    http_client = httpx.AsyncClient(timeout=10.0)
     set_http_client(http_client)
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    new_columns = [
-        ("type", "VARCHAR(50)"),
-        ("site_contact_name", "VARCHAR(255)"),
-        ("site_contact_phone", "VARCHAR(50)"),
-        ("scheduled_start", "TIMESTAMP"),
-        ("scheduled_end", "TIMESTAMP"),
-        ("source_description", "VARCHAR(5000)"),
-        ("archived_at", "TIMESTAMP"),
-        ("contact_name", "VARCHAR(255)"),
-        ("contact_phone", "VARCHAR(50)"),
-        ("contact_email", "VARCHAR(255)"),
-    ]
-
-    for col_name, col_type in new_columns:
-        try:
-            async with engine.begin() as conn:
-                await conn.execute(
-                    text(f"ALTER TABLE tickets ADD COLUMN {col_name} {col_type}")
-                )
-        except Exception:
-            pass
-
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(
-                text("ALTER TABLE asset_locations ADD COLUMN inn VARCHAR(12)")
-            )
-    except Exception:
-        pass
-
-    import asyncio as _asyncio
-
-    async def _mail_worker():
-        from src.services.mail_service import MailService
-
-        while True:
-            try:
-                async with async_session() as s:
-                    await MailService.fetch_and_create_tickets(s)
-            except Exception:
-                pass
-            await _asyncio.sleep(120)
-
-    _mail_task = _asyncio.create_task(_mail_worker())
+    mail_task = asyncio.create_task(mail_worker_loop())
 
     yield
 
-    _mail_task.cancel()
+    logger.info("Остановка приложения: завершение фонового воркера...")
+    mail_task.cancel()
     try:
-        await _mail_task
-    except _asyncio.CancelledError:
+        await mail_task
+    except asyncio.CancelledError:
         pass
-    if http_client:
-        await http_client.aclose()
+
+    await http_client.aclose()
+    await engine.dispose()
+    logger.info("Пул соединений базы данных закрыт. Приложение остановлено.")
 
 
-app = FastAPI(title="HubDesk", version="0.2.0", lifespan=lifespan)
+app = FastAPI(
+    title="HubDesk",
+    version="0.2.0",
+    lifespan=lifespan,
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+)
+
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -120,12 +84,12 @@ app.add_middleware(
 app.include_router(api_router, prefix="/api")
 
 
-@app.get("/health")
+@app.get("/api/health", tags=["Infrastructure"])
 async def health():
     return {"status": "ok"}
 
 
-if FRONTEND_DIR and os.path.exists(FRONTEND_DIR):
+if os.path.exists(FRONTEND_DIR):
     if STATIC_DIR and os.path.exists(STATIC_DIR):
         app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
 
@@ -135,7 +99,10 @@ if FRONTEND_DIR and os.path.exists(FRONTEND_DIR):
 
     @app.get("/{path:path}")
     async def spa_fallback(path: str):
-        index = os.path.join(FRONTEND_DIR, "index.html")
-        if os.path.exists(index):
-            return FileResponse(index)
+        if path.startswith("api"):
+            return {"detail": "Not Found"}
+
+        index_path = os.path.join(FRONTEND_DIR, "index.html")
+        if os.path.exists(index_path):
+            return FileResponse(index_path)
         return {"detail": "Not Found"}
