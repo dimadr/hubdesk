@@ -8,6 +8,7 @@ from src.models.customer import Contract
 from src.models.checklist import Checklist, ChecklistField
 from src.services.ticket_fsm import TicketFSM
 from src.services.acl_service import RoleChecker
+from src.services.audit_service import log_audit
 
 
 class TicketService:
@@ -41,6 +42,8 @@ class TicketService:
             ticket.resolution_deadline = ticket.created_at + timedelta(hours=contract.resolution_sla_hours)
         self.session.add(ticket)
         await self.session.flush()
+        if user:
+            await log_audit(self.session, user, "ticket_created", "ticket", ticket.id, f"Создана заявка №{ticket.number} «{ticket.subject}»")
         return ticket
 
     async def assign(self, ticket_id: int, engineer_id: int, dispatcher: User) -> Ticket:
@@ -49,6 +52,7 @@ class TicketService:
         ticket = await self._get(ticket_id)
         ticket.assignee_id = engineer_id
         await self.session.flush()
+        await log_audit(self.session, dispatcher, "ticket_assigned", "ticket", ticket_id, f"Назначен инженер на заявку №{ticket.number}")
         return ticket
 
     async def change_status(self, ticket_id: int, target: str, user: User) -> Ticket:
@@ -66,6 +70,7 @@ class TicketService:
             ticket.completed_at = now
             ticket.archived_at = now
         await self.session.flush()
+        await log_audit(self.session, user, "ticket_status_changed", "ticket", ticket_id, f"Статус заявки №{ticket.number}: → {target} (был {ticket.status})")
         return ticket
 
     async def _get(self, ticket_id: int) -> Ticket:

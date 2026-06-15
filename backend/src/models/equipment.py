@@ -25,6 +25,7 @@ class AssetLocation(Base):
     contract_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
     contract_valid_from: Mapped[date | None] = mapped_column(nullable=True)
     contract_valid_to: Mapped[date | None] = mapped_column(nullable=True)
+    inn: Mapped[str | None] = mapped_column(String(12), nullable=True)
 
     customer: Mapped["Customer"] = relationship(back_populates="locations")
     assigned_engineer: Mapped["User | None"] = relationship(foreign_keys=[assigned_engineer_id])

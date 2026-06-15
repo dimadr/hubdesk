@@ -65,6 +65,14 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text("ALTER TABLE asset_locations ADD COLUMN inn VARCHAR(12)")
+            )
+    except Exception:
+        pass
+
     import asyncio as _asyncio
 
     async def _mail_worker():

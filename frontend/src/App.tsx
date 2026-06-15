@@ -7,6 +7,7 @@ import { AdminPage } from './pages/AdminPage';
 import { CalendarPage } from './pages/CalendarPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { KanbanPage } from './pages/KanbanPage';
+import { AuditLogPage } from './pages/AuditLogPage';
 import { L } from './locale';
 
 interface Location {
@@ -576,6 +577,7 @@ const NAV_ITEMS = [
   { key: 'reports', label: 'Отчёты', icon: '📊' },
   { key: 'calendar', label: 'Календарь', icon: '📅' },
   { key: 'kanban', label: 'Моя доска', icon: '📌' },
+  { key: 'audit', label: 'Журнал', icon: '📝', adminOnly: true },
   { key: 'admin', label: 'Админка', icon: '⚙️', adminOnly: true },
 ] as const;
 
@@ -711,7 +713,8 @@ const App: React.FC = () => {
              page === 'reports' ? 'Отчёты' :
              page === 'locations' ? 'Объекты' :
              page === 'employees' ? 'Сотрудники' :
-             page === 'admin' ? 'Администрирование' : 'Склад'}
+              page === 'admin' ? 'Администрирование' :
+              page === 'audit' ? 'Журнал действий' : 'Склад'}
           </h1>
           <div className="stat-pills">
             <div className="stat-pill">
@@ -752,6 +755,7 @@ const App: React.FC = () => {
         {page === 'locations' && <LocationsPage />}
         {page === 'employees' && <EmployeesPage onAdd={() => setShowAddEmployee(true)} refreshKey={refreshKey} isAdmin={user.role === 'admin'} />}
         {page === 'admin' && <AdminPage />}
+        {page === 'audit' && <AuditLogPage />}
         {showCreate && <CreateTicketModal onClose={() => setShowCreate(false)} onCreated={() => setRefreshKey(k => k + 1)} users={users} />}
         {editTicket && <EditTicketModal ticket={editTicket} onClose={() => setEditTicket(null)} onSaved={() => { setEditTicket(null); setRefreshKey(k => k + 1); }} users={users} />}
         {detailTicket && <TicketDetailModal ticket={detailTicket} onClose={() => setDetailTicket(null)} />}

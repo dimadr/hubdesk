@@ -7,6 +7,7 @@ from src.database import get_db
 from src.models.user import User, UserRole
 from src.models.equipment import AssetLocation
 from src.core.deps import create_token, get_current_user
+from src.services.audit_service import log_audit
 
 api_router = APIRouter()
 
@@ -22,6 +23,7 @@ from .v1_router import v1_router
 from .replacement import replacement_router
 from .insert_stock import insert_router
 from .insert_v2 import insert_v2_router
+from .audit import audit_router
 
 api_router.include_router(create_ticket_router())
 api_router.include_router(attachment_router)
@@ -35,6 +37,7 @@ api_router.include_router(v1_router)
 api_router.include_router(replacement_router)
 api_router.include_router(insert_router)
 api_router.include_router(insert_v2_router)
+api_router.include_router(audit_router)
 
 
 class SignupRequest(BaseModel):
@@ -154,6 +157,7 @@ class LocationResponse(BaseModel):
     contract_number: str | None = None
     contract_valid_from: str | None = None
     contract_valid_to: str | None = None
+    inn: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -188,6 +192,7 @@ async def list_locations(
             contract_number=loc.contract_number,
             contract_valid_from=loc.contract_valid_from.isoformat() if loc.contract_valid_from else None,
             contract_valid_to=loc.contract_valid_to.isoformat() if loc.contract_valid_to else None,
+            inn=loc.inn,
         ))
     return out
 
@@ -203,6 +208,7 @@ class LocationCreate(BaseModel):
     contract_number: str | None = None
     contract_valid_from: str | None = None
     contract_valid_to: str | None = None
+    inn: str | None = None
 
 
 class LocationUpdate(BaseModel):
@@ -216,6 +222,7 @@ class LocationUpdate(BaseModel):
     contract_number: str | None = None
     contract_valid_from: str | None = None
     contract_valid_to: str | None = None
+    inn: str | None = None
 
 
 @api_router.post("/locations", response_model=LocationResponse, tags=["Locations"])
@@ -237,10 +244,12 @@ async def create_location(
         contract_number=data.contract_number,
         contract_valid_from=date.fromisoformat(data.contract_valid_from) if data.contract_valid_from else None,
         contract_valid_to=date.fromisoformat(data.contract_valid_to) if data.contract_valid_to else None,
+        inn=data.inn,
     )
     db.add(loc)
     await db.flush()
     await db.commit()
+    await log_audit(db, user, "location_created", "location", loc.id, f"Создан объект «{loc.name}» ({loc.address})")
     eng_name = None
     if data.assigned_engineer_id:
         from src.models.user import User as UUser
@@ -258,6 +267,7 @@ async def create_location(
         contract_number=loc.contract_number,
         contract_valid_from=loc.contract_valid_from.isoformat() if loc.contract_valid_from else None,
         contract_valid_to=loc.contract_valid_to.isoformat() if loc.contract_valid_to else None,
+        inn=loc.inn,
     )
 
 
@@ -280,6 +290,7 @@ async def update_location(
             else:
                 setattr(loc, field, value)
     await db.commit()
+    await log_audit(db, user, "location_updated", "location", loc.id, f"Изменён объект «{loc.name}»")
     return LocationResponse(
         id=loc.id, name=loc.name, address=loc.address, customer_id=loc.customer_id,
         contacts=loc.contacts,
@@ -290,6 +301,7 @@ async def update_location(
         contract_number=loc.contract_number,
         contract_valid_from=loc.contract_valid_from.isoformat() if loc.contract_valid_from else None,
         contract_valid_to=loc.contract_valid_to.isoformat() if loc.contract_valid_to else None,
+        inn=loc.inn,
     )
 
 
@@ -309,7 +321,14 @@ async def delete_location(location_id: int, user=Depends(get_current_user), db: 
         raise HTTPException(400, f"Нельзя удалить объект с заявками ({ticket_count} шт.)")
     await db.delete(loc)
     await db.commit()
+    await log_audit(db, user, "location_deleted", "location", location_id, f"Удалён объект «{loc.name}»")
     return {"ok": True}
+
+
+@api_router.get("/locations/lookup-inn")
+async def lookup_inn(inn: str, user=Depends(get_current_user)):
+    from src.services.inn_service import lookup_inn as do_lookup
+    return await do_lookup(inn.strip())
 
 
 class UserListResponse(BaseModel):

@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     mailbox_imap_port: int = 993
     smtp_server: str = "smtp.timeweb.ru"
     smtp_port: int = 465
+    dadata_api_key: str = ""
 
     class Config:
         env_file = ".env"

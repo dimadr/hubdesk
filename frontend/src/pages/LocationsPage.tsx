@@ -7,6 +7,7 @@ interface Location {
   contact_name: string | null; contact_phone: string | null; contact_email: string | null;
   assigned_engineer_id: number | null; assigned_engineer_name: string | null;
   contract_number: string | null; contract_valid_from: string | null; contract_valid_to: string | null;
+  inn: string | null;
 }
 interface UserInfo { id: number; email: string; name: string; role: string; }
 
@@ -40,7 +41,7 @@ export const LocationsPage: React.FC = () => {
       <div className="table-wrapper">
         <table>
           <thead><tr>
-            <th>ID</th><th>Название</th><th>Адрес</th><th>Контакты</th>
+            <th>ID</th><th>Название</th><th>Адрес</th><th>ИНН</th><th>Контакты</th>
             <th>Инженер</th><th>Договор</th><th>Срок</th><th></th>
           </tr></thead>
           <tbody>
@@ -51,6 +52,7 @@ export const LocationsPage: React.FC = () => {
                   <td className="mono" style={{ color: 'var(--text-muted)' }}>#{l.id}</td>
                   <td style={{ fontWeight: 600 }}>{l.name}</td>
                   <td style={{ color: 'var(--text-secondary)' }}>{l.address}</td>
+                  <td className="mono" style={{ fontSize: 12 }}>{l.inn || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
                   <td>{contactStr || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
                   <td>{l.assigned_engineer_name || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
                   <td className="mono" style={{ fontSize: 11 }}>{l.contract_number || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
@@ -72,7 +74,7 @@ export const LocationsPage: React.FC = () => {
               );
             })}
             {locations.length === 0 && (
-              <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)' }}>Нет объектов</td></tr>
+              <tr><td colSpan={9} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)' }}>Нет объектов</td></tr>
             )}
           </tbody>
         </table>
@@ -94,7 +96,26 @@ const LocForm: React.FC<{ onClose: () => void; onSaved: () => void; users: UserI
   const [contractNo, setContractNo] = useState(loc?.contract_number || '');
   const [from, setFrom] = useState(loc?.contract_valid_from || '');
   const [to, setTo] = useState(loc?.contract_valid_to || '');
+  const [inn, setInn] = useState(loc?.inn || '');
+  const [innLoading, setInnLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const handleInnLookup = async () => {
+    if (!inn || inn.length < 10) { setError('Введите корректный ИНН (10 или 12 цифр)'); return; }
+    setInnLoading(true);
+    setError('');
+    try {
+      const { data } = await api.get('/locations/lookup-inn', { params: { inn } });
+      if (data.error) { setError(data.error); return; }
+      setName(data.name || name);
+      setAddress(data.address || address);
+      if (data.phone) setContactPhone(data.phone);
+    } catch (e: any) {
+      setError(e.response?.data?.detail || 'Ошибка при поиске ИНН');
+    } finally {
+      setInnLoading(false);
+    }
+  };
 
   const submit = async () => {
     if (!name) { setError('Название обязательно'); return; }
@@ -109,6 +130,7 @@ const LocForm: React.FC<{ onClose: () => void; onSaved: () => void; users: UserI
         contract_number: contractNo,
         contract_valid_from: from || null,
         contract_valid_to: to || null,
+        inn: inn || null,
       };
       if (loc) await api.patch(`/locations/${loc.id}`, body);
       else await api.post('/locations', body);
@@ -125,6 +147,13 @@ const LocForm: React.FC<{ onClose: () => void; onSaved: () => void; users: UserI
         <input placeholder="Введите название" value={name} onChange={e => setName(e.target.value)} />
         <label>Адрес</label>
         <input placeholder="Введите адрес" value={address} onChange={e => setAddress(e.target.value)} />
+        <label>ИНН</label>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input placeholder="10 или 12 цифр" value={inn} onChange={e => setInn(e.target.value)} maxLength={12} style={{ flex: 1 }} />
+          <button className="btn btn-secondary" onClick={handleInnLookup} disabled={innLoading} style={{ padding: '4px 10px', fontSize: 12, whiteSpace: 'nowrap' }}>
+            {innLoading ? 'Поиск...' : 'Заполнить по ИНН'}
+          </button>
+        </div>
         <label>Контактное лицо (ФИО)</label>
         <input placeholder="Иванов Иван Иванович" value={contactName} onChange={e => setContactName(e.target.value)} />
         <div style={{ display: 'flex', gap: 8 }}>

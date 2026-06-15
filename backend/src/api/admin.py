@@ -10,6 +10,7 @@ from src.models.equipment import AssetLocation
 from src.models.warehouse import Warehouse
 from src.core.deps import get_current_user
 from src.services.sla_service import SLAService
+from src.services.audit_service import log_audit
 import os
 
 admin_router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -124,6 +125,7 @@ async def update_user(
     if data.status is not None and data.status in UserStatus.__members__:
         target.status = UserStatus(data.status)
     await db.commit()
+    await log_audit(db, user, "user_updated", "user", target.id, f"Изменён пользователь: {target.name}")
     return {"ok": True}
 
 
@@ -137,6 +139,7 @@ async def delete_user(user_id: int, current_user=Depends(get_current_user), db: 
         raise HTTPException(404, "Пользователь не найден")
     await db.delete(target)
     await db.commit()
+    await log_audit(db, current_user, "user_deleted", "user", user_id, f"Удалён пользователь: {target.name}")
     return {"ok": True}
 
 
