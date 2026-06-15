@@ -69,7 +69,6 @@ async def create_product(data: ProductCreate, user=Depends(get_current_user), db
     db.add(p)
     await db.flush()
     await db.commit()
-    log("Склад вставок", f"Добавлен продукт: {p.name}", user)
     await log_audit(db, user, "product_created", "insert_product", p.id, f"Добавлен продукт «{p.name}»")
     return ProductResponse(id=p.id, name=p.name, diameter=p.diameter, length=p.length,
                            flange_type=p.flange_type, balance=0,
@@ -86,8 +85,6 @@ async def update_product(product_id: int, data: ProductCreate, user=Depends(get_
     p.length = data.length
     p.flange_type = data.flange_type
     await db.commit()
-    bal = await _balance(db, p.id)
-    log("Склад вставок", f"Обновлён продукт: {p.name}", user)
     await log_audit(db, user, "product_updated", "insert_product", p.id, f"Обновлён продукт «{p.name}»")
     return ProductResponse(id=p.id, name=p.name, diameter=p.diameter, length=p.length,
                            flange_type=p.flange_type, balance=bal,
@@ -104,7 +101,6 @@ async def delete_product(product_id: int, user=Depends(get_current_user), db: As
     )
     await db.delete(p)
     await db.commit()
-    log("Склад вставок", f"Удалён продукт: {p.name} (с транзакциями)", user)
     await log_audit(db, user, "product_deleted", "insert_product", product_id, f"Удалён продукт «{p.name}» с транзакциями")
     return {"ok": True}
 
@@ -191,10 +187,8 @@ async def create_transaction(data: TransactionCreate, user=Depends(get_current_u
     db.add(t)
     await db.flush()
     await db.commit()
-    await db.refresh(t, ['product', 'taken_by', 'location'])
-    log("Склад вставок", f"{_label(data.type)}: {data.quantity} × {t.product.name if t.product else '?'}", user)
     await log_audit(db, user, f"insert_{data.type}", "insert_transaction", t.id,
-                    f"{_label(data.type)}: {data.quantity} × {t.product.name if t.product else '?'}")
+                    f"{_label(data.type)}: {data.quantity} шт (продукт #{data.product_id})")
     return TransactionResponse(
         id=t.id, type=t.type, product_id=t.product_id, product_name=t.product.name if t.product else None,
         quantity=t.quantity, taken_by_id=t.taken_by_id, taken_by_name=t.taken_by.name if t.taken_by else None,
@@ -211,7 +205,6 @@ async def delete_transaction(tx_id: int, user=Depends(get_current_user), db: Asy
         raise HTTPException(404)
     await db.delete(t)
     await db.commit()
-    log("Склад вставок", f"Удалена транзакция #{t.id}", user)
     await log_audit(db, user, "insert_transaction_deleted", "insert_transaction", tx_id, f"Удалена транзакция #{t.id}")
     return {"ok": True}
 

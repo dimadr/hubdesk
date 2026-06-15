@@ -1,6 +1,7 @@
 import os
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -9,6 +10,7 @@ from sqlalchemy import text
 
 from src.api.router import api_router
 from src.database import Base, async_session, engine
+from src.core.http_client import set_http_client
 
 from src.models.customer import Customer
 from src.models.equipment import AssetLocation
@@ -38,8 +40,15 @@ STATIC_DIR = (
 )
 
 
+http_client: httpx.AsyncClient | None = None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global http_client
+    http_client = httpx.AsyncClient(timeout=10)
+    set_http_client(http_client)
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -95,6 +104,8 @@ async def lifespan(app: FastAPI):
         await _mail_task
     except _asyncio.CancelledError:
         pass
+    if http_client:
+        await http_client.aclose()
 
 
 app = FastAPI(title="HubDesk", version="0.2.0", lifespan=lifespan)
