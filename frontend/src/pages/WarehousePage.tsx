@@ -153,7 +153,7 @@ const ReplacementTab: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
-  const [form, setForm] = useState({ name: '', verification_expiry: '', verification_interval_months: '', taken_by_id: '', location_id: '', return_date: '', passport_scan: '' });
+  const [form, setForm] = useState({ name: '', verification_date: '', verification_interval_months: '', verification_expiry: '', taken_by_id: '', location_id: '', return_date: '', passport_scan: '' });
   const [users, setUsers] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
   const [error, setError] = useState('');
@@ -172,15 +172,18 @@ const ReplacementTab: React.FC = () => {
   useEffect(() => { load(); }, []);
 
   const openForm = (d?: any) => {
-    if (d) { setEditId(d.id); setForm({ name: d.name, verification_expiry: d.verification_expiry || '', verification_interval_months: d.verification_interval_months?.toString() || '', taken_by_id: d.taken_by_id?.toString() || '', location_id: d.location_id?.toString() || '', return_date: d.return_date || '', passport_scan: d.passport_scan || '' }); }
-    else { setEditId(null); setForm({ name: '', verification_expiry: '', verification_interval_months: '', taken_by_id: '', location_id: '', return_date: '', passport_scan: '' }); }
+    if (d) { setEditId(d.id); setForm({ name: d.name, verification_date: d.verification_date || '', verification_expiry: d.verification_expiry || '', verification_interval_months: d.verification_interval_months?.toString() || '', taken_by_id: d.taken_by_id?.toString() || '', location_id: d.location_id?.toString() || '', return_date: d.return_date || '', passport_scan: d.passport_scan || '' }); }
+    else { setEditId(null); setForm({ name: '', verification_date: '', verification_expiry: '', verification_interval_months: '', taken_by_id: '', location_id: '', return_date: '', passport_scan: '' }); }
     setShowForm(true); setError('');
   };
 
   const submit = async () => {
     if (!form.name.trim()) { setError('Название обязательно'); return; }
     try {
-      const body: any = { name: form.name, verification_expiry: form.verification_expiry || null, verification_interval_months: form.verification_interval_months ? Number(form.verification_interval_months) : null, taken_by_id: form.taken_by_id ? Number(form.taken_by_id) : null, location_id: form.location_id ? Number(form.location_id) : null, return_date: form.return_date || null, passport_scan: form.passport_scan || null };
+      const expiry = form.verification_date && form.verification_interval_months
+        ? new Date(new Date(form.verification_date).setMonth(new Date(form.verification_date).getMonth() + Number(form.verification_interval_months))).toISOString().slice(0, 10)
+        : form.verification_expiry || null;
+      const body: any = { name: form.name, verification_date: form.verification_date || null, verification_interval_months: form.verification_interval_months ? Number(form.verification_interval_months) : null, verification_expiry: expiry, taken_by_id: form.taken_by_id ? Number(form.taken_by_id) : null, location_id: form.location_id ? Number(form.location_id) : null, return_date: form.return_date || null, passport_scan: form.passport_scan || null };
       if (editId) await api.patch(`/replacement-devices/${editId}`, body);
       else await api.post('/replacement-devices', body);
       setShowForm(false); load();
@@ -196,13 +199,14 @@ const ReplacementTab: React.FC = () => {
       <div className="page-header"><h2>Подменный фонд</h2><button className="btn btn-primary" onClick={() => openForm()}>+ Добавить прибор</button></div>
       <div className="table-wrapper">
         <table>
-          <thead><tr><th>Название</th><th>Поверка до</th><th>Интервал</th><th>Кто взял</th><th>Объект</th><th>Возврат</th><th></th></tr></thead>
+          <thead><tr><th>Название</th><th>Дата поверки</th><th>Интервал</th><th>Поверка до</th><th>Кто взял</th><th>Объект</th><th>Возврат</th><th></th></tr></thead>
           <tbody>
             {devices.map(d => (
               <tr key={d.id}>
                 <td style={{ fontWeight: 600 }}>{d.name}</td>
-                <td style={{ fontSize: 12, color: d.verification_expiry && new Date(d.verification_expiry) < new Date() ? 'var(--danger)' : 'var(--text-secondary)' }}>{d.verification_expiry ? new Date(d.verification_expiry).toLocaleDateString('ru-RU') : '—'}</td>
+                <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.verification_date ? new Date(d.verification_date).toLocaleDateString('ru-RU') : '—'}</td>
                 <td className="mono" style={{ fontSize: 12 }}>{d.verification_interval_months ? `${d.verification_interval_months} мес` : '—'}</td>
+                <td style={{ fontSize: 12, color: d.verification_expiry && new Date(d.verification_expiry) < new Date() ? 'var(--danger)' : 'var(--text-secondary)' }}>{d.verification_expiry ? new Date(d.verification_expiry).toLocaleDateString('ru-RU') : '—'}</td>
                 <td>{d.taken_by_name || '—'}</td>
                 <td style={{ fontSize: 12 }}>{d.location_name || '—'}</td>
                 <td style={{ fontSize: 12 }}>{d.return_date ? new Date(d.return_date).toLocaleDateString('ru-RU') : '—'}</td>
@@ -223,9 +227,19 @@ const ReplacementTab: React.FC = () => {
             <label>Название прибора *</label>
             <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Манометр МП-160" />
             <div style={{ display: 'flex', gap: 8 }}>
-              <div style={{ flex: 1 }}><label>Дата окончания поверки</label><input type="date" value={form.verification_expiry} onChange={e => setForm({ ...form, verification_expiry: e.target.value })} /></div>
+              <div style={{ flex: 1 }}><label>Дата поверки</label><input type="date" value={form.verification_date} onChange={e => setForm({ ...form, verification_date: e.target.value })} /></div>
               <div style={{ flex: 1 }}><label>Межповерочный интервал (мес)</label><input type="number" value={form.verification_interval_months} onChange={e => setForm({ ...form, verification_interval_months: e.target.value })} placeholder="12" /></div>
             </div>
+            {form.verification_date && form.verification_interval_months && (
+              <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '4px 0' }}>
+                Поверка до: {new Date(new Date(form.verification_date).setMonth(new Date(form.verification_date).getMonth() + Number(form.verification_interval_months))).toLocaleDateString('ru-RU')}
+              </p>
+            )}
+            {form.verification_expiry && !form.verification_date && (
+              <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '4px 0' }}>
+                Поверка до: {new Date(form.verification_expiry).toLocaleDateString('ru-RU')}
+              </p>
+            )}
             <label>ФИО кто взял прибор</label>
             <select value={form.taken_by_id} onChange={e => setForm({ ...form, taken_by_id: e.target.value })}><option value="">— На складе —</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
             <label>На какой объект взят прибор</label>
@@ -367,7 +381,7 @@ const CreateDocModal: React.FC<{
 };
 
 const InsertTab: React.FC = () => {
-  const [tab, setTab] = useState<'catalog' | 'journal' | 'balance'>('catalog');
+  const [tab, setTab] = useState<'catalog' | 'journal' | 'balance' | 'documents'>('catalog');
   const [products, setProducts] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
@@ -375,7 +389,7 @@ const InsertTab: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
-  const [form, setForm] = useState({ name: '', diameter: '', length: '', flange_type: '', quantity: '1', type: 'incoming', product_id: '', taken_by_id: '', location_id: '', destination: '', comment: '', document: '' });
+  const [form, setForm] = useState({ name: '', diameter: '', length: '', flange_type: '', quantity: '1', type: 'incoming', product_id: '', taken_by_id: '', location_id: '', comment: '', document: '' });
   const [error, setError] = useState('');
   const [quick, setQuick] = useState<{ prodId: number; action: string; qty: string } | null>(null);
 
@@ -397,12 +411,14 @@ const InsertTab: React.FC = () => {
 
   const openProductForm = (p?: any) => {
     if (p) { setEditId(p.id); setForm({ ...form, name: p.name, diameter: p.diameter || '', length: p.length || '', flange_type: p.flange_type || '' }); }
-    else { setEditId(null); setForm({ name: '', diameter: '', length: '', flange_type: '', quantity: '1', type: 'incoming', product_id: '', taken_by_id: '', location_id: '', destination: '', comment: '', document: '' }); }
+    else { setEditId(null); setForm({ name: '', diameter: '', length: '', flange_type: '', quantity: '1', type: 'incoming', product_id: '', taken_by_id: '', location_id: '', comment: '', document: '' }); }
     setShowForm(true); setError('');
   };
 
   const openTxForm = () => {
-    setEditId(null); setForm({ name: '', diameter: '', length: '', flange_type: '', type: 'outgoing', quantity: '1', product_id: '', taken_by_id: '', location_id: '', destination: '', comment: '', document: '' });
+    const now = new Date();
+    const doc = `ДОК-${String(now.getFullYear()).slice(2)}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+    setEditId(null); setForm({ name: '', diameter: '', length: '', flange_type: '', type: 'outgoing', quantity: '1', product_id: '', taken_by_id: '', location_id: '', comment: '', document: doc });
     setShowForm(true); setError('');
   };
 
@@ -433,7 +449,7 @@ const InsertTab: React.FC = () => {
           type: form.type, product_id: Number(form.product_id), quantity: Number(form.quantity),
           taken_by_id: form.taken_by_id ? Number(form.taken_by_id) : null,
           location_id: form.location_id ? Number(form.location_id) : null,
-          destination: form.destination || null, comment: form.comment || null, document: form.document || null,
+          comment: form.comment || null, document: form.document || null,
         });
       }
       setShowForm(false); load();
@@ -451,9 +467,9 @@ const InsertTab: React.FC = () => {
   return (
     <div>
       <div className="tabs" style={{ marginBottom: 12, display: 'inline-flex' }}>
-        {(['catalog', 'journal', 'balance'] as const).map(t => (
+        {(['catalog', 'journal', 'documents', 'balance'] as const).map(t => (
           <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
-            {t === 'catalog' ? 'Каталог' : t === 'journal' ? 'Движения' : 'Остатки'}
+            {t === 'catalog' ? 'Каталог' : t === 'journal' ? 'Движения' : t === 'documents' ? 'Документы' : 'Остатки'}
           </button>
         ))}
       </div>
@@ -525,7 +541,7 @@ const InsertTab: React.FC = () => {
 
       {tab === 'journal' && (
         <div className="table-wrapper">
-          <table><thead><tr><th>Дата</th><th>Тип</th><th>Продукт</th><th>Кол-во</th><th>Кто</th><th>Куда</th><th>Назначение</th><th></th></tr></thead>
+          <table><thead><tr><th>Дата</th><th>Тип</th><th>Продукт</th><th>Кол-во</th><th>Кто</th><th>Куда</th><th></th></tr></thead>
             <tbody>
               {transactions.map(t => (
                 <tr key={t.id}>
@@ -535,7 +551,6 @@ const InsertTab: React.FC = () => {
                   <td className="mono" style={{ fontWeight: 600 }}>{t.quantity}</td>
                   <td>{t.taken_by_name || '—'}</td>
                   <td>{t.location_name || '—'}</td>
-                  <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t.destination || '—'}</td>
                   <td><button className="btn btn-danger" onClick={() => delTx(t.id)} style={{ padding: '3px 8px', fontSize: 10 }}>✕</button></td>
                 </tr>
               ))}
@@ -544,21 +559,53 @@ const InsertTab: React.FC = () => {
         </div>
       )}
 
+      {tab === 'documents' && (() => {
+        const docs = transactions.reduce((acc: Record<string, any[]>, t: any) => {
+          const key = t.document || 'Без документа';
+          if (!acc[key]) acc[key] = [];
+          acc[key].push(t);
+          return acc;
+        }, {});
+        const docList = Object.entries(docs).sort(([a], [b]) => b.localeCompare(a));
+        return (
+          <div className="table-wrapper">
+            <table>
+              <thead><tr><th>Документ</th><th>Операций</th><th>Приход</th><th>Выдача</th><th>Возврат</th><th>Дата</th></tr></thead>
+              <tbody>
+                {docList.map(([doc, txs]) => {
+                  const incoming = txs.filter((t: any) => t.type === 'incoming').reduce((s: number, t: any) => s + t.quantity, 0);
+                  const outgoing = txs.filter((t: any) => t.type === 'outgoing').reduce((s: number, t: any) => s + t.quantity, 0);
+                  const returns = txs.filter((t: any) => t.type === 'return').reduce((s: number, t: any) => s + t.quantity, 0);
+                  const lastDate = txs[txs.length - 1].created_at;
+                  return (
+                    <tr key={doc}>
+                      <td style={{ fontWeight: 600 }}>{doc}</td>
+                      <td className="mono">{txs.length}</td>
+                      <td className="mono" style={{ color: 'var(--success)' }}>{incoming || '—'}</td>
+                      <td className="mono" style={{ color: 'var(--warning)' }}>{outgoing || '—'}</td>
+                      <td className="mono" style={{ color: 'var(--info)' }}>{returns || '—'}</td>
+                      <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{new Date(lastDate).toLocaleDateString('ru-RU')}</td>
+                    </tr>
+                  );
+                })}
+                {docList.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)' }}>Нет документов</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
+
       {tab === 'balance' && (
         <div className="table-wrapper">
-          <table><thead><tr><th>Продукт</th><th>Приход</th><th>Выдано</th><th>Возвращено</th><th>Остаток</th></tr></thead>
+          <table><thead><tr><th>Продукт</th><th>Выдано</th><th>Остаток</th></tr></thead>
             <tbody>
               {products.map(p => {
-                const inc = transactions.filter(t => t.product_id === p.id && t.type === 'incoming').reduce((s, t) => s + t.quantity, 0);
                 const out = transactions.filter(t => t.product_id === p.id && t.type === 'outgoing').reduce((s, t) => s + t.quantity, 0);
-                const ret = transactions.filter(t => t.product_id === p.id && t.type === 'return').reduce((s, t) => s + t.quantity, 0);
-                const bal = inc - out + ret;
+                const bal = p.balance;
                 return (
                   <tr key={p.id}>
                     <td style={{ fontWeight: 600 }}>{p.name}</td>
-                    <td className="mono" style={{ color: 'var(--success)' }}>{inc || 0}</td>
-                    <td className="mono" style={{ color: 'var(--warning)' }}>{out || 0}</td>
-                    <td className="mono" style={{ color: 'var(--info)' }}>{ret || 0}</td>
+                    <td className="mono" style={{ color: out > 0 ? 'var(--warning)' : 'var(--text-muted)' }}>{out || 0}</td>
                     <td className="mono" style={{ fontWeight: 700, color: bal > 0 ? 'var(--success)' : bal < 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{bal}</td>
                   </tr>
                 );
@@ -609,9 +656,7 @@ const InsertTab: React.FC = () => {
                      <select value={form.location_id} onChange={e => setForm({ ...form, location_id: e.target.value })}>
                        <option value="">— Не выбран —</option>
                        {locations.map(l => <option key={l.id} value={l.id}>{l.name} ({l.customer_name})</option>)}
-                     </select>
-                    <label>Назначение / проект</label>
-                    <input value={form.destination} onChange={e => setForm({ ...form, destination: e.target.value })} placeholder="Проект #..." />
+                      </select>
                   </>
                 )}
                 <label>Комментарий</label>

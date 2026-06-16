@@ -198,12 +198,12 @@ const InsertsReport: React.FC<{ q: string }> = ({ q }) => {
     ? rows.filter(r =>
         (r.product_name || '').toLowerCase().includes(q.toLowerCase()) ||
         (r.taken_by_name || '').toLowerCase().includes(q.toLowerCase()) ||
-        (r.destination || '').toLowerCase().includes(q.toLowerCase())
+        (r.location_name || '').toLowerCase().includes(q.toLowerCase())
       )
     : rows;
   return (
     <div className="table-wrapper">
-      <table><thead><tr><th>Дата</th><th>Тип</th><th>Продукт</th><th>Кол-во</th><th>Кто</th><th>Куда</th><th>Назначение</th></tr></thead>
+      <table><thead><tr><th>Дата</th><th>Тип</th><th>Продукт</th><th>Кол-во</th><th>Кто</th><th>Куда</th></tr></thead>
         <tbody>
           {filtered.map(r => (
             <tr key={r.id}>
@@ -213,10 +213,9 @@ const InsertsReport: React.FC<{ q: string }> = ({ q }) => {
               <td className="mono" style={{ fontWeight: 600 }}>{r.quantity}</td>
               <td>{r.taken_by_name || '—'}</td>
               <td>{r.location_name || '—'}</td>
-              <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{r.destination || '—'}</td>
             </tr>
           ))}
-          {filtered.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)' }}>{q ? 'Ничего не найдено' : 'Нет транзакций'}</td></tr>}
+          {filtered.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)' }}>{q ? 'Ничего не найдено' : 'Нет транзакций'}</td></tr>}
         </tbody>
       </table>
     </div>

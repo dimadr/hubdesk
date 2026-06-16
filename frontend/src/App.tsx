@@ -27,6 +27,38 @@ const ROLE_LABELS: Record<string, string> = {
   customer: 'Заказчик', storekeeper: 'Кладовщик', viewer: 'Наблюдатель', metrologist: 'Метролог', accountant: 'Бухгалтер',
 };
 
+const TICKET_TYPES: Record<string, string> = {
+  repair: 'Ремонт', installation: 'Монтаж', maintenance: 'ТО',
+  inspection: 'Инспекция', emergency: 'Авария',
+};
+
+const TICKET_STATUS_LABELS: Record<string, string> = {
+  ASSIGNED: 'Назначена', ACCEPTED: 'Принята', ON_THE_WAY: 'В пути',
+  ARRIVED: 'На месте', IN_PROGRESS: 'В работе', REVIEW: 'Проверка', COMPLETED: 'Завершена',
+};
+const TICKET_PRIORITY_LABELS: Record<string, string> = {
+  low: 'Низкий', medium: 'Средний', high: 'Высокий', critical: 'Критический',
+};
+const TICKET_TYPE_LABELS: Record<string, string> = {
+  repair: 'Ремонт', installation: 'Монтаж', maintenance: 'ТО', inspection: 'Инспекция', emergency: 'Авария',
+};
+
+const NAV_ITEMS = [
+  { key: 'tickets', label: 'Заявки', icon: '📋' },
+  { key: 'locations', label: 'Объекты', icon: '🏢' },
+  { key: 'employees', label: 'Сотрудники', icon: '👥' },
+  { key: 'warehouse', label: 'Склад', icon: '📦' },
+  { key: 'reports', label: 'Отчёты', icon: '📊' },
+  { key: 'calendar', label: 'Календарь', icon: '📅' },
+  { key: 'kanban', label: 'Моя доска', icon: '📌' },
+  { key: 'audit', label: 'Журнал', icon: '📝', adminOnly: true },
+  { key: 'admin', label: 'Админка', icon: '⚙️', adminOnly: true },
+] as const;
+
+type Page = typeof NAV_ITEMS[number]['key'];
+
+// --- Вспомогательные компоненты (объявлены ДО использования в App) ---
+
 const AuthPage: React.FC<{ onLogin: (token: string, user: any) => void }> = ({ onLogin }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
@@ -98,11 +130,6 @@ const AuthPage: React.FC<{ onLogin: (token: string, user: any) => void }> = ({ o
       </div>
     </div>
   );
-};
-
-const TICKET_TYPES: Record<string, string> = {
-  repair: 'Ремонт', installation: 'Монтаж', maintenance: 'ТО',
-  inspection: 'Инспекция', emergency: 'Авария',
 };
 
 const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; users: UserInfo[] }> = ({ onClose, onCreated, users }) => {
@@ -416,17 +443,6 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
   );
 };
 
-const TICKET_STATUS_LABELS: Record<string, string> = {
-  ASSIGNED: 'Назначена', ACCEPTED: 'Принята', ON_THE_WAY: 'В пути',
-  ARRIVED: 'На месте', IN_PROGRESS: 'В работе', REVIEW: 'Проверка', COMPLETED: 'Завершена',
-};
-const TICKET_PRIORITY_LABELS: Record<string, string> = {
-  low: 'Низкий', medium: 'Средний', high: 'Высокий', critical: 'Критический',
-};
-const TICKET_TYPE_LABELS: Record<string, string> = {
-  repair: 'Ремонт', installation: 'Монтаж', maintenance: 'ТО', inspection: 'Инспекция', emergency: 'Авария',
-};
-
 const TicketDetailModal: React.FC<{ ticket: TicketResponse; onClose: () => void }> = ({ ticket, onClose }) => {
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -569,19 +585,60 @@ const AddEmployeeModal: React.FC<{ onClose: () => void; onAdded: () => void }> =
   );
 };
 
-const NAV_ITEMS = [
-  { key: 'tickets', label: 'Заявки', icon: '📋' },
-  { key: 'locations', label: 'Объекты', icon: '🏢' },
-  { key: 'employees', label: 'Сотрудники', icon: '👥' },
-  { key: 'warehouse', label: 'Склад', icon: '📦' },
-  { key: 'reports', label: 'Отчёты', icon: '📊' },
-  { key: 'calendar', label: 'Календарь', icon: '📅' },
-  { key: 'kanban', label: 'Моя доска', icon: '📌' },
-  { key: 'audit', label: 'Журнал', icon: '📝', adminOnly: true },
-  { key: 'admin', label: 'Админка', icon: '⚙️', adminOnly: true },
-] as const;
+const EmployeesPage: React.FC<{ onAdd: () => void; refreshKey: number; isAdmin: boolean }> = ({ onAdd, refreshKey, isAdmin }) => {
+  const [users, setUsers] = useState<UserInfo[]>([]);
 
-type Page = typeof NAV_ITEMS[number]['key'];
+  useEffect(() => {
+    api.get('/users/list').then(r => setUsers(r.data)).catch(() => {});
+  }, [refreshKey]);
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('Удалить пользователя?')) return;
+    try {
+      await api.delete(`/admin/users/${id}`);
+      api.get('/users/list').then(r => setUsers(r.data)).catch(() => {});
+    } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка'); }
+  };
+
+  return (
+    <div>
+      {isAdmin && (
+        <div style={{ marginBottom: 14 }}>
+          <button className="btn btn-primary" onClick={onAdd}>+ Добавить сотрудника</button>
+        </div>
+      )}
+      <div className="table-wrapper">
+        <table>
+          <thead><tr><th>ID</th><th>ФИО</th><th>Телефон</th><th>Email</th><th>Должность</th><th>Статус</th>{isAdmin && <th></th>}</tr></thead>
+          <tbody>
+            {users.map(u => (
+              <tr key={u.id}>
+                <td className="mono" style={{ color: 'var(--text-muted)' }}>#{u.id}</td>
+                <td style={{ fontWeight: 600 }}>{u.name} {u.patronymic || ''}</td>
+                <td style={{ color: 'var(--text-secondary)' }}>{u.phone || '—'}</td>
+                <td>{u.email}</td>
+                <td><span className="status-pill" style={{ background: 'var(--primary-bg)', color: 'var(--primary)' }}>{ROLE_LABELS[u.role] || u.role}</span></td>
+                <td>
+                  {u.status === 'pending' && <span className="status-pill" style={{ background: 'var(--warning-bg)', color: 'var(--warning)' }}>Ожидает</span>}
+                  {u.status === 'rejected' && <span className="status-pill" style={{ background: 'var(--danger-bg)', color: 'var(--danger)' }}>Отклонён</span>}
+                  {(!u.status || u.status === 'active') && <span className="status-pill" style={{ background: 'var(--success-bg)', color: 'var(--success)' }}>Активен</span>}
+                </td>
+                {isAdmin && (
+                  <td>
+                    <button className="btn btn-danger" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => handleDelete(u.id)}>✕</button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+
+// --- Основной компонент App ---
 
 const App: React.FC = () => {
   const [auth, setAuth] = useState<{ token: string; user: any } | null>(null);
@@ -591,6 +648,54 @@ const App: React.FC = () => {
   const [editTicket, setEditTicket] = useState<TicketResponse | null>(null);
   const [detailTicket, setDetailTicket] = useState<TicketResponse | null>(null);
   const [confirmStatusTicket, setConfirmStatusTicket] = useState<{ ticket: TicketResponse; target: string } | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [users, setUsers] = useState<UserInfo[]>([]);
+  const [stats, setStats] = useState<{ total: number; open: number; urgent: number }>({ total: 0, open: 0, urgent: 0 });
+
+  const getInitialTheme = () => localStorage.getItem('theme') || 'dark';
+  const [theme, setTheme] = useState(getInitialTheme);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const userStr = localStorage.getItem('user');
+    if (token && userStr) {
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      setAuth({ token, user: JSON.parse(userStr) });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (auth) {
+      api.get('/users/list').then(r => setUsers(r.data)).catch(() => {});
+      api.get('/tickets').then(r => {
+        const tickets = r.data;
+        setStats({
+          total: tickets.length,
+          open: tickets.filter((t: any) => t.status !== 'COMPLETED').length,
+          urgent: tickets.filter((t: any) => t.priority === 'critical' || t.priority === 'high').length,
+        });
+      }).catch(() => {});
+    }
+  }, [auth, refreshKey]);
+
+  const handleLogin = (token: string, user: any) => {
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    localStorage.setItem('user', JSON.stringify(user));
+    localStorage.setItem('currentUserId', String(user.user_id || user.id));
+    setAuth({ token, user });
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('currentUserId');
+    setAuth(null);
+  };
 
   const handleStatusChange = async (ticket: TicketResponse, target: string) => {
     if (target === 'COMPLETED') {
@@ -618,55 +723,8 @@ const App: React.FC = () => {
       alert(e.response?.data?.detail || 'Ошибка');
     }
   };
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [users, setUsers] = useState<UserInfo[]>([]);
-  const [stats, setStats] = useState<{ total: number; open: number; urgent: number }>({ total: 0, open: 0, urgent: 0 });
 
-  const getInitialTheme = () => localStorage.getItem('theme') || 'dark';
-  const [theme, setTheme] = useState(getInitialTheme);
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
-  }, [theme]);
-
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      const userStr = localStorage.getItem('user');
-      if (userStr) setAuth({ token, user: JSON.parse(userStr) });
-    }
-  }, []);
-
-  useEffect(() => {
-    if (auth) {
-      api.get('/users/list').then(r => setUsers(r.data)).catch(() => {});
-      api.get('/tickets').then(r => {
-        const tickets = r.data;
-        setStats({
-          total: tickets.length,
-          open: tickets.filter((t: any) => t.status !== 'COMPLETED').length,
-          urgent: tickets.filter((t: any) => t.priority === 'critical' || t.priority === 'high').length,
-        });
-      }).catch(() => {});
-    }
-  }, [auth, refreshKey]);
-
-  const handleLogin = (token: string, user: any) => {
-    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    localStorage.setItem('user', JSON.stringify(user));
-    localStorage.setItem('currentUserId', String(user.user_id));
-    setAuth({ token, user });
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setAuth(null);
-  };
-
-  if (!auth) return <AuthPage onLogin={handleLogin} />;
+  if (!auth || !auth.user) return <AuthPage onLogin={handleLogin} />;
 
   const user = auth.user;
 
@@ -745,7 +803,7 @@ const App: React.FC = () => {
                 + Создать заявку
               </button>
             </div>
-            <TicketGrid key={refreshKey} users={users} onEdit={t => setEditTicket(t)} onDetail={t => setDetailTicket(t)} onStatusChange={handleStatusChange} currentUserId={user.user_id} />
+            <TicketGrid key={refreshKey} users={users} onEdit={t => setEditTicket(t)} onDetail={t => setDetailTicket(t)} onStatusChange={handleStatusChange} currentUserId={user.user_id || user.id} />
           </>
         )}
         {page === 'calendar' && <CalendarPage />}
@@ -756,64 +814,13 @@ const App: React.FC = () => {
         {page === 'employees' && <EmployeesPage onAdd={() => setShowAddEmployee(true)} refreshKey={refreshKey} isAdmin={user.role === 'admin'} />}
         {page === 'admin' && <AdminPage />}
         {page === 'audit' && <AuditLogPage />}
+
         {showCreate && <CreateTicketModal onClose={() => setShowCreate(false)} onCreated={() => setRefreshKey(k => k + 1)} users={users} />}
         {editTicket && <EditTicketModal ticket={editTicket} onClose={() => setEditTicket(null)} onSaved={() => { setEditTicket(null); setRefreshKey(k => k + 1); }} users={users} />}
         {detailTicket && <TicketDetailModal ticket={detailTicket} onClose={() => setDetailTicket(null)} />}
         {confirmStatusTicket && <CompleteTicketModal ticket={confirmStatusTicket.ticket} onConfirm={confirmComplete} onClose={() => setConfirmStatusTicket(null)} />}
         {showAddEmployee && <AddEmployeeModal onClose={() => setShowAddEmployee(false)} onAdded={() => { setShowAddEmployee(false); setRefreshKey(k => k + 1); }} />}
       </main>
-    </div>
-  );
-};
-
-const EmployeesPage: React.FC<{ onAdd: () => void; refreshKey: number; isAdmin: boolean }> = ({ onAdd, refreshKey, isAdmin }) => {
-  const [users, setUsers] = useState<UserInfo[]>([]);
-
-  useEffect(() => {
-    api.get('/users/list').then(r => setUsers(r.data)).catch(() => {});
-  }, [refreshKey]);
-
-  const handleDelete = async (id: number) => {
-    if (!confirm('Удалить пользователя?')) return;
-    try {
-      await api.delete(`/admin/users/${id}`);
-      api.get('/users/list').then(r => setUsers(r.data)).catch(() => {});
-    } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка'); }
-  };
-
-  return (
-    <div>
-      {isAdmin && (
-        <div style={{ marginBottom: 14 }}>
-          <button className="btn btn-primary" onClick={onAdd}>+ Добавить сотрудника</button>
-        </div>
-      )}
-      <div className="table-wrapper">
-        <table>
-          <thead><tr><th>ID</th><th>ФИО</th><th>Телефон</th><th>Email</th><th>Должность</th><th>Статус</th>{isAdmin && <th></th>}</tr></thead>
-          <tbody>
-            {users.map(u => (
-              <tr key={u.id}>
-                <td className="mono" style={{ color: 'var(--text-muted)' }}>#{u.id}</td>
-                <td style={{ fontWeight: 600 }}>{u.name} {u.patronymic || ''}</td>
-                <td style={{ color: 'var(--text-secondary)' }}>{u.phone || '—'}</td>
-                <td>{u.email}</td>
-                <td><span className="status-pill" style={{ background: 'var(--primary-bg)', color: 'var(--primary)' }}>{ROLE_LABELS[u.role] || u.role}</span></td>
-                <td>
-                  {u.status === 'pending' && <span className="status-pill" style={{ background: 'var(--warning-bg)', color: 'var(--warning)' }}>Ожидает</span>}
-                  {u.status === 'rejected' && <span className="status-pill" style={{ background: 'var(--danger-bg)', color: 'var(--danger)' }}>Отклонён</span>}
-                  {(!u.status || u.status === 'active') && <span className="status-pill" style={{ background: 'var(--success-bg)', color: 'var(--success)' }}>Активен</span>}
-                </td>
-                {isAdmin && (
-                  <td>
-                    <button className="btn btn-danger" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => handleDelete(u.id)}>✕</button>
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </div>
   );
 };

@@ -30,9 +30,20 @@ export const LocationsPage: React.FC = () => {
   const [editId, setEditId] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [pageError, setPageError] = useState<string | null>(null);
 
-  const load = () => {
+  const refreshLocations = async () => {
+    try {
+      const res = await api.get('/locations');
+      setLocations(res.data);
+    } catch (err) {
+      console.error("Ошибка обновления списка локаций:", err);
+    }
+  };
+
+  const initPage = () => {
     setLoading(true);
+    setPageError(null);
     Promise.all([
       api.get('/locations'),
       api.get('/users/list'),
@@ -43,7 +54,10 @@ export const LocationsPage: React.FC = () => {
         setUsers(userRes.data);
         setCustomers(custRes.data);
       })
-      .catch((err) => console.error("Ошибка инициализации страницы:", err))
+      .catch((err) => {
+        console.error("Ошибка инициализации страницы:", err);
+        setPageError("Не удалось загрузить данные страницы. Попробуйте обновить позже.");
+      })
       .finally(() => setLoading(false));
   };
 
@@ -56,13 +70,16 @@ export const LocationsPage: React.FC = () => {
     setConfirmDelete(null);
     try {
       await api.delete(`/locations/${id}`);
-      load();
+      refreshLocations();
     } catch (e: any) {
       alert(e.response?.data?.detail || 'Ошибка удаления');
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { initPage(); }, []);
+
+  if (loading) return <div style={{ padding: 24, textAlign: 'center' }}>Загрузка...</div>;
+  if (pageError) return <div style={{ padding: 24, color: 'var(--danger)' }}>{pageError}</div>;
 
   return (
     <div>
@@ -108,7 +125,7 @@ export const LocationsPage: React.FC = () => {
                 </tr>
               );
             })}
-            {locations.length === 0 && !loading && (
+            {locations.length === 0 && (
               <tr><td colSpan={10} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)' }}>Нет объектов</td></tr>
             )}
           </tbody>
@@ -119,7 +136,7 @@ export const LocationsPage: React.FC = () => {
         <LocForm
           key="add"
           onClose={() => setShowAdd(false)}
-          onSaved={() => { setShowAdd(false); load(); }}
+          onSaved={() => { setShowAdd(false); refreshLocations(); }}
           users={users}
           customers={customers}
         />
@@ -129,7 +146,7 @@ export const LocationsPage: React.FC = () => {
         <LocForm
           key={editId}
           onClose={() => setEditId(null)}
-          onSaved={() => { setEditId(null); load(); }}
+          onSaved={() => { setEditId(null); refreshLocations(); }}
           users={users}
           customers={customers}
           loc={locations.find(l => l.id === editId)}
@@ -149,13 +166,13 @@ interface LocFormProps {
 
 const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, loc }) => {
   const [name, setName] = useState(loc?.name || '');
-  const [customerId, setCustomerId] = useState<string>(loc?.customer_id?.toString() || '');
+  const [customerId, setCustomerId] = useState<string>(loc?.customer_id != null ? loc.customer_id.toString() : '');
   const [address, setAddress] = useState(loc?.address || '');
   const [contacts, setContacts] = useState(loc?.contacts || '');
   const [contactName, setContactName] = useState(loc?.contact_name || '');
   const [contactPhone, setContactPhone] = useState(loc?.contact_phone || '');
   const [contactEmail, setContactEmail] = useState(loc?.contact_email || '');
-  const [engId, setEngId] = useState<string>(loc?.assigned_engineer_id?.toString() || '');
+  const [engId, setEngId] = useState<string>(loc?.assigned_engineer_id != null ? loc.assigned_engineer_id.toString() : '');
   const [contractNo, setContractNo] = useState(loc?.contract_number || '');
   const [from, setFrom] = useState(loc?.contract_valid_from ? loc.contract_valid_from.slice(0, 10) : '');
   const [to, setTo] = useState(loc?.contract_valid_to ? loc.contract_valid_to.slice(0, 10) : '');
@@ -164,7 +181,10 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
   const [error, setError] = useState('');
 
   const handleInnLookup = async () => {
-    if (!inn || inn.length < 10) { setError('Введите корректный ИНН (10 или 12 цифр)'); return; }
+    if (!inn || (inn.length !== 10 && inn.length !== 12)) {
+      setError('Введите корректный ИНН (10 или 12 цифр)');
+      return;
+    }
     setInnLoading(true);
     setError('');
     try {
@@ -272,8 +292,8 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
         </div>
 
         <div className="modal-actions" style={{ marginTop: 20 }}>
-          <button className="btn btn-primary" onClick={submit}>{loc ? 'Сохранить' : 'Добавить'}</button>
-          <button className="btn btn-secondary" onClick={onClose}>Отмена</button>
+          <button className="btn btn-primary" onClick={submit}> {loc ? 'Сохранить' : 'Добавить'} </button>
+          <button className="btn btn-secondary" onClick={onClose} type="button">Отмена</button>
         </div>
       </div>
     </div>
