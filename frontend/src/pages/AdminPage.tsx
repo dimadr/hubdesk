@@ -14,7 +14,7 @@ interface PendingUser { id: number; email: string; name: string; role: string; s
 
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Администратор', engineer: 'Инженер', dispatcher: 'Диспетчер',
-  customer: 'Заказчик', storekeeper: 'Кладовщик', viewer: 'Наблюдатель', metrologist: 'Метролог', accountant: 'Бухгалтер',
+  customer: 'Заказчик', storekeeper: 'Кладовщик', viewer: 'Наблюдатель', metrologist: 'Метролог', accountant: 'Бухгалтер', manager: 'Менеджер',
 };
 
 export const AdminPage: React.FC = () => {
