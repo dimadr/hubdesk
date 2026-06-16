@@ -55,6 +55,12 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
 
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'manager'"))
+    except Exception:
+        pass
+
     yield
 
     logger.info("Остановка приложения: завершение фонового воркера...")

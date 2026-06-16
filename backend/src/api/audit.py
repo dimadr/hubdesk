@@ -45,7 +45,7 @@ async def list_logs(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if user.role != UserRole.admin:
+    if user.role not in (UserRole.admin, UserRole.manager):
         raise HTTPException(403, "Недостаточно прав для просмотра логов")
 
     conditions = []

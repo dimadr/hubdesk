@@ -3,8 +3,8 @@ services:
     image: postgres:15-alpine
     environment:
       POSTGRES_DB: fsm
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports: ["5433:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     restart: unless-stopped
@@ -20,7 +20,7 @@ services:
       dockerfile: docker/Dockerfile
     ports: ["8002:8000"]
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/fsm
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/fsm
       REDIS_URL: redis://redis:6379/0
     env_file: ../backend/.env
     depends_on: [db, redis]
