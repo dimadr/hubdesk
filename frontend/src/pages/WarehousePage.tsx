@@ -15,367 +15,453 @@ const NOM_TYPES: Record<string, string> = { material: 'Материал', produc
 export const WarehousePage: React.FC = () => {
   const [tab, setTab] = useState<'warehouses' | 'nomenclature' | 'docs' | 'balances' | 'replacement' | 'insert'>('docs');
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [nomenclatures, setNomen] = useState<NomenclatureItem[]>([]);
+  const [nomenclature, setNomenclature] = useState<NomenclatureItem[]>([]);
   const [docs, setDocs] = useState<Doc[]>([]);
   const [balances, setBalances] = useState<Balance[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [editingWh, setEditingWh] = useState<number | null>(null);
-  const [editWhName, setEditWhName] = useState('');
-  const [newWhName, setNewWhName] = useState('');
-  const [balWhFilter, setBalWhFilter] = useState<number | ''>('');
-  const [balSearch, setBalSearch] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  const loadAll = async () => {
+  const [showWhModal, setShowWhModal] = useState(false);
+  const [whForm, setWhForm] = useState({ id: null as number | null, name: '', type: 'physical' });
+
+  const [showNomModal, setShowNomModal] = useState(false);
+  const [nomForm, setNomForm] = useState({ id: null as number | null, name: '', type: 'material', unit: 'шт' });
+
+  const [showDocModal, setShowDocModal] = useState(false);
+  const [docForm, setDocForm] = useState({
+    doc_type: 'INFLOW',
+    source_warehouse_id: '',
+    target_warehouse_id: '',
+    lines: [{ nomenclature_id: '', quantity: 1 }]
+  });
+
+  const loadData = async () => {
     setLoading(true);
     try {
-      const [w, n, d, b] = await Promise.all([
+      const [whRes, nomRes, docRes, balRes] = await Promise.all([
         api.get('/warehouses'),
         api.get('/nomenclature'),
-        api.get('/warehouse-documents'),
-        api.get('/balances'),
+        api.get('/warehouse-docs'),
+        api.get('/warehouse-balances')
       ]);
-      setWarehouses(w.data); setNomen(n.data); setDocs(d.data); setBalances(b.data);
-    } catch {} finally { setLoading(false); }
+      setWarehouses(whRes.data);
+      setNomenclature(nomRes.data);
+      setDocs(docRes.data);
+      setBalances(balRes.data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => {
+    loadData();
+  }, []);
 
-  const nomName = (id: number) => nomenclatures.find(n => n.id === id)?.name || `#${id}`;
-  const whName = (id: number | null) => id ? warehouses.find(w => w.id === id)?.name || `#${id}` : '—';
-
-  const doAction = async (docId: number, action: string) => {
-    await api.patch(`/warehouse-documents/${docId}/${action}`);
-    loadAll();
+  const handleSaveWarehouse = async () => {
+    if (!whForm.name) return;
+    try {
+      if (whForm.id) {
+        await api.put(`/warehouses/${whForm.id}`, { name: whForm.name, type: whForm.type });
+      } else {
+        await api.post('/warehouses', { name: whForm.name, type: whForm.type });
+      }
+      setShowWhModal(false);
+      loadData();
+    } catch (e) { alert('Ошибка сохранения склада'); }
   };
+
+  const handleSaveNomenclature = async () => {
+    if (!nomForm.name) return;
+    try {
+      if (nomForm.id) {
+        await api.put(`/nomenclature/${nomForm.id}`, { name: nomForm.name, type: nomForm.type, unit: nomForm.unit });
+      } else {
+        await api.post('/nomenclature', { name: nomForm.name, type: nomForm.type, unit: nomForm.unit });
+      }
+      setShowNomModal(false);
+      loadData();
+    } catch (e) { alert('Ошибка сохранения номенклатуры'); }
+  };
+
+  const handleCreateDoc = async () => {
+    try {
+      const payload = {
+        doc_type: docForm.doc_type,
+        source_warehouse_id: docForm.source_warehouse_id ? Number(docForm.source_warehouse_id) : null,
+        target_warehouse_id: docForm.target_warehouse_id ? Number(docForm.target_warehouse_id) : null,
+        lines: docForm.lines.map(l => ({
+          nomenclature_id: Number(l.nomenclature_id),
+          quantity: Number(l.quantity)
+        }))
+      };
+      await api.post('/warehouse-docs', payload);
+      setShowDocModal(false);
+      loadData();
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Ошибка создания документа');
+    }
+  };
+
+  const handleAccountDoc = async (id: number) => {
+    try {
+      await api.post(`/warehouse-docs/${id}/account`);
+      loadData();
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Ошибка проведения документа');
+    }
+  };
+
+  if (loading) return <div className="loading">Загрузка данных склада...</div>;
 
   return (
-    <div>
-      <div className="tabs" style={{ marginBottom: 16, display: 'inline-flex' }}>
-        {(['docs', 'warehouses', 'nomenclature', 'balances', 'replacement', 'insert'] as const).map(t => (
-          <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
-            {t === 'docs' ? 'Документы' : t === 'warehouses' ? 'Склады' : t === 'nomenclature' ? 'Номенклатура' : t === 'replacement' ? 'Подменный фонд' : t === 'insert' ? 'Склад вставок' : 'Остатки'}
-          </button>
-        ))}
+    <div className="card">
+      <div className="tabs">
+        <button className={`tab ${tab === 'docs' ? 'active' : ''}`} onClick={() => setTab('docs')}>Документы</button>
+        <button className={`tab ${tab === 'balances' ? 'active' : ''}`} onClick={() => setTab('balances')}>Остатки</button>
+        <button className={`tab ${tab === 'warehouses' ? 'active' : ''}`} onClick={() => setTab('warehouses')}>Склады</button>
+        <button className={`tab ${tab === 'nomenclature' ? 'active' : ''}`} onClick={() => setTab('nomenclature')}>Номенклатура</button>
+        <button className={`tab ${tab === 'replacement' ? 'active' : ''}`} onClick={() => setTab('replacement')}>Замена подменного фонда</button>
+        <button className={`tab ${tab === 'insert' ? 'active' : ''}`} onClick={() => setTab('insert')}>Вставки</button>
       </div>
 
-      {loading && <div className="loading">Загрузка...</div>}
-
-      {tab === 'docs' && (
-        <DocumentsTab docs={docs} warehouses={warehouses} nomenclatures={nomenclatures} nomName={nomName} whName={whName} doAction={doAction} onRefresh={loadAll} />
-      )}
-      {tab === 'warehouses' && (
-        <div>
-          <div className="page-header" style={{ marginBottom: 12 }}>
-            <h2 style={{ fontSize: 16, fontWeight: 700 }}>Склады</h2>
+      <div style={{ marginTop: 16 }}>
+        {tab === 'warehouses' && (
+          <div>
+            <div className="page-header" style={{ marginTop: 0 }}>
+              <button className="btn btn-primary" onClick={() => { setWhForm({ id: null, name: '', type: 'physical' }); setShowWhModal(true); }}>+ Склад</button>
+            </div>
+            <div className="table-wrapper">
+              <table>
+                <thead><tr><th>ID</th><th>Название</th><th>Тип</th><th>Действия</th></tr></thead>
+                <tbody>
+                  {warehouses.map(w => (
+                    <tr key={w.id}>
+                      <td>{w.id}</td>
+                      <td>{w.name}</td>
+                      <td>{WAREHOUSE_TYPES[w.type] || w.type}</td>
+                      <td>
+                        <button className="btn btn-secondary" onClick={() => { setWhForm({ id: w.id, name: w.name, type: w.type }); setShowWhModal(true); }} style={{ padding: '2px 6px', fontSize: 11 }}>✎</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
+        )}
+
+        {tab === 'nomenclature' && (
+          <div>
+            <div className="page-header" style={{ marginTop: 0 }}>
+              <button className="btn btn-primary" onClick={() => { setNomForm({ id: null, name: '', type: 'material', unit: 'шт' }); setShowNomModal(true); }}>+ Номенклатура</button>
+            </div>
+            <div className="table-wrapper">
+              <table>
+                <thead><tr><th>ID</th><th>Название</th><th>Тип</th><th>Ед. изм.</th><th>Действия</th></tr></thead>
+                <tbody>
+                  {nomenclature.map(n => (
+                    <tr key={n.id}>
+                      <td>{n.id}</td>
+                      <td>{n.name}</td>
+                      <td>{NOM_TYPES[n.type] || n.type}</td>
+                      <td>{n.unit}</td>
+                      <td>
+                        <button className="btn btn-secondary" onClick={() => { setNomForm({ id: n.id, name: n.name, type: n.type, unit: n.unit }); setShowNomModal(true); }} style={{ padding: '2px 6px', fontSize: 11 }}>✎</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {tab === 'docs' && (
+          <div>
+            <div className="page-header" style={{ marginTop: 0 }}>
+              <button className="btn btn-primary" onClick={() => {
+                setDocForm({ doc_type: 'INFLOW', source_warehouse_id: '', target_warehouse_id: '', lines: [{ nomenclature_id: '', quantity: 1 }] });
+                setShowDocModal(true);
+              }}>+ Создать документ</button>
+            </div>
+            <div className="table-wrapper">
+              <table>
+                <thead><tr><th>ID</th><th>Тип</th><th>Статус</th><th>Откуда</th><th>Куда</th><th>Позиций</th><th>Дата</th><th>Действия</th></tr></thead>
+                <tbody>
+                  {docs.map(d => (
+                    <tr key={d.id}>
+                      <td>{d.id}</td>
+                      <td>{DOC_TYPES[d.doc_type as keyof typeof DOC_TYPES] || d.doc_type}</td>
+                      <td><span className={`status-pill status-${d.status.toLowerCase()}`}>{DOC_STATUS[d.status] || d.status}</span></td>
+                      <td>{warehouses.find(w => w.id === d.source_warehouse_id)?.name || '—'}</td>
+                      <td>{warehouses.find(w => w.id === d.target_warehouse_id)?.name || '—'}</td>
+                      <td>{d.lines?.length || 0}</td>
+                      <td>{new Date(d.created_at).toLocaleString()}</td>
+                      <td>
+                        {d.status === 'DRAFT' && (
+                          <button className="btn btn-success" onClick={() => handleAccountDoc(d.id)} style={{ padding: '2px 6px', fontSize: 11 }}>Провести</button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {tab === 'balances' && (
           <div className="table-wrapper">
-            <table><thead><tr><th>ID</th><th>Название</th><th>Тип</th><th></th></tr></thead>
+            <table>
+              <thead><tr><th>Склад</th><th>Номенклатура</th><th>Доступный остаток</th></tr></thead>
               <tbody>
-                {warehouses.map(w => (
-                  <tr key={w.id} style={{ cursor: 'pointer' }} onClick={() => { setBalWhFilter(w.id); setTab('balances'); }}>
-                    <td className="mono" style={{ color: 'var(--text-muted)' }}>#{w.id}</td>
-                    <td style={{ fontWeight: 600 }}>
-                      {editingWh === w.id
-                        ? <input value={editWhName} onChange={e => setEditWhName(e.target.value)} onClick={e => e.stopPropagation()} style={{ padding: '2px 6px', width: '80%' }} />
-                        : w.name}
-                    </td>
-                    <td><span className="status-pill" style={{ background: 'var(--info-bg)', color: 'var(--info)' }}>{WAREHOUSE_TYPES[w.type] || w.type}</span></td>
-                    <td onClick={e => e.stopPropagation()}>
-                      {editingWh === w.id ? (
-                        <>
-                          <button className="btn btn-success" style={{ padding: '2px 6px', fontSize: 10 }} onClick={async () => { try { await api.patch(`/warehouses/${w.id}`, { name: editWhName }); setEditingWh(null); loadAll(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка'); } }}>✓</button>
-                          <button className="btn btn-secondary" style={{ padding: '2px 6px', fontSize: 10, marginLeft: 4 }} onClick={() => setEditingWh(null)}>✕</button>
-                        </>
-                      ) : (
-                        <>
-                          <button className="btn btn-secondary" style={{ padding: '2px 6px', fontSize: 10 }} onClick={() => { setEditingWh(w.id); setEditWhName(w.name); }}>✎</button>
-                          <button className="btn btn-danger" style={{ padding: '2px 6px', fontSize: 10, marginLeft: 4 }} onClick={async () => { try { await api.delete(`/warehouses/${w.id}`); loadAll(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка'); } }}>✕</button>
-                        </>
-                      )}
-                    </td>
+                {balances.map((b, idx) => (
+                  <tr key={idx}>
+                    <td>{warehouses.find(w => w.id === b.warehouse_id)?.name || `Склад ID ${b.warehouse_id}`}</td>
+                    <td>{nomenclature.find(n => n.id === b.nomenclature_id)?.name || `Номенклатура ID ${b.nomenclature_id}`}</td>
+                    <td className="mono" style={{ fontWeight: 'bold' }}>{b.quantity}</td>
                   </tr>
                 ))}
-                <tr>
-                  <td colSpan={2}>
-                    <input placeholder="Название нового склада" value={newWhName} onChange={e => setNewWhName(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, width: '100%' }} />
-                  </td>
-                  <td colSpan={2}>
-                    <button className="btn btn-primary" style={{ padding: '4px 12px', fontSize: 12 }} onClick={async () => { if (!newWhName.trim()) return; try { await api.post('/warehouses', { name: newWhName, type: 'physical' }); setNewWhName(''); loadAll(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка'); } }}>+ Добавить</button>
-                  </td>
-                </tr>
+                {balances.length === 0 && <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>На складах пусто</td></tr>}
               </tbody>
             </table>
           </div>
-        </div>
-      )}
-      {tab === 'nomenclature' && (
-        <div className="table-wrapper">
-          <table><thead><tr><th>ID</th><th>Название</th><th>Тип</th><th>Ед. изм.</th></tr></thead>
-            <tbody>{nomenclatures.map(n => (<tr key={n.id}><td className="mono" style={{ color: 'var(--text-muted)' }}>#{n.id}</td><td style={{fontWeight:600}}>{n.name}</td><td><span className="status-pill" style={{ background: 'var(--primary-bg)', color: 'var(--primary)' }}>{NOM_TYPES[n.type] || n.type}</span></td><td className="mono">{n.unit}</td></tr>))}</tbody>
-          </table>
-        </div>
-      )}
-      {tab === 'balances' && (
-        <div>
-          <div className="page-header" style={{ marginBottom: 12, display: 'flex', gap: 10, alignItems: 'center' }}>
-            <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Остатки</h2>
-            <select value={balWhFilter} onChange={e => setBalWhFilter(e.target.value ? Number(e.target.value) : '')}
-              style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-surface)', color: 'var(--text)', fontSize: 12 }}>
-              <option value="">— Все склады —</option>
-              {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+        )}
+
+        {tab === 'replacement' && <ReplacementTab warehouses={warehouses} nomenclature={nomenclature} loadBalances={loadData} />}
+        {tab === 'insert' && <InsertTab />}
+      </div>
+
+      {showWhModal && (
+        <div className="modal-overlay" onClick={() => setShowWhModal(false)}>
+          <div className="modal-card" onClick={e => e.stopPropagation()}>
+            <h3>{whForm.id ? 'Редактировать склад' : 'Добавить склад'}</h3>
+            <label>Название</label>
+            <input value={whForm.name} onChange={e => setWhForm({ ...whForm, name: e.target.value })} placeholder="Основной склад" />
+            <label>Тип склада</label>
+            <select value={whForm.type} onChange={e => setWhForm({ ...whForm, type: e.target.value })}>
+              <option value="physical">Физический объект / бокс</option>
+              <option value="personal">Персональный (машина инженера)</option>
             </select>
-            <input type="text" placeholder="Поиск по названию..." value={balSearch} onChange={e => setBalSearch(e.target.value)}
-              style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-surface)', color: 'var(--text)', fontSize: 12, width: 180 }} />
-            <span className="text-muted" style={{ fontSize: 12 }}>
-              {balances.filter(b => (!balWhFilter || b.warehouse_id === balWhFilter) && (!balSearch || nomName(b.nomenclature_id).toLowerCase().includes(balSearch.toLowerCase()))).length} позиций
-            </span>
-          </div>
-          <div className="table-wrapper">
-            <table><thead><tr><th>Склад</th><th>Номенклатура</th><th>Количество</th></tr></thead>
-              <tbody>
-                {balances
-                  .filter(b => (!balWhFilter || b.warehouse_id === balWhFilter) && (!balSearch || nomName(b.nomenclature_id).toLowerCase().includes(balSearch.toLowerCase())))
-                  .map((b, i) => (<tr key={i}><td>{whName(b.warehouse_id)}</td><td>{nomName(b.nomenclature_id)}</td><td className="mono" style={{fontWeight:600}}>{b.quantity}</td></tr>))
-                }
-              </tbody>
-            </table>
+            <div className="modal-actions">
+              <button className="btn btn-primary" onClick={handleSaveWarehouse}>Сохранить</button>
+              <button className="btn btn-secondary" onClick={() => setShowWhModal(false)}>Отмена</button>
+            </div>
           </div>
         </div>
       )}
-      {tab === 'replacement' && <ReplacementTab />}
-      {tab === 'insert' && <InsertTab />}
+
+      {showNomModal && (
+        <div className="modal-overlay" onClick={() => setShowNomModal(false)}>
+          <div className="modal-card" onClick={e => e.stopPropagation()}>
+            <h3>{nomForm.id ? 'Редактировать позицию' : 'Добавить номенклатуру'}</h3>
+            <label>Название</label>
+            <input value={nomForm.name} onChange={e => setNomForm({ ...nomForm, name: e.target.value })} placeholder="Кабель КВВГ 4х1.5" />
+            <label>Тип</label>
+            <select value={nomForm.type} onChange={e => setNomForm({ ...nomForm, type: e.target.value })}>
+              <option value="material">Материал</option>
+              <option value="product">Оборудование / Продукт</option>
+              <option value="service">Услуга</option>
+              <option value="work">Работа</option>
+            </select>
+            <label>Единица измерения</label>
+            <input value={nomForm.unit} onChange={e => setNomForm({ ...nomForm, unit: e.target.value })} placeholder="шт, м, кг" />
+            <div className="modal-actions">
+              <button className="btn btn-primary" onClick={handleSaveNomenclature}>Сохранить</button>
+              <button className="btn btn-secondary" onClick={() => setShowNomModal(false)}>Отмена</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDocModal && (
+        <div className="modal-overlay" onClick={() => setShowDocModal(false)}>
+          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: 600, width: '100%' }}>
+            <h3>Новый складской документ</h3>
+            <label>Тип документа</label>
+            <select value={docForm.doc_type} onChange={e => setDocForm({ ...docForm, doc_type: e.target.value, source_warehouse_id: '', target_warehouse_id: '' })}>
+              <option value="INFLOW">Приход на склад (от поставщика / произведено)</option>
+              <option value="TRANSFER">Внутреннее перемещение между складами</option>
+              <option value="WRITE_OFF">Списание (утилизация, брак, расход безвозвратный)</option>
+            </select>
+
+            <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+              {docForm.doc_type !== 'INFLOW' && (
+                <div style={{ flex: 1 }}>
+                  <label>Склад-источник (Откуда)</label>
+                  <select value={docForm.source_warehouse_id} onChange={e => setDocForm({ ...docForm, source_warehouse_id: e.target.value })}>
+                    <option value="">— Выберите склад —</option>
+                    {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                  </select>
+                </div>
+              )}
+              {docForm.doc_type !== 'WRITE_OFF' && (
+                <div style={{ flex: 1 }}>
+                  <label>Склад-получатель (Куда)</label>
+                  <select value={docForm.target_warehouse_id} onChange={e => setDocForm({ ...docForm, target_warehouse_id: e.target.value })}>
+                    <option value="">— Выберите склад —</option>
+                    {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <span>Спецификация (строки документа)</span>
+                <button type="button" className="btn btn-secondary" style={{ padding: '2px 8px', fontSize: 11 }}
+                  onClick={() => setDocForm({ ...docForm, lines: [...docForm.lines, { nomenclature_id: '', quantity: 1 }] })}>+ Добавить строку</button>
+              </label>
+
+              {docForm.lines.map((line, idx) => (
+                <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                  <select style={{ flex: 2 }} value={line.nomenclature_id} onChange={e => {
+                    const l = [...docForm.lines]; l[idx].nomenclature_id = e.target.value; setDocForm({ ...docForm, lines: l });
+                  }}>
+                    <option value="">— Выберите товар —</option>
+                    {nomenclature.map(n => <option key={n.id} value={n.id}>{n.name} ({n.unit})</option>)}
+                  </select>
+                  <input style={{ flex: 1 }} type="number" min="1" value={line.quantity} onChange={e => {
+                    const l = [...docForm.lines]; l[idx].quantity = Number(e.target.value); setDocForm({ ...docForm, lines: l });
+                  }} />
+                  <button type="button" className="btn btn-danger" style={{ padding: '4px 8px' }} onClick={() => {
+                    if (docForm.lines.length === 1) return;
+                    setDocForm({ ...docForm, lines: docForm.lines.filter((_, i) => i !== idx) });
+                  }}>✕</button>
+                </div>
+              ))}
+            </div>
+
+            <div className="modal-actions" style={{ marginTop: 16 }}>
+              <button className="btn btn-primary" onClick={handleCreateDoc}>Создать (черновик)</button>
+              <button className="btn btn-secondary" onClick={() => setShowDocModal(false)}>Отмена</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-const ReplacementTab: React.FC = () => {
-  const [devices, setDevices] = useState<any[]>([]);
+const ReplacementTab: React.FC<{ warehouses: Warehouse[]; nomenclature: NomenclatureItem[]; loadBalances: () => void }> = ({ warehouses, nomenclature, loadBalances }) => {
+  const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editId, setEditId] = useState<number | null>(null);
-  const [form, setForm] = useState({ name: '', verification_date: '', verification_interval_months: '', verification_expiry: '', taken_by_id: '', location_id: '', return_date: '', passport_scan: '' });
-  const [users, setUsers] = useState<any[]>([]);
-  const [locations, setLocations] = useState<any[]>([]);
-  const [error, setError] = useState('');
+  const [showModal, setShowModal] = useState(false);
+  const [tickets, setTickets] = useState<any[]>([]);
+  const [form, setForm] = useState({ nomenclature_id: '', serial_number: '', status: 'available', warehouse_id: '', ticket_id: '', comment: '' });
 
-  const load = () => {
+  const load = async () => {
     setLoading(true);
-    Promise.all([
-      api.get('/replacement-devices'),
-      api.get('/users/list'),
-      api.get('/locations'),
-    ]).then(([d, u, l]) => {
-      setDevices(d.data); setUsers(u.data); setLocations(l.data); setLoading(false);
-    }).catch(() => setLoading(false));
+    try {
+      const res = await api.get('/warehouse-replacement');
+      setItems(res.data);
+      const tRes = await api.get('/tickets');
+      setTickets(tRes.data?.items || tRes.data || []);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
   };
 
   useEffect(() => { load(); }, []);
 
-  const openForm = (d?: any) => {
-    if (d) { setEditId(d.id); setForm({ name: d.name, verification_date: d.verification_date || '', verification_expiry: d.verification_expiry || '', verification_interval_months: d.verification_interval_months?.toString() || '', taken_by_id: d.taken_by_id?.toString() || '', location_id: d.location_id?.toString() || '', return_date: d.return_date || '', passport_scan: d.passport_scan || '' }); }
-    else { setEditId(null); setForm({ name: '', verification_date: '', verification_expiry: '', verification_interval_months: '', taken_by_id: '', location_id: '', return_date: '', passport_scan: '' }); }
-    setShowForm(true); setError('');
-  };
-
-  const submit = async () => {
-    if (!form.name.trim()) { setError('Название обязательно'); return; }
+  const save = async () => {
+    if (!form.nomenclature_id || !form.serial_number || !form.warehouse_id) { alert('Заполните обязательные поля'); return; }
     try {
-      const expiry = form.verification_date && form.verification_interval_months
-        ? new Date(new Date(form.verification_date).setMonth(new Date(form.verification_date).getMonth() + Number(form.verification_interval_months))).toISOString().slice(0, 10)
-        : form.verification_expiry || null;
-      const body: any = { name: form.name, verification_date: form.verification_date || null, verification_interval_months: form.verification_interval_months ? Number(form.verification_interval_months) : null, verification_expiry: expiry, taken_by_id: form.taken_by_id ? Number(form.taken_by_id) : null, location_id: form.location_id ? Number(form.location_id) : null, return_date: form.return_date || null, passport_scan: form.passport_scan || null };
-      if (editId) await api.patch(`/replacement-devices/${editId}`, body);
-      else await api.post('/replacement-devices', body);
-      setShowForm(false); load();
-    } catch (e: any) { setError(e.response?.data?.detail || 'Ошибка'); }
+      await api.post('/warehouse-replacement', {
+        nomenclature_id: Number(form.nomenclature_id),
+        serial_number: form.serial_number,
+        status: form.status,
+        warehouse_id: Number(form.warehouse_id),
+        ticket_id: form.ticket_id ? Number(form.ticket_id) : null,
+        comment: form.comment || null
+      });
+      setShowModal(false);
+      load();
+      loadBalances();
+    } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка добавления'); }
   };
 
-  const remove = async (id: number) => { if (!confirm('Удалить?')) return; try { await api.delete(`/replacement-devices/${id}`); load(); } catch {} };
+  const changeStatus = async (id: number, newStatus: string) => {
+    try {
+      await api.patch(`/warehouse-replacement/${id}/status`, { status: newStatus });
+      load();
+    } catch (e) { alert('Не удалось обновить статус устройства'); }
+  };
 
-  if (loading) return <div className="loading">Загрузка...</div>;
+  if (loading) return <div>Загрузка реестра фонда...</div>;
 
   return (
     <div>
-      <div className="page-header"><h2>Подменный фонд</h2><button className="btn btn-primary" onClick={() => openForm()}>+ Добавить прибор</button></div>
+      <div className="page-header" style={{ marginTop: 0 }}>
+        <button className="btn btn-primary" onClick={() => {
+          setForm({ nomenclature_id: '', serial_number: '', status: 'available', warehouse_id: '', ticket_id: '', comment: '' });
+          setShowModal(true);
+        }}>+ Зарегистрировать прибор фонда</button>
+      </div>
+
       <div className="table-wrapper">
         <table>
-          <thead><tr><th>Название</th><th>Дата поверки</th><th>Интервал</th><th>Поверка до</th><th>Кто взял</th><th>Объект</th><th>Возврат</th><th></th></tr></thead>
+          <thead><tr><th>ID</th><th>Прибор</th><th>Серийный номер</th><th>Где находится</th><th>Статус фонда</th><th>Связанный тикет</th><th>Комментарий</th><th>Действия</th></tr></thead>
           <tbody>
-            {devices.map(d => (
-              <tr key={d.id}>
-                <td style={{ fontWeight: 600 }}>{d.name}</td>
-                <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.verification_date ? new Date(d.verification_date).toLocaleDateString('ru-RU') : '—'}</td>
-                <td className="mono" style={{ fontSize: 12 }}>{d.verification_interval_months ? `${d.verification_interval_months} мес` : '—'}</td>
-                <td style={{ fontSize: 12, color: d.verification_expiry && new Date(d.verification_expiry) < new Date() ? 'var(--danger)' : 'var(--text-secondary)' }}>{d.verification_expiry ? new Date(d.verification_expiry).toLocaleDateString('ru-RU') : '—'}</td>
-                <td>{d.taken_by_name || '—'}</td>
-                <td style={{ fontSize: 12 }}>{d.location_name || '—'}</td>
-                <td style={{ fontSize: 12 }}>{d.return_date ? new Date(d.return_date).toLocaleDateString('ru-RU') : '—'}</td>
+            {items.map(i => (
+              <tr key={i.id}>
+                <td>{i.id}</td>
+                <td style={{ fontWeight: 600 }}>{nomenclature.find(n => n.id === i.nomenclature_id)?.name || `ID ${i.nomenclature_id}`}</td>
+                <td className="mono">{i.serial_number}</td>
+                <td>{warehouses.find(w => w.id === i.warehouse_id)?.name || `Склад ID ${i.warehouse_id}`}</td>
                 <td>
-                  <button className="btn btn-secondary" onClick={() => openForm(d)} style={{ padding: '3px 8px', fontSize: 10 }}>✎</button>
-                  <button className="btn btn-danger" onClick={() => remove(d.id)} style={{ padding: '3px 8px', fontSize: 10, marginLeft: 4 }}>✕</button>
+                  <span className={`status-pill ${i.status === 'available' ? 'status-accounted' : i.status === 'installed' ? 'status-delivery' : 'status-approval'}`}>
+                    {i.status === 'available' ? 'Готов к выдаче' : i.status === 'installed' ? 'Установлен на объекте' : i.status === 'broken' ? 'Неисправен / Ремонт' : i.status}
+                  </span>
+                </td>
+                <td>{i.ticket_id ? `Заявка #${i.ticket_id}` : '—'}</td>
+                <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{i.comment || '—'}</td>
+                <td>
+                  {i.status === 'available' && <button className="btn btn-secondary" style={{ padding: '2px 6px', fontSize: 10 }} onClick={() => changeStatus(i.id, 'broken')}>В ремонт</button>}
+                  {i.status === 'broken' && <button className="btn btn-success" style={{ padding: '2px 6px', fontSize: 10 }} onClick={() => changeStatus(i.id, 'available')}>Отремонтирован</button>}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      {showForm && (
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+
+      {showModal && (
+        <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-card" onClick={e => e.stopPropagation()}>
-            <h3>{editId ? 'Редактировать' : 'Добавить'} прибор</h3>
-            {error && <p style={{ color: 'var(--danger)', fontSize: 13, background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 6 }}>{error}</p>}
-            <label>Название прибора *</label>
-            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Манометр МП-160" />
-            <div style={{ display: 'flex', gap: 8 }}>
-              <div style={{ flex: 1 }}><label>Дата поверки</label><input type="date" value={form.verification_date} onChange={e => setForm({ ...form, verification_date: e.target.value })} /></div>
-              <div style={{ flex: 1 }}><label>Межповерочный интервал (мес)</label><input type="number" value={form.verification_interval_months} onChange={e => setForm({ ...form, verification_interval_months: e.target.value })} placeholder="12" /></div>
+            <h3>Регистрация единицы подменного фонда</h3>
+            <label>Прибор / Номенклатура *</label>
+            <select value={form.nomenclature_id} onChange={e => setForm({ ...form, nomenclature_id: e.target.value })}>
+              <option value="">— Выберите модель —</option>
+              {nomenclature.filter(n => n.type === 'product').map(n => <option key={n.id} value={n.id}>{n.name}</option>)}
+            </select>
+            <label>Серийный номер *</label>
+            <input value={form.serial_number} onChange={e => setForm({ ...form, serial_number: e.target.value })} placeholder="S/N: 2026-X991" />
+            <label>Начальное местоположение (Склад) *</label>
+            <select value={form.warehouse_id} onChange={e => setForm({ ...form, warehouse_id: e.target.value })}>
+              <option value="">— Выберите склад хранения —</option>
+              {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+            </select>
+            <label>Текущий статус фонда</label>
+            <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
+              <option value="available">Доступен для установки (Новый / Рабочий)</option>
+              <option value="installed">Уже смонтирован на объекте</option>
+              <option value="broken">Требует ремонта / Дефектовка</option>
+            </select>
+            <label>Привязка к заявке (необязательно)</label>
+            <select value={form.ticket_id} onChange={e => setForm({ ...form, ticket_id: e.target.value })}>
+              <option value="">— Нет связи —</option>
+              {tickets.map((t: any) => <option key={t.id} value={t.id}>#{t.id} — {t.title || t.description?.slice(0,30)}</option>)}
+            </select>
+            <label>Комментарий / История</label>
+            <input value={form.comment} onChange={e => setForm({ ...form, comment: e.target.value })} placeholder="Снят с объекта АТП-2 после поверки" />
+            <div className="modal-actions" style={{ marginTop: 14 }}>
+              <button className="btn btn-primary" onClick={save}>Сохранить в фонд</button>
+              <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Отмена</button>
             </div>
-            {form.verification_date && form.verification_interval_months && (
-              <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '4px 0' }}>
-                Поверка до: {new Date(new Date(form.verification_date).setMonth(new Date(form.verification_date).getMonth() + Number(form.verification_interval_months))).toLocaleDateString('ru-RU')}
-              </p>
-            )}
-            {form.verification_expiry && !form.verification_date && (
-              <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '4px 0' }}>
-                Поверка до: {new Date(form.verification_expiry).toLocaleDateString('ru-RU')}
-              </p>
-            )}
-            <label>ФИО кто взял прибор</label>
-            <select value={form.taken_by_id} onChange={e => setForm({ ...form, taken_by_id: e.target.value })}><option value="">— На складе —</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
-            <label>На какой объект взят прибор</label>
-            <select value={form.location_id} onChange={e => setForm({ ...form, location_id: e.target.value })}><option value="">— Не выбран —</option>{locations.map(l => <option key={l.id} value={l.id}>{l.name} ({l.customer_name})</option>)}</select>
-            <label>Примерная дата возврата</label>
-            <input type="date" value={form.return_date} onChange={e => setForm({ ...form, return_date: e.target.value })} />
-            <label>Фото/скан паспорта (ссылка)</label>
-            <input value={form.passport_scan} onChange={e => setForm({ ...form, passport_scan: e.target.value })} placeholder="https://..." />
-            <div className="modal-actions"><button className="btn btn-primary" onClick={submit}>{editId ? 'Сохранить' : 'Добавить'}</button><button className="btn btn-secondary" onClick={() => setShowForm(false)}>Отмена</button></div>
           </div>
         </div>
       )}
-    </div>
-  );
-};
-
-const DocumentsTab: React.FC<{
-  docs: Doc[]; warehouses: Warehouse[]; nomenclatures: NomenclatureItem[];
-  nomName: (id: number) => string; whName: (id: number | null) => string;
-  doAction: (id: number, action: string) => void; onRefresh: () => void;
-}> = ({ docs, warehouses, nomenclatures, nomName, whName, doAction, onRefresh }) => {
-  const [showCreate, setShowCreate] = useState(false);
-
-  return (
-    <div>
-      <div className="page-header">
-        <h2>Складские документы</h2>
-        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>+ Новый документ</button>
-      </div>
-      <div className="table-wrapper">
-        <table><thead><tr><th>ID</th><th>Тип</th><th>Статус</th><th>Откуда</th><th>Куда</th><th>Строк</th><th>Действия</th></tr></thead>
-          <tbody>
-            {docs.map(d => (
-              <tr key={d.id}>
-                <td className="mono" style={{ color: 'var(--text-muted)' }}>#{d.id}</td>
-                <td>{DOC_TYPES[d.doc_type as keyof typeof DOC_TYPES] || d.doc_type}</td>
-                <td><DocStatusBadge status={d.status} /></td>
-                <td style={{ color: 'var(--text-secondary)' }}>{whName(d.source_warehouse_id)}</td>
-                <td style={{ color: 'var(--text-secondary)' }}>{whName(d.target_warehouse_id)}</td>
-                <td className="mono">{d.lines?.length || 0}</td>
-                <td>
-                  {d.status === 'DRAFT' && <button className="btn btn-secondary" onClick={() => doAction(d.id, 'approve')} style={{ padding: '4px 10px', fontSize: 11 }}>Согласовать</button>}
-                  {d.status === 'APPROVAL' && <button className="btn btn-secondary" onClick={() => doAction(d.id, 'deliver')} style={{ padding: '4px 10px', fontSize: 11 }}>Доставить</button>}
-                  {d.status === 'DELIVERY' && <button className="btn btn-success" onClick={() => doAction(d.id, 'account')} style={{ padding: '4px 10px', fontSize: 11 }}>Учесть</button>}
-                  {d.status === 'ACCOUNTED' && <span style={{ fontSize: 11, color: 'var(--success)', fontWeight: 600 }}>✓ Учтён</span>}
-                </td>
-              </tr>
-            ))}
-            {docs.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)' }}>Нет документов</td></tr>}
-          </tbody>
-        </table>
-      </div>
-      {showCreate && <CreateDocModal onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); onRefresh(); }} warehouses={warehouses} nomenclatures={nomenclatures} />}
-    </div>
-  );
-};
-
-const DocStatusBadge: React.FC<{ status: string }> = ({ status }) => {
-  const cssMap: Record<string, string> = {
-    DRAFT: 'st-on_the_way',
-    APPROVAL: 'st-review',
-    DELIVERY: 'st-in_progress',
-    ACCOUNTED: 'st-completed',
-  };
-  return <span className={`status-pill ${cssMap[status] || ''}`}>{DOC_STATUS[status] || status}</span>;
-};
-
-const CreateDocModal: React.FC<{
-  onClose: () => void; onCreated: () => void; warehouses: Warehouse[]; nomenclatures: NomenclatureItem[];
-}> = ({ onClose, onCreated, warehouses, nomenclatures }) => {
-  const [docType, setDocType] = useState('INFLOW');
-  const [sourceId, setSourceId] = useState<string>('');
-  const [targetId, setTargetId] = useState<string>('');
-  const [lines, setLines] = useState<{ nomId: string; qty: string }[]>([{ nomId: '', qty: '1' }]);
-  const [error, setError] = useState('');
-
-  const addLine = () => setLines([...lines, { nomId: '', qty: '1' }]);
-
-  const submit = async () => {
-    setError('');
-    try {
-      await api.post('/warehouse-documents', {
-        doc_type: docType,
-        source_warehouse_id: sourceId ? Number(sourceId) : null,
-        target_warehouse_id: targetId ? Number(targetId) : null,
-        lines: lines.filter(l => l.nomId).map(l => ({ nomenclature_id: Number(l.nomId), quantity: Number(l.qty) || 1 })),
-      });
-      onCreated();
-    } catch (e: any) { setError(e.response?.data?.detail || 'Ошибка'); }
-  };
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxHeight: '90vh', overflow: 'auto' }}>
-        <h3>Новый складской документ</h3>
-        {error && <p style={{ color: 'var(--danger)', fontSize: 13, background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 6 }}>{error}</p>}
-        <label>Тип документа</label>
-        <select value={docType} onChange={e => setDocType(e.target.value)}>
-          <option value="INFLOW">Приход</option>
-          <option value="TRANSFER">Перемещение</option>
-          <option value="WRITE_OFF">Списание</option>
-        </select>
-        {(docType === 'TRANSFER' || docType === 'WRITE_OFF') && (
-          <>
-            <label>Откуда</label>
-            <select value={sourceId} onChange={e => setSourceId(e.target.value)}>
-              <option value="">— Выберите склад —</option>
-              {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
-          </>
-        )}
-        {(docType === 'INFLOW' || docType === 'TRANSFER') && (
-          <>
-            <label>Куда</label>
-            <select value={targetId} onChange={e => setTargetId(e.target.value)}>
-              <option value="">— Выберите склад —</option>
-              {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
-          </>
-        )}
-        <label>Позиции</label>
-        {lines.map((l, i) => (
-          <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
-            <select value={l.nomId} onChange={e => { const copy = [...lines]; copy[i].nomId = e.target.value; setLines(copy); }} style={{ flex: 2 }}>
-              <option value="">— Номенклатура —</option>
-              {nomenclatures.map(n => <option key={n.id} value={n.id}>{n.name} ({n.unit})</option>)}
-            </select>
-            <input value={l.qty} onChange={e => { const copy = [...lines]; copy[i].qty = e.target.value; setLines(copy); }} style={{ width: 70 }} placeholder="Кол-во" type="number" min="1" />
-          </div>
-        ))}
-        <button className="btn btn-secondary" onClick={addLine} style={{ padding: '5px 12px', fontSize: 12, marginBottom: 8 }}>+ Строка</button>
-        <div className="modal-actions">
-          <button className="btn btn-primary" onClick={submit}>Создать</button>
-          <button className="btn btn-secondary" onClick={onClose}>Отмена</button>
-        </div>
-      </div>
     </div>
   );
 };
@@ -391,7 +477,8 @@ const InsertTab: React.FC = () => {
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState({ name: '', diameter: '', length: '', flange_type: '', quantity: '1', type: 'incoming', product_id: '', taken_by_id: '', location_id: '', comment: '', document: '' });
   const [error, setError] = useState('');
-  const [quick, setQuick] = useState<{ prodId: number; action: string; qty: string } | null>(null);
+
+  const [quick, setQuick] = useState<{ prodId: number; action: string; qty: string; taken_by_id: string; location_id: string } | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -401,25 +488,33 @@ const InsertTab: React.FC = () => {
     ]).then(([p, t]) => { setProducts(p.data); setTransactions(t.data); setLoading(false); })
       .catch(() => setLoading(false));
   };
+
   useEffect(() => { load(); }, []);
+
   useEffect(() => {
     api.get('/users/list').then(r => setUsers(r.data)).catch(() => {});
     api.get('/locations').then(r => setLocations(r.data)).catch(() => {});
   }, []);
 
-  const prodName = (id: number) => products.find(p => p.id === id)?.name || `#${id}`;
-
   const openProductForm = (p?: any) => {
-    if (p) { setEditId(p.id); setForm({ ...form, name: p.name, diameter: p.diameter || '', length: p.length || '', flange_type: p.flange_type || '' }); }
-    else { setEditId(null); setForm({ name: '', diameter: '', length: '', flange_type: '', quantity: '1', type: 'incoming', product_id: '', taken_by_id: '', location_id: '', comment: '', document: '' }); }
-    setShowForm(true); setError('');
+    if (p) {
+      setEditId(p.id);
+      setForm({ ...form, name: p.name, diameter: p.diameter || '', length: p.length || '', flange_type: p.flange_type || '' });
+    } else {
+      setEditId(null);
+      setForm({ name: '', diameter: '', length: '', flange_type: '', quantity: '1', type: 'incoming', product_id: '', taken_by_id: '', location_id: '', comment: '', document: '' });
+    }
+    setShowForm(true);
+    setError('');
   };
 
   const openTxForm = () => {
     const now = new Date();
     const doc = `ДОК-${String(now.getFullYear()).slice(2)}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
-    setEditId(null); setForm({ name: '', diameter: '', length: '', flange_type: '', type: 'outgoing', quantity: '1', product_id: '', taken_by_id: '', location_id: '', comment: '', document: doc });
-    setShowForm(true); setError('');
+    setEditId(null);
+    setForm({ name: '', diameter: '', length: '', flange_type: '', type: 'outgoing', quantity: '1', product_id: '', taken_by_id: '', location_id: '', comment: '', document: doc });
+    setShowForm(true);
+    setError('');
   };
 
   const submit = async () => {
@@ -474,68 +569,79 @@ const InsertTab: React.FC = () => {
         ))}
       </div>
       <div className="page-header" style={{ marginTop: 0 }}>
-        {tab === 'catalog' && <button className="btn btn-primary" onClick={() => { setTab('catalog'); openProductForm(undefined); }}>+ Продукт</button>}
+        {tab === 'catalog' && <button className="btn btn-primary" onClick={() => openProductForm(undefined)}>+ Продукт</button>}
         {tab === 'journal' && <button className="btn btn-primary" onClick={() => openTxForm()}>+ Операция</button>}
         {tab === 'balance' && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Баланс рассчитывается из транзакций</span>}
       </div>
 
-        {tab === 'catalog' && (
+      {tab === 'catalog' && (
         <div>
           <div className="table-wrapper">
-          <table><thead><tr><th>Название</th><th>Диаметр</th><th>Длина</th><th>Фланец</th><th>Остаток</th><th></th></tr></thead>
-            <tbody>
-              {products.map(p => (
-                <tr key={p.id}>
-                  <td style={{ fontWeight: 600 }}>{p.name}</td>
-                  <td>{p.diameter || '—'}</td>
-                  <td>{p.length || '—'}</td>
-                  <td>{p.flange_type || '—'}</td>
-                  <td className="mono" style={{ fontWeight: 700, color: p.balance > 0 ? 'var(--success)' : p.balance < 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{p.balance}</td>
-                  <td>
-                    <button className="btn btn-success" onClick={() => setQuick({ prodId: p.id, action: 'incoming', qty: '1' })} style={{ padding: '2px 6px', fontSize: 11, marginRight: 2 }} title="Приход">+</button>
-                    <button className="btn btn-secondary" onClick={() => setQuick({ prodId: p.id, action: 'outgoing', qty: '1' })} style={{ padding: '2px 6px', fontSize: 11, marginRight: 2 }} title="Выдача">−</button>
-                    <button className="btn btn-secondary" onClick={() => openProductForm(p)} style={{ padding: '2px 6px', fontSize: 11 }}>✎</button>
-                    <button className="btn btn-danger" onClick={() => delProduct(p.id)} style={{ padding: '2px 6px', fontSize: 11, marginLeft: 2 }}>✕</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            <table>
+              <thead><tr><th>Название</th><th>Диаметр</th><th>Длина</th><th>Фланец</th><th>Остаток</th><th></th></tr></thead>
+              <tbody>
+                {products.map(p => (
+                  <tr key={p.id}>
+                    <td style={{ fontWeight: 600 }}>{p.name}</td>
+                    <td>{p.diameter || '—'}</td>
+                    <td>{p.length || '—'}</td>
+                    <td>{p.flange_type || '—'}</td>
+                    <td className="mono" style={{ fontWeight: 700, color: p.balance > 0 ? 'var(--success)' : p.balance < 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{p.balance}</td>
+                    <td>
+                      <button className="btn btn-success" onClick={() => setQuick({ prodId: p.id, action: 'incoming', qty: '1', taken_by_id: '', location_id: '' })} style={{ padding: '2px 6px', fontSize: 11, marginRight: 2 }} title="Приход">+</button>
+                      <button className="btn btn-secondary" onClick={() => setQuick({ prodId: p.id, action: 'outgoing', qty: '1', taken_by_id: '', location_id: '' })} style={{ padding: '2px 6px', fontSize: 11, marginRight: 2 }} title="Выдача">−</button>
+                      <button className="btn btn-secondary" onClick={() => openProductForm(p)} style={{ padding: '2px 6px', fontSize: 11 }}>✎</button>
+                      <button className="btn btn-danger" onClick={() => delProduct(p.id)} style={{ padding: '2px 6px', fontSize: 11, marginLeft: 2 }}>✕</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-        {quick && (
-          <div className="modal-overlay" onClick={() => setQuick(null)}>
-            <div className="modal-card" onClick={e => e.stopPropagation()} style={{ width: 320 }}>
-              <h3>{quick.action === 'incoming' ? 'Приход' : 'Выдача'}</h3>
-              <label>Количество</label>
-              <input type="number" value={quick.qty} onChange={e => setQuick({ ...quick, qty: e.target.value })} min="1" step="1" autoFocus />
-              {quick.action === 'outgoing' && (
-                <>
-                  <label>Кто взял</label>
-                  <select value={form.taken_by_id} onChange={e => setForm({ ...form, taken_by_id: e.target.value })}>
-                    <option value="">— Выберите —</option>
-                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                </>
-              )}
-              <div className="modal-actions">
-                <button className="btn btn-primary" onClick={async () => {
-                  const qty = parseInt(quick.qty);
-                  if (!qty || qty < 1) return;
-                  try {
-                    await api.post('/insert/transactions', {
-                      type: quick.action, product_id: quick.prodId, quantity: qty,
-                      taken_by_id: quick.action === 'outgoing' ? (form.taken_by_id ? Number(form.taken_by_id) : null) : null,
-                    });
-                    setQuick(null);
-                    load();
-                  } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка'); }
-                }}>OK</button>
-                <button className="btn btn-secondary" onClick={() => setQuick(null)}>Отмена</button>
+          {quick && (
+            <div className="modal-overlay" onClick={() => setQuick(null)}>
+              <div className="modal-card" onClick={e => e.stopPropagation()} style={{ width: 340 }}>
+                <h3>Быстрый {quick.action === 'incoming' ? 'приход' : 'расход'}</h3>
+                <label>Количество</label>
+                <input type="number" value={quick.qty} onChange={e => setQuick({ ...quick, qty: e.target.value })} min="1" step="1" autoFocus />
+
+                {quick.action === 'outgoing' && (
+                  <>
+                    <label>Кто взял</label>
+                    <select value={quick.taken_by_id} onChange={e => setQuick({ ...quick, taken_by_id: e.target.value })}>
+                      <option value="">— Выберите сотрудника —</option>
+                      {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </select>
+
+                    <label>Объект назначения</label>
+                    <select value={quick.location_id} onChange={e => setQuick({ ...quick, location_id: e.target.value })}>
+                      <option value="">— Не выбран —</option>
+                      {locations.map(l => <option key={l.id} value={l.id}>{l.name} ({l.customer_name})</option>)}
+                    </select>
+                  </>
+                )}
+                <div className="modal-actions">
+                  <button className="btn btn-primary" onClick={async () => {
+                    const qty = parseInt(quick.qty);
+                    if (!qty || qty < 1) return;
+                    try {
+                      await api.post('/insert/transactions', {
+                        type: quick.action,
+                        product_id: quick.prodId,
+                        quantity: qty,
+                        taken_by_id: quick.action === 'outgoing' && quick.taken_by_id ? Number(quick.taken_by_id) : null,
+                        location_id: quick.action === 'outgoing' && quick.location_id ? Number(quick.location_id) : null,
+                      });
+                      setQuick(null);
+                      load();
+                    } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка проведения'); }
+                  }}>OK</button>
+                  <button className="btn btn-secondary" onClick={() => setQuick(null)}>Отмена</button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
         </div>
       )}
 
@@ -627,7 +733,7 @@ const InsertTab: React.FC = () => {
                   <div style={{ flex: 1 }}><label>Диаметр</label><input value={form.diameter} onChange={e => setForm({ ...form, diameter: e.target.value })} /></div>
                   <div style={{ flex: 1 }}><label>Длина</label><input value={form.length} onChange={e => setForm({ ...form, length: e.target.value })} /></div>
                 </div>
-                <label>Тип</label>
+                <label>Тип фланца</label>
                 <select value={form.flange_type} onChange={e => setForm({ ...form, flange_type: e.target.value })}><option value="">—</option><option value="Фланцевый">Фланцевый</option><option value="Сэндвич">Сэндвич</option></select>
                 <label>Начальное количество</label>
                 <input type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} min="0" step="1" placeholder="0" />
@@ -653,10 +759,10 @@ const InsertTab: React.FC = () => {
                       {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                     </select>
                     <label>Объект</label>
-                     <select value={form.location_id} onChange={e => setForm({ ...form, location_id: e.target.value })}>
-                       <option value="">— Не выбран —</option>
-                       {locations.map(l => <option key={l.id} value={l.id}>{l.name} ({l.customer_name})</option>)}
-                      </select>
+                    <select value={form.location_id} onChange={e => setForm({ ...form, location_id: e.target.value })}>
+                      <option value="">— Не выбран —</option>
+                      {locations.map(l => <option key={l.id} value={l.id}>{l.name} ({l.customer_name})</option>)}
+                    </select>
                   </>
                 )}
                 <label>Комментарий</label>

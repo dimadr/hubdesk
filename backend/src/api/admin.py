@@ -1,11 +1,14 @@
 import os
 import secrets
-from datetime import datetime
+import logging
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, case
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+from passlib.hash import bcrypt
 
 from src.database import get_db
 from src.models.user import User, UserRole, UserStatus
@@ -16,6 +19,7 @@ from src.models.warehouse import Warehouse
 from src.core.deps import get_current_user
 from src.services.audit_service import log_audit
 
+logger = logging.getLogger(__name__)
 admin_router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
@@ -27,8 +31,6 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
         )
     return user
 
-
-# ── СХЕМЫ ВАЛИДАЦИИ (PYDANTIC) ──
 
 class RoleBreakdown(BaseModel):
     role: str
@@ -65,13 +67,17 @@ class CustomerResponse(BaseModel):
     type: str
     locations_count: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CustomerCreate(BaseModel):
     name: str
     type: str = "company"
+
+
+class CustomerUpdate(BaseModel):
+    name: str | None = None
+    type: str | None = None
 
 
 class PendingUserResponse(BaseModel):
@@ -81,10 +87,9 @@ class PendingUserResponse(BaseModel):
     role: str
     status: str
     consent_given: bool
-    consent_date: str | None = None
+    consent_date: datetime | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ApiKeyResponse(BaseModel):
@@ -92,17 +97,33 @@ class ApiKeyResponse(BaseModel):
     key: str
     name: str
     is_active: bool
-    created_at: str
+    created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CreateApiKeyRequest(BaseModel):
     name: str
 
 
-# ── ЭНДПОИНТЫ (ENDPOINTS) ──
+def _sync_read_history(history_path: str) -> List[str]:
+    if not os.path.exists(history_path):
+        return []
+    lines = []
+    with open(history_path, "r", encoding="utf-8") as f:
+        for line in f:
+            lines.append(line.rstrip("\n"))
+            if len(lines) > 2000:
+                lines = lines[-200:]
+    lines.reverse()
+    return lines[:200]
+
+
+def _sync_write_history_log(history_path: str, admin_name: str, text_msg: str):
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with open(history_path, "a", encoding="utf-8") as f:
+        f.write(f"[{ts}] {admin_name} — {text_msg}\n")
+
 
 @admin_router.get("/stats", response_model=SystemStats)
 async def system_stats(
@@ -129,11 +150,11 @@ async def system_stats(
 
     ticket_res = (await db.execute(ticket_stmt)).one_or_none()
 
-    total_t = ticket_res.total if ticket_res else 0
-    open_t = ticket_res.open if ticket_res and ticket_res.open else 0
-    completed_t = ticket_res.completed if ticket_res and ticket_res.completed else 0
-    critical_t = ticket_res.critical if ticket_res and ticket_res.critical else 0
-    overdue_t = ticket_res.overdue if ticket_res and ticket_res.overdue else 0
+    total_t = getattr(ticket_res, 'total', 0) or 0
+    open_t = getattr(ticket_res, 'open', 0) or 0
+    completed_t = getattr(ticket_res, 'completed', 0) or 0
+    critical_t = getattr(ticket_res, 'critical', 0) or 0
+    overdue_t = getattr(ticket_res, 'overdue', 0) or 0
 
     user_result = await db.execute(select(User.role, func.count().label("cnt")).group_by(User.role))
     user_breakdown = [{"role": r.value if hasattr(r, 'value') else str(r), "count": c} for r, c in user_result.all()]
@@ -157,18 +178,8 @@ async def read_history(admin: User = Depends(require_admin)):
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     history_path = os.path.normpath(os.path.join(base_dir, "history.log"))
 
-    if not os.path.exists(history_path):
-        return {"lines": []}
-
-    lines = []
-    with open(history_path, "r", encoding="utf-8") as f:
-        for line in f:
-            lines.append(line.rstrip("\n"))
-            if len(lines) > 2000:
-                lines = lines[-200:]
-
-    lines.reverse()
-    return {"lines": lines[:200]}
+    lines = await run_in_threadpool(_sync_read_history, history_path)
+    return {"lines": lines}
 
 
 @admin_router.patch("/users/{user_id}")
@@ -178,7 +189,6 @@ async def update_user(
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    from passlib.hash import bcrypt
     target = await db.get(User, user_id)
     if not target:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -195,7 +205,7 @@ async def update_user(
         target.role = UserRole(data.role)
 
     if data.password:
-        target.password_hash = bcrypt.hash(data.password)
+        target.password_hash = await run_in_threadpool(bcrypt.hash, data.password)
 
     if data.status is not None:
         if data.status not in UserStatus.__members__:
@@ -222,8 +232,6 @@ async def delete_user(user_id: int, admin: User = Depends(require_admin), db: As
     return {"ok": True}
 
 
-# ── CUSTOMERS CRUD (Решена проблема N+1 через LEFT JOIN и GROUP BY) ──
-
 @admin_router.get("/customers", response_model=List[CustomerResponse])
 async def list_customers(admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     stmt = (
@@ -237,7 +245,12 @@ async def list_customers(admin: User = Depends(require_admin), db: AsyncSession 
     out = []
     for row in result.all():
         c, loc_cnt = row[0], row[1]
-        out.append(CustomerResponse(id=c.id, name=c.name, type=c.type.value if hasattr(c.type, 'value') else str(c.type), locations_count=loc_cnt))
+        out.append(CustomerResponse(
+            id=c.id,
+            name=c.name,
+            type=c.type.value if hasattr(c.type, 'value') else str(c.type),
+            locations_count=loc_cnt
+        ))
     return out
 
 
@@ -251,12 +264,16 @@ async def create_customer(data: CustomerCreate, admin: User = Depends(require_ad
 
 
 @admin_router.patch("/customers/{customer_id}", response_model=CustomerResponse)
-async def update_customer(customer_id: int, data: CustomerCreate, admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+async def update_customer(customer_id: int, data: CustomerUpdate, admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     c = await db.get(Customer, customer_id)
     if not c:
         raise HTTPException(status_code=404, detail="Контрагент не найден")
-    c.name = data.name
-    c.type = data.type
+
+    if data.name is not None:
+        c.name = data.name
+    if data.type is not None:
+        c.type = data.type
+
     await db.commit()
 
     loc_cnt = (await db.execute(select(func.count()).select_from(AssetLocation).where(AssetLocation.customer_id == c.id))).scalar() or 0
@@ -278,25 +295,11 @@ async def delete_customer(customer_id: int, admin: User = Depends(require_admin)
     return {"ok": True}
 
 
-# ── PENDING USERS & SYSTEM CONFIG ──
-
 @admin_router.get("/pending-users", response_model=List[PendingUserResponse])
 async def list_pending_users(admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.status == UserStatus.pending))
     users = result.scalars().all()
-    return [PendingUserResponse(
-        id=u.id, email=u.email, name=u.name, role=u.role.value,
-        status=u.status.value, consent_given=u.consent_given,
-        consent_date=u.consent_date.isoformat() if u.consent_date else None,
-    ) for u in users]
-
-
-def _write_history_log(admin_name: str, text_msg: str):
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    log_path = os.path.normpath(os.path.join(base_dir, "history.log"))
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open(log_path, "a", encoding="utf-8") as f:
-        f.write(f"[{ts}] {admin_name} — {text_msg}\n")
+    return users
 
 
 @admin_router.post("/pending-users/{user_id}/approve")
@@ -307,7 +310,16 @@ async def approve_user(user_id: int, admin: User = Depends(require_admin), db: A
 
     target.status = UserStatus.active
     await db.commit()
-    _write_history_log(admin.name, f"Утвердил пользователя: {target.name} ({target.email}), роль: {target.role.value}")
+
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    history_path = os.path.normpath(os.path.join(base_dir, "history.log"))
+
+    await run_in_threadpool(
+        _sync_write_history_log,
+        history_path,
+        admin.name,
+        f"Утвердил пользователя: {target.name} ({target.email}), роль: {target.role.value}"
+    )
     return {"ok": True}
 
 
@@ -319,7 +331,16 @@ async def reject_user(user_id: int, admin: User = Depends(require_admin), db: As
 
     target.status = UserStatus.rejected
     await db.commit()
-    _write_history_log(admin.name, f"Отклонил пользователя: {target.name} ({target.email}), роль: {target.role.value}")
+
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    history_path = os.path.normpath(os.path.join(base_dir, "history.log"))
+
+    await run_in_threadpool(
+        _sync_write_history_log,
+        history_path,
+        admin.name,
+        f"Отклонил пользователя: {target.name} ({target.email}), роль: {target.role.value}"
+    )
     return {"ok": True}
 
 
@@ -354,7 +375,7 @@ async def list_api_keys(admin: User = Depends(require_admin), db: AsyncSession =
     from src.models.api_key import ApiKey
     result = await db.execute(select(ApiKey).order_by(ApiKey.id.desc()))
     keys = result.scalars().all()
-    return [ApiKeyResponse(id=k.id, key=k.key, name=k.name, is_active=k.is_active, created_at=k.created_at.isoformat() if k.created_at else "") for k in keys]
+    return keys
 
 
 @admin_router.post("/api-keys", response_model=ApiKeyResponse, status_code=201)
@@ -364,7 +385,7 @@ async def create_api_key(data: CreateApiKeyRequest, admin: User = Depends(requir
     db.add(k)
     await db.commit()
     await db.refresh(k)
-    return ApiKeyResponse(id=k.id, key=k.key, name=k.name, is_active=k.is_active, created_at=k.created_at.isoformat() if k.created_at else "")
+    return k
 
 
 @admin_router.patch("/api-keys/{key_id}")

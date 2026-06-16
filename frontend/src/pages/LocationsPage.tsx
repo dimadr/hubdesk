@@ -19,17 +19,8 @@ interface Location {
   inn: string | null;
 }
 
-interface UserInfo {
-  id: number;
-  email: string;
-  name: string;
-  role: string;
-}
-
-interface CustomerInfo {
-  id: number;
-  name: string;
-}
+interface UserInfo { id: number; email: string; name: string; role: string; }
+interface CustomerInfo { id: number; name: string; }
 
 export const LocationsPage: React.FC = () => {
   const [locations, setLocations] = useState<Location[]>([]);
@@ -81,20 +72,18 @@ export const LocationsPage: React.FC = () => {
       await api.delete(`/locations/${id}`);
       refreshLocations();
     } catch (e: any) {
-      alert(e.response?.data?.detail || 'Ошибка удаления. Возможно, у объекта есть связанные заявки.');
+      alert(e.response?.data?.detail || 'Ошибка удаления');
     }
   };
 
-  useEffect(() => {
-    initPage();
-  }, []);
+  useEffect(() => { initPage(); }, []);
 
   if (loading) return <div style={{ padding: 24, textAlign: 'center' }}>Загрузка...</div>;
   if (pageError) return <div style={{ padding: 24, color: 'var(--danger)' }}>{pageError}</div>;
 
   return (
     <div>
-      <div className="page-header">
+      <div className="page-header" style={{ marginBottom: 14 }}>
         <h2>Объекты обслуживания</h2>
         <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Добавить объект</button>
       </div>
@@ -120,8 +109,8 @@ export const LocationsPage: React.FC = () => {
                   <td>{l.assigned_engineer_name || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
                   <td className="mono" style={{ fontSize: 11 }}>{l.contract_number || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
                   <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
-                    {l.contract_valid_from && <span>с {l.contract_valid_from.slice(0, 10)}</span>}
-                    {l.contract_valid_to && <span> до {l.contract_valid_to.slice(0, 10)}</span>}
+                    {l.contract_valid_from && <span>с {l.contract_valid_from.substring(0, 10)}</span>}
+                    {l.contract_valid_to && <span> до {l.contract_valid_to.substring(0, 10)}</span>}
                     {!l.contract_valid_from && !l.contract_valid_to && <span style={{ color: 'var(--text-muted)' }}>—</span>}
                   </td>
                   <td>
@@ -179,32 +168,27 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
   const [name, setName] = useState(loc?.name || '');
   const [customerId, setCustomerId] = useState<string>(loc?.customer_id != null ? loc.customer_id.toString() : '');
   const [address, setAddress] = useState(loc?.address || '');
-  const [contacts, setContacts] = useState(loc?.contacts || '');
   const [contactName, setContactName] = useState(loc?.contact_name || '');
   const [contactPhone, setContactPhone] = useState(loc?.contact_phone || '');
   const [contactEmail, setContactEmail] = useState(loc?.contact_email || '');
   const [engId, setEngId] = useState<string>(loc?.assigned_engineer_id != null ? loc.assigned_engineer_id.toString() : '');
   const [contractNo, setContractNo] = useState(loc?.contract_number || '');
-  const [from, setFrom] = useState(loc?.contract_valid_from ? loc.contract_valid_from.slice(0, 10) : '');
-  const [to, setTo] = useState(loc?.contract_valid_to ? loc.contract_valid_to.slice(0, 10) : '');
+  const [from, setFrom] = useState(loc?.contract_valid_from ? loc.contract_valid_from.substring(0, 10) : '');
+  const [to, setTo] = useState(loc?.contract_valid_to ? loc.contract_valid_to.substring(0, 10) : '');
   const [inn, setInn] = useState(loc?.inn || '');
   const [innLoading, setInnLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleInnLookup = async () => {
-    const cleanInn = inn.trim();
-    if (!cleanInn || (cleanInn.length !== 10 && cleanInn.length !== 12)) {
+    if (!inn || (inn.length !== 10 && inn.length !== 12)) {
       setError('Введите корректный ИНН (10 или 12 цифр)');
       return;
     }
     setInnLoading(true);
     setError('');
     try {
-      const { data } = await api.get('/locations/lookup-inn', { params: { inn: cleanInn } });
-      if (data.error) {
-        setError(data.error);
-        return;
-      }
+      const { data } = await api.get('/locations/lookup-inn', { params: { inn } });
+      if (data.error) { setError(data.error); return; }
       setName(data.name || name);
       setAddress(data.address || address);
       if (data.phone) setContactPhone(data.phone);
@@ -216,17 +200,13 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
   };
 
   const submit = async () => {
-    if (!name.trim()) {
-      setError('Название обязательно');
-      return;
-    }
-    setError('');
+    if (!name.trim()) { setError('Название объекта обязательно'); return; }
 
     try {
       const body: any = {
         name: name.trim(),
         address: address.trim(),
-        contacts: contacts.trim() || null,
+        contacts: null,
         contact_name: contactName.trim() || null,
         contact_phone: contactPhone.trim() || null,
         contact_email: contactEmail.trim() || null,
@@ -235,8 +215,13 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
         contract_valid_from: from || null,
         contract_valid_to: to || null,
         inn: inn.trim() || null,
-        customer_id: customerId ? Number(customerId) : null,
       };
+
+      if (customerId) {
+        body.customer_id = Number(customerId);
+      } else if (loc) {
+        body.customer_id = 0;
+      }
 
       if (loc) {
         await api.patch(`/locations/${loc.id}`, body);
@@ -251,71 +236,79 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxHeight: '90vh', overflow: 'auto' }}>
+      <div className="modal-card modal-card-wide" onClick={e => e.stopPropagation()} style={{ maxHeight: '85vh', overflow: 'auto' }}>
         <h3>{loc ? 'Редактировать' : 'Добавить'} объект</h3>
-        {error && (
-          <p style={{ color: 'var(--danger)', fontSize: 13, background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 6 }}>
-            {error}
-          </p>
-        )}
+        {error && <p style={{ color: 'var(--danger)', fontSize: 13, background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 6, marginBottom: 14 }}>{error}</p>}
 
-        <label>Компания (Клиент)</label>
-        <select value={customerId} onChange={e => setCustomerId(e.target.value)}>
-          <option value="">— Создать из названия объекта —</option>
-          {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        <div className="modal-form-grid">
+          <div className="span-2">
+            <label>Компания (Клиент)</label>
+            <select value={customerId} onChange={e => setCustomerId(e.target.value)}>
+              <option value="">— Создать из названия объекта —</option>
+              {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
 
-        <label>Название объекта *</label>
-        <input placeholder="Введите название (например, Магазин №5)" value={name} onChange={e => setName(e.target.value)} />
+          <div className="span-2">
+            <label>Название объекта <span className="required">*</span></label>
+            <input placeholder="Введите название (например, Магазин №5)" value={name} onChange={e => setName(e.target.value)} />
+          </div>
 
-        <label>Адрес</label>
-        <input placeholder="Город, улица, дом..." value={address} onChange={e => setAddress(e.target.value)} />
+          <div className="span-2">
+            <label>Адрес</label>
+            <input placeholder="Город, улица, дом..." value={address} onChange={e => setAddress(e.target.value)} />
+          </div>
 
-        <label>ИНН контрагента</label>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input placeholder="10 или 12 цифр" value={inn} onChange={e => setInn(e.target.value)} maxLength={12} style={{ flex: 1 }} />
-          <button className="btn btn-secondary" onClick={handleInnLookup} disabled={innLoading} type="button" style={{ padding: '4px 10px', fontSize: 12, whiteSpace: 'nowrap' }}>
-            {innLoading ? 'Поиск...' : 'Заполнить по ИНН'}
-          </button>
-        </div>
+          <div className="span-2">
+            <label>ИНН контрагента</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input placeholder="10 или 12 цифр" value={inn} onChange={e => setInn(e.target.value)} maxLength={12} style={{ flex: 1 }} />
+              <button className="btn btn-secondary" onClick={handleInnLookup} disabled={innLoading} type="button" style={{ padding: '6px 12px', fontSize: 12, whiteSpace: 'nowrap' }}>
+                {innLoading ? 'Поиск...' : 'Заполнить по ИНН'}
+              </button>
+            </div>
+          </div>
 
-        <label>Контактное лицо (ФИО)</label>
-        <input placeholder="Иванов Иван Иванович" value={contactName} onChange={e => setContactName(e.target.value)} />
+          <div className="span-2">
+            <label>Контактное лицо (ФИО)</label>
+            <input placeholder="Иванов Иван Иванович" value={contactName} onChange={e => setContactName(e.target.value)} />
+          </div>
 
-        <div style={{ display: 'flex', gap: 8 }}>
-          <div style={{ flex: 1 }}>
+          <div>
             <label>Телефон</label>
-            <input placeholder="+7 (___) ___-__-__" value={contactPhone} onChange={e => setContactPhone(e.target.value)} />
+            <input type="tel" placeholder="+7 (___) ___-__-__" value={contactPhone} onChange={e => setContactPhone(e.target.value)} />
           </div>
-          <div style={{ flex: 1 }}>
+
+          <div>
             <label>Email</label>
-            <input placeholder="contact@domain.ru" value={contactEmail} onChange={e => setContactEmail(e.target.value)} />
+            <input type="email" placeholder="contact@domain.ru" value={contactEmail} onChange={e => setContactEmail(e.target.value)} />
           </div>
-        </div>
 
-        <label>Ответственный инженер</label>
-        <select value={engId} onChange={e => setEngId(e.target.value)}>
-          <option value="">— Не назначен —</option>
-          {users.filter(u => ['engineer', 'admin', 'dispatcher'].includes(u.role.toLowerCase())).map(u => (
-            <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
-          ))}
-        </select>
+          <div className="span-2">
+            <label>Ответственный инженер</label>
+            <select value={engId} onChange={e => setEngId(e.target.value)}>
+              <option value="">— Не назначен —</option>
+              {users.filter(u => u.role === 'engineer' || u.role === 'admin').map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </div>
 
-        <label>Договор</label>
-        <input placeholder="Номер договора" value={contractNo} onChange={e => setContractNo(e.target.value)} />
+          <div className="span-2">
+            <label>Договор</label>
+            <input placeholder="Номер договора" value={contractNo} onChange={e => setContractNo(e.target.value)} />
+          </div>
 
-        <div style={{ display: 'flex', gap: 8 }}>
-          <div style={{ flex: 1 }}>
+          <div>
             <label>Срок действия с</label>
             <input type="date" value={from} onChange={e => setFrom(e.target.value)} />
           </div>
-          <div style={{ flex: 1 }}>
+
+          <div>
             <label>Срок действия до</label>
             <input type="date" value={to} onChange={e => setTo(e.target.value)} />
           </div>
         </div>
 
-        <div className="modal-actions" style={{ marginTop: 20 }}>
+        <div className="modal-actions" style={{ marginTop: 24 }}>
           <button className="btn btn-primary" onClick={submit}> {loc ? 'Сохранить' : 'Добавить'} </button>
           <button className="btn btn-secondary" onClick={onClose} type="button">Отмена</button>
         </div>

@@ -1,9 +1,11 @@
+import logging
+from datetime import datetime
+from typing import List, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete as sa_delete, func as sa_func, case
 from sqlalchemy.orm import selectinload
-from pydantic import BaseModel, Field
-from datetime import datetime
+from pydantic import BaseModel, Field, ConfigDict
 
 from src.database import get_db
 from src.models.insert_stock import InsertProduct, InsertTransaction
@@ -11,11 +13,19 @@ from src.models.user import User
 from src.core.deps import get_current_user
 from src.services.audit_service import log_audit
 
+logger = logging.getLogger(__name__)
 insert_v2_router = APIRouter(prefix="/insert", tags=["Insert Stock v2"])
 
 
 class ProductCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
+    diameter: str | None = None
+    length: str | None = None
+    flange_type: str | None = None
+
+
+class ProductUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=255)
     diameter: str | None = None
     length: str | None = None
     flange_type: str | None = None
@@ -28,10 +38,9 @@ class ProductResponse(BaseModel):
     length: str | None = None
     flange_type: str | None = None
     balance: int
-    created_at: str
+    created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TransactionCreate(BaseModel):
@@ -58,13 +67,12 @@ class TransactionResponse(BaseModel):
     destination: str | None = None
     comment: str | None = None
     document: str | None = None
-    created_at: str
+    created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
-async def _get_product_balance(db: AsyncSession, product_id: int, lock_row: bool = False) -> int:
+async def _get_product_balance(db: AsyncSession, product_id: int) -> int:
     stmt = select(
         sa_func.coalesce(
             sa_func.sum(
@@ -77,9 +85,6 @@ async def _get_product_balance(db: AsyncSession, product_id: int, lock_row: bool
             ), 0
         )
     ).where(InsertTransaction.product_id == product_id)
-
-    if lock_row:
-        stmt = stmt.with_for_update()
 
     res = await db.execute(stmt)
     return int(res.scalar() or 0)
@@ -114,7 +119,7 @@ async def list_products(user: User = Depends(get_current_user), db: AsyncSession
         out.append(ProductResponse(
             id=p.id, name=p.name, diameter=p.diameter, length=p.length,
             flange_type=p.flange_type, balance=int(balance),
-            created_at=p.created_at.isoformat() if p.created_at else ""
+            created_at=p.created_at
         ))
     return out
 
@@ -132,7 +137,9 @@ async def create_product(data: ProductCreate, user: User = Depends(get_current_u
             detail=f"Продукт с таким названием уже существует (ID: {dup.id}, остаток: {current_bal})"
         )
 
-    p = InsertProduct(name=data.name.strip(), diameter=data.diameter, length=data.length, flange_type=data.flange_type)
+    p = InsertProduct(
+        name=data.name.strip(), diameter=data.diameter, length=data.length, flange_type=data.flange_type
+    )
     db.add(p)
     await db.flush()
     await db.commit()
@@ -141,20 +148,22 @@ async def create_product(data: ProductCreate, user: User = Depends(get_current_u
     return ProductResponse(
         id=p.id, name=p.name, diameter=p.diameter, length=p.length,
         flange_type=p.flange_type, balance=0,
-        created_at=p.created_at.isoformat() if p.created_at else ""
+        created_at=p.created_at
     )
 
 
 @insert_v2_router.patch("/products/{product_id}", response_model=ProductResponse)
-async def update_product(product_id: int, data: ProductCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def update_product(product_id: int, data: ProductUpdate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     p = await db.get(InsertProduct, product_id)
     if not p:
         raise HTTPException(status_code=404, detail="Продукт не найден")
 
-    p.name = data.name.strip()
-    p.diameter = data.diameter
-    p.length = data.length
-    p.flange_type = data.flange_type
+    update_data = data.model_dump(exclude_unset=True)
+    if "name" in update_data and update_data["name"]:
+        update_data["name"] = update_data["name"].strip()
+
+    for field, value in update_data.items():
+        setattr(p, field, value)
 
     await db.commit()
 
@@ -164,7 +173,7 @@ async def update_product(product_id: int, data: ProductCreate, user: User = Depe
     return ProductResponse(
         id=p.id, name=p.name, diameter=p.diameter, length=p.length,
         flange_type=p.flange_type, balance=current_bal,
-        created_at=p.created_at.isoformat() if p.created_at else ""
+        created_at=p.created_at
     )
 
 
@@ -199,7 +208,7 @@ async def list_transactions(user: User = Depends(get_current_user), db: AsyncSes
             quantity=int(t.quantity), taken_by_id=t.taken_by_id, taken_by_name=t.taken_by.name if t.taken_by else None,
             location_id=t.location_id, location_name=t.location.name if t.location else None,
             destination=t.destination, comment=t.comment, document=t.document,
-            created_at=t.created_at.isoformat() if t.created_at else "",
+            created_at=t.created_at,
         ))
     return out
 
@@ -209,8 +218,15 @@ async def create_transaction(data: TransactionCreate, user: User = Depends(get_c
     if data.type not in ("incoming", "outgoing", "return"):
         raise HTTPException(status_code=400, detail="Неверный тип транзакции")
 
+    product_stmt = select(InsertProduct).where(InsertProduct.id == data.product_id).with_for_update()
+    product_res = await db.execute(product_stmt)
+    product = product_res.scalar_one_or_none()
+
+    if not product:
+        raise HTTPException(status_code=404, detail="Указанный продукт не найден")
+
     if data.type == "outgoing":
-        bal = await _get_product_balance(db, data.product_id, lock_row=True)
+        bal = await _get_product_balance(db, data.product_id)
         if bal < data.quantity:
             raise HTTPException(
                 status_code=400,
@@ -240,7 +256,7 @@ async def create_transaction(data: TransactionCreate, user: User = Depends(get_c
     labels = {"incoming": "Приход", "outgoing": "Выдача", "return": "Возврат"}
     await log_audit(
         db, user, f"insert_{data.type}", "insert_transaction", t.id,
-        f"{labels.get(data.type, data.type)}: {data.quantity} шт (продукт #{data.product_id})"
+        f"{labels.get(data.type, data.type)}: {data.quantity} шт (продукт «{t_refreshed.product.name if t_refreshed.product else data.product_id}»)"
     )
 
     return TransactionResponse(
@@ -250,7 +266,7 @@ async def create_transaction(data: TransactionCreate, user: User = Depends(get_c
         taken_by_name=t_refreshed.taken_by.name if t_refreshed.taken_by else None,
         location_id=t_refreshed.location_id, location_name=t_refreshed.location.name if t_refreshed.location else None,
         destination=t_refreshed.destination, comment=t_refreshed.comment, document=t_refreshed.document,
-        created_at=t_refreshed.created_at.isoformat() if t_refreshed.created_at else "",
+        created_at=t_refreshed.created_at,
     )
 
 

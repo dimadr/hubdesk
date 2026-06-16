@@ -32,21 +32,20 @@ export const ReportsPage: React.FC = () => {
   const [engineers, setEngineers] = useState<EngineerRow[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const params = () => {
+  const getParams = () => {
     const p: any = {};
     if (from) p.date_from = new Date(from).toISOString();
     if (to) p.date_to = new Date(to).toISOString();
     return p;
   };
 
-  useEffect(() => { loadAll(); }, []);
-
   const loadAll = () => {
     setLoading(true);
+    const params = getParams();
     Promise.all([
-      api.get('/reports/objects', { params: params() }).catch(() => ({ data: [] })),
-      api.get('/reports/tickets', { params: params() }).catch(() => ({ data: null })),
-      api.get('/reports/engineers', { params: params() }).catch(() => ({ data: [] })),
+      api.get('/reports/objects', { params }).catch(() => ({ data: [] })),
+      api.get('/reports/tickets', { params }).catch(() => ({ data: null })),
+      api.get('/reports/engineers', { params }).catch(() => ({ data: [] })),
     ]).then(([o, t, e]) => {
       setObjects(o.data);
       setTicketStats(t.data);
@@ -55,22 +54,26 @@ export const ReportsPage: React.FC = () => {
     });
   };
 
+  useEffect(() => {
+    loadAll();
+  }, [from, to]);
+
   return (
     <div>
-      <div className="cal-header">
+      <div className="cal-header" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Отчёты</h2>
-        <span className="text-muted" style={{ marginLeft: 16, fontSize: 13 }}>с</span>
-        <input type="date" value={from} onChange={e => setFrom(e.target.value)} style={{ margin: '0 6px', padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-surface)', color: 'var(--text)', fontSize: 12 }} />
+        <span className="text-muted" style={{ marginLeft: 8, fontSize: 13 }}>с</span>
+        <input type="date" value={from} onChange={e => setFrom(e.target.value)} style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-surface)', color: 'var(--text)', fontSize: 12 }} />
         <span className="text-muted" style={{ fontSize: 13 }}>по</span>
-        <input type="date" value={to} onChange={e => setTo(e.target.value)} style={{ margin: '0 6px', padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-surface)', color: 'var(--text)', fontSize: 12 }} />
+        <input type="date" value={to} onChange={e => setTo(e.target.value)} style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-surface)', color: 'var(--text)', fontSize: 12 }} />
         {tab === 'inserts' && (
           <input type="text" placeholder="Поиск..." value={reportQ} onChange={e => setReportQ(e.target.value)}
-            style={{ marginLeft: 8, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-surface)', color: 'var(--text)', fontSize: 12, width: 160 }} />
+            style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-surface)', color: 'var(--text)', fontSize: 12, width: 160 }} />
         )}
-        <button className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: 12 }} onClick={loadAll}>Обновить</button>
+        <button className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: 12, marginLeft: 'auto' }} onClick={loadAll}>Обновить</button>
       </div>
 
-      <div className="tabs" style={{ marginTop: 16, marginBottom: 16, display: 'inline-flex' }}>
+      <div className="tabs" style={{ marginTop: 14, marginBottom: 14, display: 'inline-flex' }}>
         {([
           { key: 'tickets', label: 'Заявки' },
           { key: 'objects', label: 'Объекты' },
@@ -84,7 +87,7 @@ export const ReportsPage: React.FC = () => {
         ))}
       </div>
 
-      {loading ? <div className="loading">Загрузка...</div> : (
+      {loading ? <div className="loading" style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>Загрузка...</div> : (
         <>
           {tab === 'objects' && (
             <div className="table-wrapper">
@@ -109,13 +112,13 @@ export const ReportsPage: React.FC = () => {
 
           {tab === 'tickets' && ticketStats && (
             <div>
-              <div className="kpi-row">
-                <div className="kpi"><div className="kpi-lab">Всего</div><div className="kpi-val">{ticketStats.total}</div></div>
-                <div className="kpi"><div className="kpi-lab">Ср. время (ч)</div><div className="kpi-val" style={{ color: valColor(ticketStats.avg_resolution_hours, 24, 72) }}>{ticketStats.avg_resolution_hours}</div></div>
-                <div className="kpi"><div className="kpi-lab">SLA %</div><div className="kpi-val" style={{ color: valColor(100 - ticketStats.sla_percent, 20, 50) }}>{ticketStats.sla_percent}%</div></div>
+              <div className="kpi-row" style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
+                <div className="kpi" style={{ flex: 1, padding: 12, background: 'var(--bg-surface)', borderRadius: 8 }}><div className="kpi-lab" style={{ fontSize: 11, color: 'var(--text-muted)' }}>Всего</div><div className="kpi-val" style={{ fontSize: 20, fontWeight: 700 }}>{ticketStats.total}</div></div>
+                <div className="kpi" style={{ flex: 1, padding: 12, background: 'var(--bg-surface)', borderRadius: 8 }}><div className="kpi-lab" style={{ fontSize: 11, color: 'var(--text-muted)' }}>Ср. время (ч)</div><div className="kpi-val" style={{ fontSize: 20, fontWeight: 700, color: valColor(ticketStats.avg_resolution_hours, 24, 72) }}>{ticketStats.avg_resolution_hours}</div></div>
+                <div className="kpi" style={{ flex: 1, padding: 12, background: 'var(--bg-surface)', borderRadius: 8 }}><div className="kpi-lab" style={{ fontSize: 11, color: 'var(--text-muted)' }}>SLA %</div><div className="kpi-val" style={{ fontSize: 20, fontWeight: 700, color: valColor(100 - ticketStats.sla_percent, 20, 50) }}>{ticketStats.sla_percent}%</div></div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginTop: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
                 <div className="table-wrapper">
                   <table>
                     <thead><tr><th>Статус</th><th>Кол-во</th></tr></thead>
@@ -186,24 +189,28 @@ const TX_COLORS: Record<string, string> = { incoming: 'var(--success)', outgoing
 const InsertsReport: React.FC<{ q: string }> = ({ q }) => {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const load = () => {
-    setLoading(true);
+
+  useEffect(() => {
     api.get('/insert/transactions', { params: { limit: 500 } })
       .then(r => { setRows(r.data); setLoading(false); })
       .catch(() => setLoading(false));
-  };
-  useEffect(() => { load(); }, []);
-  if (loading) return <div className="loading">Загрузка...</div>;
-  const filtered = q.trim()
+  }, []);
+
+  if (loading) return <div className="loading" style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)' }}>Загрузка...</div>;
+
+  const query = q.trim().toLowerCase();
+  const filtered = query
     ? rows.filter(r =>
-        (r.product_name || '').toLowerCase().includes(q.toLowerCase()) ||
-        (r.taken_by_name || '').toLowerCase().includes(q.toLowerCase()) ||
-        (r.location_name || '').toLowerCase().includes(q.toLowerCase())
+        (r.product_name || '').toLowerCase().includes(query) ||
+        (r.taken_by_name || '').toLowerCase().includes(query) ||
+        (r.location_name || '').toLowerCase().includes(query)
       )
     : rows;
+
   return (
     <div className="table-wrapper">
-      <table><thead><tr><th>Дата</th><th>Тип</th><th>Продукт</th><th>Кол-во</th><th>Кто</th><th>Куда</th></tr></thead>
+      <table>
+        <thead><tr><th>Дата</th><th>Тип</th><th>Продукт</th><th>Кол-во</th><th>Кто</th><th>Куда</th></tr></thead>
         <tbody>
           {filtered.map(r => (
             <tr key={r.id}>
@@ -225,27 +232,36 @@ const InsertsReport: React.FC<{ q: string }> = ({ q }) => {
 const DevicesReport: React.FC = () => {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const load = () => {
-    setLoading(true);
+
+  useEffect(() => {
     api.get('/replacement-devices')
       .then(r => { setRows(r.data); setLoading(false); })
       .catch(() => setLoading(false));
-  };
-  useEffect(() => { load(); }, []);
-  if (loading) return <div className="loading">Загрузка...</div>;
+  }, []);
+
+  if (loading) return <div className="loading" style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)' }}>Загрузка...</div>;
+
+  const now = new Date();
+
   return (
     <div className="table-wrapper">
-      <table><thead><tr><th>Прибор</th><th>Поверка до</th><th>У кого</th><th>Объект</th><th>Возврат</th></tr></thead>
+      <table>
+        <thead><tr><th>Прибор</th><th>Поверка до</th><th>У кого</th><th>Объект</th><th>Возврат</th></tr></thead>
         <tbody>
-          {rows.map(r => (
-            <tr key={r.id}>
-              <td style={{ fontWeight: 600 }}>{r.name}</td>
-              <td style={{ color: r.verification_expiry && new Date(r.verification_expiry) < new Date() ? 'var(--danger)' : 'var(--text-secondary)' }}>{r.verification_expiry ? new Date(r.verification_expiry).toLocaleDateString('ru-RU') : '—'}</td>
-              <td>{r.taken_by_name || '—'}</td>
-              <td>{r.location_name || '—'}</td>
-              <td>{r.return_date ? new Date(r.return_date).toLocaleDateString('ru-RU') : '—'}</td>
-            </tr>
-          ))}
+          {rows.map(r => {
+            const isOverdue = r.verification_expiry && new Date(r.verification_expiry) < now;
+            return (
+              <tr key={r.id}>
+                <td style={{ fontWeight: 600 }}>{r.name}</td>
+                <td style={{ color: isOverdue ? 'var(--danger)' : 'var(--text-secondary)' }}>
+                  {r.verification_expiry ? r.verification_expiry.substring(0, 10) : '—'}
+                </td>
+                <td>{r.taken_by_name || '—'}</td>
+                <td>{r.location_name || '—'}</td>
+                <td>{r.return_date ? r.return_date.substring(0, 10) : '—'}</td>
+              </tr>
+            );
+          })}
           {rows.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)' }}>Нет приборов</td></tr>}
         </tbody>
       </table>

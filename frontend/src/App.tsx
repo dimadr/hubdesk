@@ -11,36 +11,66 @@ import { AuditLogPage } from './pages/AuditLogPage';
 import { L } from './locale';
 
 interface Location {
-  id: number; name: string; address: string; customer_id: number; customer_name: string;
+  id: number;
+  name: string;
+  address: string;
+  customer_id: number;
+  customer_name: string;
   contacts: string | null;
-  contact_name: string | null; contact_phone: string | null; contact_email: string | null;
-  assigned_engineer_id: number | null; assigned_engineer_name: string | null;
-  contract_number: string | null; contract_valid_from: string | null; contract_valid_to: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+  assigned_engineer_id: number | null;
+  assigned_engineer_name: string | null;
+  contract_number: string | null;
+  contract_valid_from: string | null;
+  contract_valid_to: string | null;
 }
 
 interface UserInfo {
-  id: number; email: string; name: string; phone?: string; patronymic?: string; role: string; status?: string;
+  id: number;
+  email: string;
+  name: string;
+  phone?: string;
+  patronymic?: string;
+  role: string;
+  status?: string;
 }
 
 const ROLE_LABELS: Record<string, string> = {
-  admin: 'Администратор', engineer: 'Инженер', dispatcher: 'Диспетчер',
-  customer: 'Заказчик', storekeeper: 'Кладовщик', viewer: 'Наблюдатель', metrologist: 'Метролог', accountant: 'Бухгалтер',
+  admin: 'Администратор',
+  engineer: 'Инженер',
+  dispatcher: 'Диспетчер',
+  customer: 'Заказчик',
+  storekeeper: 'Кладовщик',
+  viewer: 'Наблюдатель',
+  metrologist: 'Метролог',
+  accountant: 'Бухгалтер',
 };
 
 const TICKET_TYPES: Record<string, string> = {
-  repair: 'Ремонт', installation: 'Монтаж', maintenance: 'ТО',
-  inspection: 'Инспекция', emergency: 'Авария',
+  repair: 'Ремонт',
+  installation: 'Монтаж',
+  maintenance: 'ТО',
+  inspection: 'Инспекция',
+  emergency: 'Авария',
 };
 
 const TICKET_STATUS_LABELS: Record<string, string> = {
-  ASSIGNED: 'Назначена', ACCEPTED: 'Принята', ON_THE_WAY: 'В пути',
-  ARRIVED: 'На месте', IN_PROGRESS: 'В работе', REVIEW: 'Проверка', COMPLETED: 'Завершена',
+  ASSIGNED: 'Назначена',
+  ACCEPTED: 'Принята',
+  ON_THE_WAY: 'В пути',
+  ARRIVED: 'На месте',
+  IN_PROGRESS: 'В работе',
+  REVIEW: 'Проверка',
+  COMPLETED: 'Завершена',
 };
+
 const TICKET_PRIORITY_LABELS: Record<string, string> = {
-  low: 'Низкий', medium: 'Средний', high: 'Высокий', critical: 'Критический',
-};
-const TICKET_TYPE_LABELS: Record<string, string> = {
-  repair: 'Ремонт', installation: 'Монтаж', maintenance: 'ТО', inspection: 'Инспекция', emergency: 'Авария',
+  low: 'Низкий',
+  medium: 'Средний',
+  high: 'Высокий',
+  critical: 'Критический',
 };
 
 const NAV_ITEMS = [
@@ -56,8 +86,6 @@ const NAV_ITEMS = [
 ] as const;
 
 type Page = typeof NAV_ITEMS[number]['key'];
-
-// --- Вспомогательные компоненты (объявлены ДО использования в App) ---
 
 const AuthPage: React.FC<{ onLogin: (token: string, user: any) => void }> = ({ onLogin }) => {
   const [isLogin, setIsLogin] = useState(true);
@@ -76,7 +104,10 @@ const AuthPage: React.FC<{ onLogin: (token: string, user: any) => void }> = ({ o
     setSuccessMsg('');
     try {
       const url = isLogin ? '/login' : '/signup';
-      const body: any = isLogin ? { email, password, remember_me: rememberMe } : { email, password, name, patronymic, role, consent_given: consent };
+      const body: any = isLogin
+        ? { email, password, remember_me: rememberMe }
+        : { email, password, name, patronymic, role, consent_given: consent };
+
       const { data } = await api.post(url, body);
       if (!isLogin && !data.token) {
         setSuccessMsg('Заявка отправлена администратору на утверждение. После подтверждения вы сможете войти.');
@@ -451,7 +482,7 @@ const TicketDetailModal: React.FC<{ ticket: TicketResponse; onClose: () => void 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 13, marginTop: 12 }}>
           <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Статус</span><div>{TICKET_STATUS_LABELS[ticket.status] || ticket.status}</div></div>
           <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Приоритет</span><div>{TICKET_PRIORITY_LABELS[ticket.priority] || ticket.priority}</div></div>
-          {ticket.type && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Тип заявки</span><div>{TICKET_TYPE_LABELS[ticket.type] || ticket.type}</div></div>}
+          {ticket.type && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Тип заявки</span><div>{TICKET_TYPES[ticket.type] || ticket.type}</div></div>}
           <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Создана</span><div>{new Date(ticket.created_at).toLocaleString('ru-RU')}</div></div>
           {ticket.resolution_deadline && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Срок исполнения</span><div>{new Date(ticket.resolution_deadline).toLocaleString('ru-RU')}</div></div>}
           {ticket.scheduled_end && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Плановый выезд по</span><div>{new Date(ticket.scheduled_end).toLocaleString('ru-RU')}</div></div>}
@@ -638,8 +669,6 @@ const EmployeesPage: React.FC<{ onAdd: () => void; refreshKey: number; isAdmin: 
 };
 
 
-// --- Основной компонент App ---
-
 const App: React.FC = () => {
   const [auth, setAuth] = useState<{ token: string; user: any } | null>(null);
   const [page, setPage] = useState<Page>('tickets');
@@ -737,19 +766,19 @@ const App: React.FC = () => {
         </div>
         <nav className="sidebar-nav">
           <div className="nav-section">Навигация</div>
-          {NAV_ITEMS.filter(item => !(item as any).adminOnly || user.role === 'admin')
-            .filter(item => item.key !== 'reports' || user.role === 'admin' || user.role === 'dispatcher' || user.role === 'accountant')
-            .filter(item => item.key !== 'kanban' || (user.role === 'admin' || user.role === 'dispatcher' || user.role === 'engineer'))
+          {NAV_ITEMS.filter(item => !('adminOnly' in item) || user.role === 'admin')
+            .filter(item => item.key !== 'reports' || ['admin', 'dispatcher', 'accountant'].includes(user.role))
+            .filter(item => item.key !== 'kanban' || ['admin', 'dispatcher', 'engineer'].includes(user.role))
             .map(item => (
-            <button
-              key={item.key}
-              className={`nav-item ${page === item.key ? 'active' : ''}`}
-              onClick={() => setPage(item.key)}
-            >
-              <span className="nav-icon">{item.icon}</span>
-              {item.label}
-            </button>
-          ))}
+              <button
+                key={item.key}
+                className={`nav-item ${page === item.key ? 'active' : ''}`}
+                onClick={() => setPage(item.key)}
+              >
+                <span className="nav-icon">{item.icon}</span>
+                {item.label}
+              </button>
+            ))}
         </nav>
         <div className="sidebar-user">
           <div className="user-name">{user.name}</div>
@@ -771,8 +800,8 @@ const App: React.FC = () => {
              page === 'reports' ? 'Отчёты' :
              page === 'locations' ? 'Объекты' :
              page === 'employees' ? 'Сотрудники' :
-              page === 'admin' ? 'Администрирование' :
-              page === 'audit' ? 'Журнал действий' : 'Склад'}
+             page === 'admin' ? 'Администрирование' :
+             page === 'audit' ? 'Журнал действий' : 'Склад'}
           </h1>
           <div className="stat-pills">
             <div className="stat-pill">
@@ -803,7 +832,14 @@ const App: React.FC = () => {
                 + Создать заявку
               </button>
             </div>
-            <TicketGrid key={refreshKey} users={users} onEdit={t => setEditTicket(t)} onDetail={t => setDetailTicket(t)} onStatusChange={handleStatusChange} currentUserId={user.user_id || user.id} />
+            <TicketGrid
+              key={refreshKey}
+              users={users}
+              onEdit={setEditTicket}
+              onDetail={setDetailTicket}
+              onStatusChange={handleStatusChange}
+              currentUserId={user.user_id || user.id}
+            />
           </>
         )}
         {page === 'calendar' && <CalendarPage />}
@@ -811,15 +847,50 @@ const App: React.FC = () => {
         {page === 'reports' && <ReportsPage />}
         {page === 'warehouse' && <WarehousePage />}
         {page === 'locations' && <LocationsPage />}
-        {page === 'employees' && <EmployeesPage onAdd={() => setShowAddEmployee(true)} refreshKey={refreshKey} isAdmin={user.role === 'admin'} />}
+        {page === 'employees' && (
+          <EmployeesPage
+            onAdd={() => setShowAddEmployee(true)}
+            refreshKey={refreshKey}
+            isAdmin={user.role === 'admin'}
+          />
+        )}
         {page === 'admin' && <AdminPage />}
         {page === 'audit' && <AuditLogPage />}
 
-        {showCreate && <CreateTicketModal onClose={() => setShowCreate(false)} onCreated={() => setRefreshKey(k => k + 1)} users={users} />}
-        {editTicket && <EditTicketModal ticket={editTicket} onClose={() => setEditTicket(null)} onSaved={() => { setEditTicket(null); setRefreshKey(k => k + 1); }} users={users} />}
-        {detailTicket && <TicketDetailModal ticket={detailTicket} onClose={() => setDetailTicket(null)} />}
-        {confirmStatusTicket && <CompleteTicketModal ticket={confirmStatusTicket.ticket} onConfirm={confirmComplete} onClose={() => setConfirmStatusTicket(null)} />}
-        {showAddEmployee && <AddEmployeeModal onClose={() => setShowAddEmployee(false)} onAdded={() => { setShowAddEmployee(false); setRefreshKey(k => k + 1); }} />}
+        {showCreate && (
+          <CreateTicketModal
+            onClose={() => setShowCreate(false)}
+            onCreated={() => setRefreshKey(k => k + 1)}
+            users={users}
+          />
+        )}
+        {editTicket && (
+          <EditTicketModal
+            ticket={editTicket}
+            onClose={() => setEditTicket(null)}
+            onSaved={() => { setEditTicket(null); setRefreshKey(k => k + 1); }}
+            users={users}
+          />
+        )}
+        {detailTicket && (
+          <TicketDetailModal
+            ticket={detailTicket}
+            onClose={() => setDetailTicket(null)}
+          />
+        )}
+        {confirmStatusTicket && (
+          <CompleteTicketModal
+            ticket={confirmStatusTicket.ticket}
+            onConfirm={confirmComplete}
+            onClose={() => setConfirmStatusTicket(null)}
+          />
+        )}
+        {showAddEmployee && (
+          <AddEmployeeModal
+            onClose={() => setShowAddEmployee(false)}
+            onAdded={() => { setShowAddEmployee(false); setRefreshKey(k => k + 1); }}
+          />
+        )}
       </main>
     </div>
   );
