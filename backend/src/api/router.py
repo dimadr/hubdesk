@@ -1,10 +1,12 @@
 import os
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
+from sqlalchemy.exc import IntegrityError
 from passlib.hash import bcrypt
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -49,8 +51,6 @@ api_router.include_router(insert_v2_router)
 api_router.include_router(audit_router)
 
 
-# --- СХЕМЫ PYDANTIC ---
-
 class SignupRequest(BaseModel):
     email: str = Field(..., max_length=255)
     name: str = Field(..., max_length=255)
@@ -90,8 +90,8 @@ class LocationResponse(BaseModel):
     assigned_engineer_id: int | None = None
     assigned_engineer_name: str | None = None
     contract_number: str | None = None
-    contract_valid_from: str | None = None
-    contract_valid_to: str | None = None
+    contract_valid_from: date | None = None
+    contract_valid_to: date | None = None
     inn: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -107,8 +107,8 @@ class LocationCreate(BaseModel):
     contact_email: str | None = None
     assigned_engineer_id: int | None = None
     contract_number: str | None = None
-    contract_valid_from: str | None = None
-    contract_valid_to: str | None = None
+    contract_valid_from: date | None = None
+    contract_valid_to: date | None = None
     inn: str | None = None
 
 
@@ -122,8 +122,8 @@ class LocationUpdate(BaseModel):
     contact_email: str | None = None
     assigned_engineer_id: int | None = None
     contract_number: str | None = None
-    contract_valid_from: str | None = None
-    contract_valid_to: str | None = None
+    contract_valid_from: date | None = None
+    contract_valid_to: date | None = None
     inn: str | None = None
 
 
@@ -147,8 +147,6 @@ class GroupResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-# --- ЭНДПОИНТЫ АУТЕНТИФИКАЦИИ ---
-
 @api_router.post("/signup", response_model=AuthResponse, tags=["Auth"])
 async def signup(data: SignupRequest, db: AsyncSession = Depends(get_db)):
     if not data.consent_given:
@@ -164,6 +162,8 @@ async def signup(data: SignupRequest, db: AsyncSession = Depends(get_db)):
         raise HTTPException(400, "Неизвестная роль")
 
     role_enum = UserRole(data.role)
+    hashed_password = await run_in_threadpool(bcrypt.hash, data.password)
+
     user = User(
         email=data.email,
         name=data.name,
@@ -171,14 +171,19 @@ async def signup(data: SignupRequest, db: AsyncSession = Depends(get_db)):
         patronymic=data.patronymic or None,
         position=data.position or None,
         role=role_enum,
-        password_hash=bcrypt.hash(data.password),
+        password_hash=hashed_password,
         status=UserStatus.pending,
         consent_given=True,
-        consent_date=datetime.utcnow(),
+        consent_date=datetime.now(timezone.utc),
     )
     db.add(user)
-    await db.flush()
-    await db.commit()
+
+    try:
+        await db.flush()
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(400, "Email уже зарегистрирован (ошибка параллельного запроса)")
 
     await log_audit(
         db, None, "user_signup_requested", "user", user.id,
@@ -200,8 +205,9 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == data.email))
     user = result.scalar_one_or_none()
 
-    if not user or not bcrypt.verify(data.password, user.password_hash):
+    if not user or not await run_in_threadpool(bcrypt.verify, data.password, user.password_hash):
         raise HTTPException(401, "Неверный email или пароль")
+
     if user.status == UserStatus.pending:
         raise HTTPException(403, "Учётная запись ожидает утверждения администратором")
     if user.status == UserStatus.rejected:
@@ -218,8 +224,6 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
     )
 
 
-# --- ЭНДПОИНТЫ ОБЪЕКТОВ (LOCATIONS) ---
-
 @api_router.get("/locations", response_model=list[LocationResponse], tags=["Locations"])
 async def list_locations(
     user=Depends(get_current_user),
@@ -230,7 +234,6 @@ async def list_locations(
         .join(Customer)
         .options(
             selectinload(AssetLocation.assigned_engineer),
-            selectinload(AssetLocation.tickets),
         )
     )
     rows = result.all()
@@ -246,8 +249,8 @@ async def list_locations(
             assigned_engineer_id=loc.assigned_engineer_id,
             assigned_engineer_name=loc.assigned_engineer.name if loc.assigned_engineer else None,
             contract_number=loc.contract_number,
-            contract_valid_from=loc.contract_valid_from.isoformat() if loc.contract_valid_from else None,
-            contract_valid_to=loc.contract_valid_to.isoformat() if loc.contract_valid_to else None,
+            contract_valid_from=loc.contract_valid_from,
+            contract_valid_to=loc.contract_valid_to,
             inn=loc.inn,
         ))
     return out
@@ -273,8 +276,8 @@ async def create_location(
         contact_email=data.contact_email,
         assigned_engineer_id=data.assigned_engineer_id,
         contract_number=data.contract_number,
-        contract_valid_from=date.fromisoformat(data.contract_valid_from) if data.contract_valid_from else None,
-        contract_valid_to=date.fromisoformat(data.contract_valid_to) if data.contract_valid_to else None,
+        contract_valid_from=data.contract_valid_from,
+        contract_valid_to=data.contract_valid_to,
         inn=data.inn,
     )
     db.add(loc)
@@ -298,8 +301,8 @@ async def create_location(
         assigned_engineer_id=loc.assigned_engineer_id,
         assigned_engineer_name=eng_name,
         contract_number=loc.contract_number,
-        contract_valid_from=loc.contract_valid_from.isoformat() if loc.contract_valid_from else None,
-        contract_valid_to=loc.contract_valid_to.isoformat() if loc.contract_valid_to else None,
+        contract_valid_from=loc.contract_valid_from,
+        contract_valid_to=loc.contract_valid_to,
         inn=loc.inn,
     )
 
@@ -331,10 +334,7 @@ async def update_location(
             update_data["customer_id"] = cust.id
 
     for field, value in update_data.items():
-        if field in ("contract_valid_from", "contract_valid_to"):
-            setattr(loc, field, date.fromisoformat(value) if value else None)
-        else:
-            setattr(loc, field, value)
+        setattr(loc, field, value)
 
     await db.commit()
 
@@ -356,8 +356,8 @@ async def update_location(
         assigned_engineer_id=loc.assigned_engineer_id,
         assigned_engineer_name=loc.assigned_engineer.name if loc.assigned_engineer else None,
         contract_number=loc.contract_number,
-        contract_valid_from=loc.contract_valid_from.isoformat() if loc.contract_valid_from else None,
-        contract_valid_to=loc.contract_valid_to.isoformat() if loc.contract_valid_to else None,
+        contract_valid_from=loc.contract_valid_from,
+        contract_valid_to=loc.contract_valid_to,
         inn=loc.inn,
     )
 
@@ -389,8 +389,6 @@ async def delete_location(location_id: int, user=Depends(get_current_user), db: 
 async def lookup_inn(inn: str, user=Depends(get_current_user)):
     return await do_lookup(inn.strip())
 
-
-# --- ЭНДПОИНТЫ ПОЛЬЗОВАТЕЛЕЙ И ГРУПП ---
 
 @api_router.get("/users/list", response_model=list[UserListResponse], tags=["Users"])
 async def list_users(

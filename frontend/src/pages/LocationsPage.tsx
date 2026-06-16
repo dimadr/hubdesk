@@ -19,8 +19,17 @@ interface Location {
   inn: string | null;
 }
 
-interface UserInfo { id: number; email: string; name: string; role: string; }
-interface CustomerInfo { id: number; name: string; }
+interface UserInfo {
+  id: number;
+  email: string;
+  name: string;
+  role: string;
+}
+
+interface CustomerInfo {
+  id: number;
+  name: string;
+}
 
 export const LocationsPage: React.FC = () => {
   const [locations, setLocations] = useState<Location[]>([]);
@@ -72,11 +81,13 @@ export const LocationsPage: React.FC = () => {
       await api.delete(`/locations/${id}`);
       refreshLocations();
     } catch (e: any) {
-      alert(e.response?.data?.detail || 'Ошибка удаления');
+      alert(e.response?.data?.detail || 'Ошибка удаления. Возможно, у объекта есть связанные заявки.');
     }
   };
 
-  useEffect(() => { initPage(); }, []);
+  useEffect(() => {
+    initPage();
+  }, []);
 
   if (loading) return <div style={{ padding: 24, textAlign: 'center' }}>Загрузка...</div>;
   if (pageError) return <div style={{ padding: 24, color: 'var(--danger)' }}>{pageError}</div>;
@@ -181,15 +192,19 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
   const [error, setError] = useState('');
 
   const handleInnLookup = async () => {
-    if (!inn || (inn.length !== 10 && inn.length !== 12)) {
+    const cleanInn = inn.trim();
+    if (!cleanInn || (cleanInn.length !== 10 && cleanInn.length !== 12)) {
       setError('Введите корректный ИНН (10 или 12 цифр)');
       return;
     }
     setInnLoading(true);
     setError('');
     try {
-      const { data } = await api.get('/locations/lookup-inn', { params: { inn } });
-      if (data.error) { setError(data.error); return; }
+      const { data } = await api.get('/locations/lookup-inn', { params: { inn: cleanInn } });
+      if (data.error) {
+        setError(data.error);
+        return;
+      }
       setName(data.name || name);
       setAddress(data.address || address);
       if (data.phone) setContactPhone(data.phone);
@@ -201,7 +216,11 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
   };
 
   const submit = async () => {
-    if (!name.trim()) { setError('Название обязательно'); return; }
+    if (!name.trim()) {
+      setError('Название обязательно');
+      return;
+    }
+    setError('');
 
     try {
       const body: any = {
@@ -216,9 +235,8 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
         contract_valid_from: from || null,
         contract_valid_to: to || null,
         inn: inn.trim() || null,
+        customer_id: customerId ? Number(customerId) : null,
       };
-      if (customerId) { body.customer_id = Number(customerId); }
-      else if (loc) { body.customer_id = 0; }
 
       if (loc) {
         await api.patch(`/locations/${loc.id}`, body);
@@ -235,9 +253,13 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxHeight: '90vh', overflow: 'auto' }}>
         <h3>{loc ? 'Редактировать' : 'Добавить'} объект</h3>
-        {error && <p style={{ color: 'var(--danger)', fontSize: 13, background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 6 }}>{error}</p>}
+        {error && (
+          <p style={{ color: 'var(--danger)', fontSize: 13, background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 6 }}>
+            {error}
+          </p>
+        )}
 
-         <label>Компания (Клиент)</label>
+        <label>Компания (Клиент)</label>
         <select value={customerId} onChange={e => setCustomerId(e.target.value)}>
           <option value="">— Создать из названия объекта —</option>
           {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -274,7 +296,9 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
         <label>Ответственный инженер</label>
         <select value={engId} onChange={e => setEngId(e.target.value)}>
           <option value="">— Не назначен —</option>
-          {users.filter(u => u.role === 'engineer' || u.role === 'admin').map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+          {users.filter(u => ['engineer', 'admin', 'dispatcher'].includes(u.role.toLowerCase())).map(u => (
+            <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+          ))}
         </select>
 
         <label>Договор</label>
