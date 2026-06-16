@@ -99,7 +99,7 @@ class LocationResponse(BaseModel):
 
 class LocationCreate(BaseModel):
     name: str
-    customer_id: int
+    customer_id: int | None = None
     address: str = ""
     contacts: str | None = None
     contact_name: str | None = None
@@ -114,6 +114,7 @@ class LocationCreate(BaseModel):
 
 class LocationUpdate(BaseModel):
     name: str | None = None
+    customer_id: int | None = None
     address: str | None = None
     contacts: str | None = None
     contact_name: str | None = None
@@ -258,9 +259,11 @@ async def create_location(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    cust = await db.get(Customer, data.customer_id)
+    cust = await db.get(Customer, data.customer_id) if data.customer_id else None
     if not cust:
-        raise HTTPException(404, "Клиент не найден")
+        cust = Customer(name=data.name, type="company")
+        db.add(cust)
+        await db.flush()
 
     loc = AssetLocation(
         name=data.name, address=data.address, customer_id=cust.id,
@@ -318,6 +321,14 @@ async def update_location(
         raise HTTPException(404, "Объект не найден")
 
     update_data = data.model_dump(exclude_unset=True)
+
+    if "customer_id" in update_data:
+        cust = await db.get(Customer, update_data["customer_id"]) if update_data["customer_id"] else None
+        if not cust:
+            cust = Customer(name=loc.name, type="company")
+            db.add(cust)
+            await db.flush()
+            update_data["customer_id"] = cust.id
 
     for field, value in update_data.items():
         if field in ("contract_valid_from", "contract_valid_to"):

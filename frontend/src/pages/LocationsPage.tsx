@@ -202,12 +202,10 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
 
   const submit = async () => {
     if (!name.trim()) { setError('Название обязательно'); return; }
-    if (!customerId) { setError('Необходимо выбрать компанию (клиента)'); return; }
 
     try {
-      const body = {
+      const body: any = {
         name: name.trim(),
-        customer_id: Number(customerId),
         address: address.trim(),
         contacts: contacts.trim() || null,
         contact_name: contactName.trim() || null,
@@ -219,6 +217,8 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
         contract_valid_to: to || null,
         inn: inn.trim() || null,
       };
+      if (customerId) { body.customer_id = Number(customerId); }
+      else if (loc) { body.customer_id = 0; }
 
       if (loc) {
         await api.patch(`/locations/${loc.id}`, body);
@@ -237,9 +237,9 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
         <h3>{loc ? 'Редактировать' : 'Добавить'} объект</h3>
         {error && <p style={{ color: 'var(--danger)', fontSize: 13, background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 6 }}>{error}</p>}
 
-        <label>Компания (Клиент) *</label>
+         <label>Компания (Клиент)</label>
         <select value={customerId} onChange={e => setCustomerId(e.target.value)}>
-          <option value="">— Выберите контрагента —</option>
+          <option value="">— Создать из названия объекта —</option>
           {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
 
