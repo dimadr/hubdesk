@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from src.api.router import api_router
 from src.database import async_session, engine
@@ -47,6 +48,12 @@ async def lifespan(app: FastAPI):
     set_http_client(http_client)
 
     mail_task = asyncio.create_task(mail_worker_loop())
+
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("ALTER TYPE tickettype ADD VALUE IF NOT EXISTS 'verification'"))
+    except Exception:
+        pass
 
     yield
 

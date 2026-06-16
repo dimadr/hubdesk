@@ -54,6 +54,7 @@ const TICKET_TYPES: Record<string, string> = {
   maintenance: 'ТО',
   inspection: 'Инспекция',
   emergency: 'Авария',
+  verification: 'Поверка',
 };
 
 const TICKET_STATUS_LABELS: Record<string, string> = {

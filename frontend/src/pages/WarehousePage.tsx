@@ -40,8 +40,8 @@ export const WarehousePage: React.FC = () => {
       const [whRes, nomRes, docRes, balRes] = await Promise.all([
         api.get('/warehouses'),
         api.get('/nomenclature'),
-        api.get('/warehouse-docs'),
-        api.get('/warehouse-balances')
+        api.get('/warehouse-documents'),
+        api.get('/balances')
       ]);
       setWarehouses(whRes.data);
       setNomenclature(nomRes.data);
@@ -95,7 +95,7 @@ export const WarehousePage: React.FC = () => {
           quantity: Number(l.quantity)
         }))
       };
-      await api.post('/warehouse-docs', payload);
+      await api.post('/warehouse-documents', payload);
       setShowDocModal(false);
       loadData();
     } catch (e: any) {
@@ -121,7 +121,7 @@ export const WarehousePage: React.FC = () => {
         <button className={`tab ${tab === 'balances' ? 'active' : ''}`} onClick={() => setTab('balances')}>Остатки</button>
         <button className={`tab ${tab === 'warehouses' ? 'active' : ''}`} onClick={() => setTab('warehouses')}>Склады</button>
         <button className={`tab ${tab === 'nomenclature' ? 'active' : ''}`} onClick={() => setTab('nomenclature')}>Номенклатура</button>
-        <button className={`tab ${tab === 'replacement' ? 'active' : ''}`} onClick={() => setTab('replacement')}>Замена подменного фонда</button>
+        <button className={`tab ${tab === 'replacement' ? 'active' : ''}`} onClick={() => setTab('replacement')}>Подменный фонд</button>
         <button className={`tab ${tab === 'insert' ? 'active' : ''}`} onClick={() => setTab('insert')}>Вставки</button>
       </div>
 
@@ -354,7 +354,7 @@ const ReplacementTab: React.FC<{ warehouses: Warehouse[]; nomenclature: Nomencla
   const load = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/warehouse-replacement');
+      const res = await api.get('/replacement-devices');
       setItems(res.data);
       const tRes = await api.get('/tickets');
       setTickets(tRes.data?.items || tRes.data || []);
@@ -367,7 +367,7 @@ const ReplacementTab: React.FC<{ warehouses: Warehouse[]; nomenclature: Nomencla
   const save = async () => {
     if (!form.nomenclature_id || !form.serial_number || !form.warehouse_id) { alert('Заполните обязательные поля'); return; }
     try {
-      await api.post('/warehouse-replacement', {
+      await api.post('/replacement-devices', {
         nomenclature_id: Number(form.nomenclature_id),
         serial_number: form.serial_number,
         status: form.status,

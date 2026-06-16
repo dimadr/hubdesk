@@ -28,6 +28,7 @@ class TicketType(str, enum.Enum):
     maintenance = "maintenance"
     inspection = "inspection"
     emergency = "emergency"
+    verification = "verification"
 
 
 class Ticket(Base):
