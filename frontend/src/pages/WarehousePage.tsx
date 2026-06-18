@@ -229,7 +229,7 @@ export const WarehousePage: React.FC = () => {
           </div>
         )}
 
-        {tab === 'replacement' && <ReplacementTab warehouses={warehouses} nomenclature={nomenclature} loadBalances={loadData} />}
+        {tab === 'replacement' && <ReplacementTab />}
         {tab === 'insert' && <InsertTab />}
       </div>
 
@@ -344,121 +344,112 @@ export const WarehousePage: React.FC = () => {
   );
 };
 
-const ReplacementTab: React.FC<{ warehouses: Warehouse[]; nomenclature: NomenclatureItem[]; loadBalances: () => void }> = ({ warehouses, nomenclature, loadBalances }) => {
-  const [items, setItems] = useState<any[]>([]);
+const ReplacementTab: React.FC = () => {
+  const [devices, setDevices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [tickets, setTickets] = useState<any[]>([]);
-  const [form, setForm] = useState({ nomenclature_id: '', serial_number: '', status: 'available', warehouse_id: '', ticket_id: '', comment: '' });
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [form, setForm] = useState({ name: '', serial_number: '', verification_date: '', verification_interval_years: '', verification_expiry: '', taken_by_id: '', location_id: '', return_date: '', passport_scan: '' });
+  const [users, setUsers] = useState<any[]>([]);
+  const [locations, setLocations] = useState<any[]>([]);
+  const [error, setError] = useState('');
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
-  const load = async () => {
+  const load = () => {
     setLoading(true);
-    try {
-      const res = await api.get('/replacement-devices');
-      setItems(res.data);
-      const tRes = await api.get('/tickets');
-      setTickets(tRes.data?.items || tRes.data || []);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
+    Promise.all([api.get('/replacement-devices'), api.get('/users/list'), api.get('/locations')])
+      .then(([d, u, l]) => { setDevices(d.data); setUsers(u.data); setLocations(l.data); setLoading(false); })
+      .catch(() => setLoading(false));
   };
-
   useEffect(() => { load(); }, []);
 
-  const save = async () => {
-    if (!form.nomenclature_id || !form.serial_number || !form.warehouse_id) { alert('Заполните обязательные поля'); return; }
-    try {
-      await api.post('/replacement-devices', {
-        nomenclature_id: Number(form.nomenclature_id),
-        serial_number: form.serial_number,
-        status: form.status,
-        warehouse_id: Number(form.warehouse_id),
-        ticket_id: form.ticket_id ? Number(form.ticket_id) : null,
-        comment: form.comment || null
-      });
-      setShowModal(false);
-      load();
-      loadBalances();
-    } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка добавления'); }
+  const openForm = (d?: any) => {
+    if (d) { setEditId(d.id); setForm({ name: d.name, serial_number: d.serial_number || '', verification_date: d.verification_date || '', verification_expiry: d.verification_expiry || '', verification_interval_years: d.verification_interval_months ? String(d.verification_interval_months / 12) : '', taken_by_id: d.taken_by_id?.toString() || '', location_id: d.location_id?.toString() || '', return_date: d.return_date || '', passport_scan: d.passport_scan || '' }); }
+    else { setEditId(null); setForm({ name: '', serial_number: '', verification_date: '', verification_expiry: '', verification_interval_years: '', taken_by_id: '', location_id: '', return_date: '', passport_scan: '' }); }
+    setShowForm(true); setError('');
   };
 
-  const changeStatus = async (id: number, newStatus: string) => {
+  const submit = async () => {
+    if (!form.name.trim()) { setError('Название обязательно'); return; }
     try {
-      await api.patch(`/warehouse-replacement/${id}/status`, { status: newStatus });
-      load();
-    } catch (e) { alert('Не удалось обновить статус устройства'); }
+      const months = form.verification_interval_years ? Number(form.verification_interval_years) * 12 : null;
+      const expiry = form.verification_date && months
+        ? new Date(new Date(form.verification_date).setMonth(new Date(form.verification_date).getMonth() + months)).toISOString().substring(0, 10)
+        : form.verification_expiry || null;
+      const body: any = { name: form.name, serial_number: form.serial_number, verification_date: form.verification_date || null, verification_interval_months: months, verification_expiry: expiry, taken_by_id: form.taken_by_id ? Number(form.taken_by_id) : null, location_id: form.location_id ? Number(form.location_id) : null, return_date: form.return_date || null, passport_scan: form.passport_scan || null };
+      if (editId) await api.patch(`/replacement-devices/${editId}`, body);
+      else await api.post('/replacement-devices', body);
+      setShowForm(false); load();
+    } catch (e: any) { setError(e.response?.data?.detail || 'Ошибка'); }
   };
 
-  if (loading) return <div>Загрузка реестра фонда...</div>;
+  const remove = async (id: number) => { if (!confirm('Удалить?')) return; try { await api.delete(`/replacement-devices/${id}`); load(); } catch {} };
+
+  if (loading) return <div className="loading">Загрузка...</div>;
 
   return (
     <div>
-      <div className="page-header" style={{ marginTop: 0 }}>
-        <button className="btn btn-primary" onClick={() => {
-          setForm({ nomenclature_id: '', serial_number: '', status: 'available', warehouse_id: '', ticket_id: '', comment: '' });
-          setShowModal(true);
-        }}>+ Зарегистрировать прибор фонда</button>
-      </div>
-
+      <div className="page-header"><h2>Подменный фонд</h2><button className="btn btn-primary" onClick={() => openForm()}>+ Добавить прибор</button></div>
       <div className="table-wrapper">
         <table>
-          <thead><tr><th>ID</th><th>Прибор</th><th>Серийный номер</th><th>Где находится</th><th>Статус фонда</th><th>Связанный тикет</th><th>Комментарий</th><th>Действия</th></tr></thead>
+          <thead><tr><th>Наименование</th><th>Серийный №</th><th>Дата поверки</th><th>Интервал</th><th>Поверка до</th><th>Кто взял</th><th>Объект</th><th>Возврат</th><th></th></tr></thead>
           <tbody>
-            {items.map(i => (
-              <tr key={i.id}>
-                <td>{i.id}</td>
-                <td style={{ fontWeight: 600 }}>{nomenclature.find(n => n.id === i.nomenclature_id)?.name || `ID ${i.nomenclature_id}`}</td>
-                <td className="mono">{i.serial_number}</td>
-                <td>{warehouses.find(w => w.id === i.warehouse_id)?.name || `Склад ID ${i.warehouse_id}`}</td>
+            {devices.map(d => (
+              <tr key={d.id}>
+                <td style={{ fontWeight: 600 }}>{d.name}</td>
+                <td className="mono" style={{ fontSize: 12 }}>{d.serial_number || '—'}</td>
+                <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.verification_date ? d.verification_date.substring(0, 10) : '—'}</td>
+                <td className="mono" style={{ fontSize: 12 }}>{d.verification_interval_months ? `${d.verification_interval_months / 12} лет` : '—'}</td>
+                <td style={{ fontSize: 12, color: d.verification_expiry && new Date(d.verification_expiry) < new Date() ? 'var(--danger)' : 'var(--text-secondary)' }}>{d.verification_expiry ? d.verification_expiry.substring(0, 10) : '—'}</td>
+                <td>{d.taken_by_name || '—'}</td>
+                <td style={{ fontSize: 12 }}>{d.location_name || '—'}</td>
+                <td style={{ fontSize: 12 }}>{d.return_date ? d.return_date.substring(0, 10) : '—'}</td>
                 <td>
-                  <span className={`status-pill ${i.status === 'available' ? 'status-accounted' : i.status === 'installed' ? 'status-delivery' : 'status-approval'}`}>
-                    {i.status === 'available' ? 'Готов к выдаче' : i.status === 'installed' ? 'Установлен на объекте' : i.status === 'broken' ? 'Неисправен / Ремонт' : i.status}
-                  </span>
-                </td>
-                <td>{i.ticket_id ? `Заявка #${i.ticket_id}` : '—'}</td>
-                <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{i.comment || '—'}</td>
-                <td>
-                  {i.status === 'available' && <button className="btn btn-secondary" style={{ padding: '2px 6px', fontSize: 10 }} onClick={() => changeStatus(i.id, 'broken')}>В ремонт</button>}
-                  {i.status === 'broken' && <button className="btn btn-success" style={{ padding: '2px 6px', fontSize: 10 }} onClick={() => changeStatus(i.id, 'available')}>Отремонтирован</button>}
+                  <button className="btn btn-secondary" onClick={() => openForm(d)} style={{ padding: '3px 8px', fontSize: 10 }}>✎</button>
+                  <button className="btn btn-danger" onClick={() => remove(d.id)} style={{ padding: '3px 8px', fontSize: 10, marginLeft: 4 }}>✕</button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-
-      {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+      {showForm && (
+        <div className="modal-overlay" onClick={() => setShowForm(false)}>
           <div className="modal-card" onClick={e => e.stopPropagation()}>
-            <h3>Регистрация единицы подменного фонда</h3>
-            <label>Прибор / Номенклатура *</label>
-            <select value={form.nomenclature_id} onChange={e => setForm({ ...form, nomenclature_id: e.target.value })}>
-              <option value="">— Выберите модель —</option>
-              {nomenclature.filter(n => n.type === 'product').map(n => <option key={n.id} value={n.id}>{n.name}</option>)}
-            </select>
-            <label>Серийный номер *</label>
+            <h3>{editId ? 'Редактировать' : 'Добавить'} прибор</h3>
+            {error && <p style={{ color: 'var(--danger)', fontSize: 13, background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 6 }}>{error}</p>}
+            <label>Наименование прибора *</label>
+            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Манометр МП-160" />
+            <label>Серийный номер</label>
             <input value={form.serial_number} onChange={e => setForm({ ...form, serial_number: e.target.value })} placeholder="S/N: 2026-X991" />
-            <label>Начальное местоположение (Склад) *</label>
-            <select value={form.warehouse_id} onChange={e => setForm({ ...form, warehouse_id: e.target.value })}>
-              <option value="">— Выберите склад хранения —</option>
-              {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
-            <label>Текущий статус фонда</label>
-            <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
-              <option value="available">Доступен для установки (Новый / Рабочий)</option>
-              <option value="installed">Уже смонтирован на объекте</option>
-              <option value="broken">Требует ремонта / Дефектовка</option>
-            </select>
-            <label>Привязка к заявке (необязательно)</label>
-            <select value={form.ticket_id} onChange={e => setForm({ ...form, ticket_id: e.target.value })}>
-              <option value="">— Нет связи —</option>
-              {tickets.map((t: any) => <option key={t.id} value={t.id}>#{t.id} — {t.title || t.description?.slice(0,30)}</option>)}
-            </select>
-            <label>Комментарий / История</label>
-            <input value={form.comment} onChange={e => setForm({ ...form, comment: e.target.value })} placeholder="Снят с объекта АТП-2 после поверки" />
-            <div className="modal-actions" style={{ marginTop: 14 }}>
-              <button className="btn btn-primary" onClick={save}>Сохранить в фонд</button>
-              <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Отмена</button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ flex: 1 }}><label>Дата поверки</label><input type="date" value={form.verification_date} onChange={e => setForm({ ...form, verification_date: e.target.value })} /></div>
+              <div style={{ flex: 1 }}><label>Межповерочный интервал (лет)</label><input type="number" value={form.verification_interval_years} onChange={e => setForm({ ...form, verification_interval_years: e.target.value })} placeholder="1" /></div>
             </div>
+            <label>ФИО кто взял прибор</label>
+            <select value={form.taken_by_id} onChange={e => setForm({ ...form, taken_by_id: e.target.value })}><option value="">— На складе —</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
+            <label>На какой объект взят прибор</label>
+            <select value={form.location_id} onChange={e => setForm({ ...form, location_id: e.target.value })}><option value="">— Не выбран —</option>{locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
+            <label>Примерная дата возврата</label>
+            <input type="date" value={form.return_date} onChange={e => setForm({ ...form, return_date: e.target.value })} />
+            <label>Фото/скан паспорта</label>
+            <input type="file" accept="image/*" onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              setUploadingPhoto(true);
+              const fd = new FormData();
+              fd.append('file', file);
+              try {
+                const resp = await api.post('/attachments', fd);
+                const url = resp.data?.file_url || resp.data?.url || '';
+                setForm({ ...form, passport_scan: url || file.name });
+              } catch { alert('Ошибка загрузки фото'); }
+              setUploadingPhoto(false);
+            }} style={{ fontSize: 12, color: 'var(--text-secondary)' }} disabled={uploadingPhoto} />
+            {uploadingPhoto && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Загрузка...</span>}
+            <label>Или ссылка на скан</label>
+            <input value={form.passport_scan} onChange={e => setForm({ ...form, passport_scan: e.target.value })} placeholder="https://..." />
+            <div className="modal-actions"><button className="btn btn-primary" onClick={submit}>{editId ? 'Сохранить' : 'Добавить'}</button><button className="btn btn-secondary" onClick={() => setShowForm(false)}>Отмена</button></div>
           </div>
         </div>
       )}
@@ -734,7 +725,7 @@ const InsertTab: React.FC = () => {
                   <div style={{ flex: 1 }}><label>Длина</label><input value={form.length} onChange={e => setForm({ ...form, length: e.target.value })} /></div>
                 </div>
                 <label>Тип фланца</label>
-                <select value={form.flange_type} onChange={e => setForm({ ...form, flange_type: e.target.value })}><option value="">—</option><option value="Фланцевый">Фланцевый</option><option value="Сэндвич">Сэндвич</option></select>
+                <select value={form.flange_type} onChange={e => setForm({ ...form, flange_type: e.target.value })}><option value="">—</option><option value="Фланцевый">Фланцевый</option><option value="Сэндвич">Сэндвич</option><option value="Резьбовой">Резьбовой</option><option value="Пластик">Пластик</option><option value="С заглушкой">С заглушкой</option></select>
                 <label>Начальное количество</label>
                 <input type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} min="0" step="1" placeholder="0" />
               </>

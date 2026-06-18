@@ -139,8 +139,7 @@ const AuthPage: React.FC<{ onLogin: (token: string, user: any) => void }> = ({ o
         )}
         {!isLogin && (
           <>
-            <input placeholder={L.name} value={name} onChange={e => setName(e.target.value)} />
-            <input placeholder="Отчество" value={patronymic} onChange={e => setPatronymic(e.target.value)} />
+            <input placeholder="ФИО" value={name} onChange={e => setName(e.target.value)} />
             <select value={role} onChange={e => setRole(e.target.value)}>
               <option value="dispatcher">{L.dispatcher}</option>
               <option value="engineer">Инженер</option>
@@ -225,6 +224,7 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
   };
 
   const engineers = users.filter(u => u.role === 'engineer');
+  const assignables = users.filter(u => u.role !== 'admin');
   const eqForLocation = equipment.filter(e => !locationId || e.location_id === Number(locationId));
 
   return (
@@ -290,8 +290,8 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
             <label>Исполнитель</label>
             <select value={assigneeId} onChange={e => setAssigneeId(Number(e.target.value) || '')}>
               <option value="">— Назначить позже —</option>
-              {engineers.map(u => (
-                <option key={u.id} value={u.id}>{u.name}</option>
+              {assignables.map(u => (
+                <option key={u.id} value={u.id}>{[u.name, u.patronymic].filter(Boolean).join(' ')}</option>
               ))}
             </select>
           </div>
@@ -381,6 +381,7 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
   };
 
   const engineers = users.filter(u => u.role === 'engineer');
+  const assignables = users.filter(u => u.role !== 'admin');
   const eqForLocation = equipment.filter(e => !locationId || e.location_id === Number(locationId));
 
   return (
@@ -446,8 +447,8 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
             <label>Исполнитель</label>
             <select value={assigneeId} onChange={e => setAssigneeId(Number(e.target.value) || '')}>
               <option value="">— Назначить позже —</option>
-              {engineers.map(u => (
-                <option key={u.id} value={u.id}>{u.name}</option>
+              {assignables.map(u => (
+                <option key={u.id} value={u.id}>{[u.name, u.patronymic].filter(Boolean).join(' ')}</option>
               ))}
             </select>
           </div>
@@ -587,10 +588,8 @@ const AddEmployeeModal: React.FC<{ onClose: () => void; onAdded: () => void }> =
       <div className="modal-card" onClick={e => e.stopPropagation()}>
         <h3>Добавить сотрудника</h3>
         {error && <p style={{ color: 'var(--danger)', fontSize: 13, background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 6, marginBottom: 10 }}>{error}</p>}
-        <label>Фамилия Имя</label>
-        <input placeholder="Иванов Иван" value={name} onChange={e => setName(e.target.value)} />
-        <label>Отчество</label>
-        <input placeholder="Иванович" value={patronymic} onChange={e => setPatronymic(e.target.value)} />
+        <label>ФИО</label>
+        <input placeholder="Иванов Иван Иванович" value={name} onChange={e => setName(e.target.value)} />
         <label>Email</label>
         <input placeholder="ivan@example.com" value={email} onChange={e => setEmail(e.target.value)} />
         <label>Телефон</label>

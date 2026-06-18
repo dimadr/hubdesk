@@ -25,6 +25,7 @@ replacement_router = APIRouter(prefix="/replacement-devices", tags=["Replacement
 
 class DeviceCreate(BaseModel):
     name: str
+    serial_number: str = ""
     verification_date: str | None = None
     verification_interval_months: int | None = None
     verification_expiry: str | None = None
@@ -37,6 +38,7 @@ class DeviceCreate(BaseModel):
 class DeviceResponse(BaseModel):
     id: int
     name: str
+    serial_number: str = ""
     verification_date: str | None = None
     verification_interval_months: int | None = None
     verification_expiry: str | None = None
@@ -64,7 +66,7 @@ async def list_devices(user: User = Depends(get_current_user), db: AsyncSession 
     out = []
     for d in devices:
         out.append(DeviceResponse(
-            id=d.id, name=d.name,
+            id=d.id, name=d.name, serial_number=d.serial_number,
             verification_date=d.verification_date.isoformat() if d.verification_date else None,
             verification_interval_months=d.verification_interval_months,
             verification_expiry=d.verification_expiry.isoformat() if d.verification_expiry else None,
@@ -83,7 +85,7 @@ async def list_devices(user: User = Depends(get_current_user), db: AsyncSession 
 @replacement_router.post("", status_code=201, response_model=DeviceResponse)
 async def create_device(data: DeviceCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     d = ReplacementDevice(
-        name=data.name,
+        name=data.name, serial_number=data.serial_number,
         verification_date=date.fromisoformat(data.verification_date) if data.verification_date else None,
         verification_interval_months=data.verification_interval_months,
         verification_expiry=date.fromisoformat(data.verification_expiry) if data.verification_expiry else None,
@@ -98,7 +100,7 @@ async def create_device(data: DeviceCreate, user: User = Depends(get_current_use
     await db.commit()
     log("Подменный фонд", f"Добавлен прибор: {d.name}", user)
     return DeviceResponse(
-        id=d.id, name=d.name,
+        id=d.id, name=d.name, serial_number=d.serial_number,
         verification_date=d.verification_date.isoformat() if d.verification_date else None,
         verification_interval_months=d.verification_interval_months,
         verification_expiry=d.verification_expiry.isoformat() if d.verification_expiry else None,
@@ -116,6 +118,7 @@ async def update_device(device_id: int, data: DeviceCreate, user: User = Depends
     if not d:
         raise HTTPException(404)
     d.name = data.name
+    d.serial_number = data.serial_number
     d.verification_date = date.fromisoformat(data.verification_date) if data.verification_date else None
     d.verification_interval_months = data.verification_interval_months
     d.verification_expiry = date.fromisoformat(data.verification_expiry) if data.verification_expiry else None
@@ -127,7 +130,7 @@ async def update_device(device_id: int, data: DeviceCreate, user: User = Depends
     await db.commit()
     log("Подменный фонд", f"Обновлён прибор: {d.name}", user)
     return DeviceResponse(
-        id=d.id, name=d.name,
+        id=d.id, name=d.name, serial_number=d.serial_number,
         verification_date=d.verification_date.isoformat() if d.verification_date else None,
         verification_interval_months=d.verification_interval_months,
         verification_expiry=d.verification_expiry.isoformat() if d.verification_expiry else None,

@@ -6,7 +6,7 @@ import { DndContext, closestCenter, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 
 interface UserInfo {
-  id: number; email: string; name: string; role: string;
+  id: number; email: string; name: string; patronymic?: string; role: string;
 }
 
 interface Props {
@@ -192,7 +192,7 @@ export const TableView: React.FC<Props> = ({ tickets, users, onEdit, onDetail, o
 
   const userMap = useMemo(() => {
     const m = new Map<number, string>();
-    for (const u of users) m.set(u.id, u.name);
+    for (const u of users) m.set(u.id, [u.name, u.patronymic].filter(Boolean).join(' '));
     return m;
   }, [users]);
 

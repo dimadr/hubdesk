@@ -9,6 +9,7 @@ class ReplacementDevice(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255))
+    serial_number: Mapped[str] = mapped_column(String(100), default="")
     verification_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     verification_interval_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
     verification_expiry: Mapped[date | None] = mapped_column(Date, nullable=True)

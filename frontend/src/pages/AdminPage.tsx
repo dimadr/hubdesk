@@ -171,31 +171,44 @@ const UsersTab: React.FC = () => {
 };
 
 const UserEditModal: React.FC<{ user: UserInfo; onClose: () => void; onSaved: () => void }> = ({ user, onClose, onSaved }) => {
-  const [name, setName] = useState(user.name);
-  const [patronymic, setPatronymic] = useState(user.patronymic || '');
-  const [email, setEmail] = useState(user.email);
-  const [phone, setPhone] = useState(user.phone || '');
-  const [role, setRole] = useState(user.role);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [role, setRole] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setName(user.name + (user.patronymic ? ' ' + user.patronymic : ''));
+      setEmail(user.email);
+      setPhone(user.phone || '');
+      setRole(user.role);
+      setPassword('');
+      setError('');
+    }
+  }, [user]);
 
   const save = async () => {
     setSaving(true);
     setError('');
     try {
       const body: any = {};
-      if (name !== user.name) body.name = name;
-      if (patronymic !== (user.patronymic || '')) body.patronymic = patronymic;
-      if (email !== user.email) body.email = email;
-      if (phone !== (user.phone || '')) body.phone = phone;
+      const fullName = user.name + (user.patronymic ? ' ' + user.patronymic : '');
+
+      if (name.trim() !== fullName) body.name = name.trim();
+      if (email.trim() !== user.email) body.email = email.trim();
+      if (phone.trim() !== (user.phone || '')) body.phone = phone.trim();
       if (role !== user.role) body.role = role;
       if (password) body.password = password;
+
       if (Object.keys(body).length === 0) { onClose(); return; }
+
       await api.patch(`/admin/users/${user.id}`, body);
       onSaved();
     } catch (e: any) {
-      setError(e.response?.data?.detail || 'Ошибка');
+      setError(e.response?.data?.detail || 'Ошибка сохранения');
     } finally { setSaving(false); }
   };
 
@@ -204,10 +217,8 @@ const UserEditModal: React.FC<{ user: UserInfo; onClose: () => void; onSaved: ()
       <div className="modal-card" onClick={e => e.stopPropagation()}>
         <h3>Редактировать: {user.name} {user.patronymic || ''}</h3>
         {error && <p style={{ color: 'var(--danger)', fontSize: 13, background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 6 }}>{error}</p>}
-        <label>Фамилия Имя</label>
+        <label>ФИО</label>
         <input value={name} onChange={e => setName(e.target.value)} />
-        <label>Отчество</label>
-        <input value={patronymic} onChange={e => setPatronymic(e.target.value)} />
         <label>Email</label>
         <input value={email} onChange={e => setEmail(e.target.value)} />
         <label>Телефон</label>
@@ -288,21 +299,27 @@ const CustomersTab: React.FC = () => {
 };
 
 const CustomerFormModal: React.FC<{ onClose: () => void; onSaved: () => void; customer?: CustomerData }> = ({ onClose, onSaved, customer }) => {
-  const [name, setName] = useState(customer?.name || '');
-  const [type, setType] = useState(customer?.type || 'company');
+  const [name, setName] = useState('');
+  const [type, setType] = useState('company');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setName(customer?.name || '');
+    setType(customer?.type || 'company');
+    setError('');
+  }, [customer]);
 
   const save = async () => {
     if (!name.trim()) { setError('Название обязательно'); return; }
     setSaving(true);
     try {
-      const body = { name, type };
+      const body = { name: name.trim(), type };
       if (customer) await api.patch(`/admin/customers/${customer.id}`, body);
       else await api.post('/admin/customers', body);
       onSaved();
     } catch (e: any) {
-      setError(e.response?.data?.detail || 'Ошибка');
+      setError(e.response?.data?.detail || 'Ошибка сохранения');
     } finally { setSaving(false); }
   };
 
@@ -445,7 +462,7 @@ const MailboxTab: React.FC = () => {
   useEffect(() => {
     api.get('/admin/mailbox')
       .then(r => {
-        if (r.data) { setForm({ ...form, ...r.data }); setCfg(r.data); }
+        if (r.data) { setForm(prev => ({ ...prev, ...r.data })); setCfg(r.data); }
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -507,7 +524,7 @@ const ApiKeysTab: React.FC = () => {
 
   const create = async () => {
     if (!newName.trim()) return;
-    try { await api.post('/admin/api-keys', { name: newName }); setNewName(''); load(); } catch {}
+    try { await api.post('/admin/api-keys', { name: newName.trim() }); setNewName(''); load(); } catch {}
   };
 
   const toggle = async (id: number) => {

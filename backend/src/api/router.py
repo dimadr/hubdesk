@@ -174,7 +174,7 @@ async def signup(data: SignupRequest, db: AsyncSession = Depends(get_db)):
         password_hash=hashed_password,
         status=UserStatus.pending,
         consent_given=True,
-        consent_date=datetime.now(timezone.utc),
+        consent_date=datetime.now(timezone.utc).replace(tzinfo=None),
     )
     db.add(user)
 
