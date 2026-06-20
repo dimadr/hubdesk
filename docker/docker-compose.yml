@@ -5,7 +5,7 @@ services:
       POSTGRES_DB: fsm
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-    ports: ["5433:5432"]
+    ports: ["5434:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     restart: unless-stopped
 
@@ -22,7 +22,15 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/fsm
       REDIS_URL: redis://redis:6379/0
-    env_file: ../backend/.env
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      mailbox_email: ${MAILBOX_EMAIL}
+      mailbox_password: ${MAILBOX_PASSWORD}
+      mailbox_imap_server: ${MAILBOX_IMAP_SERVER}
+      mailbox_imap_port: ${MAILBOX_IMAP_PORT}
+      smtp_server: ${SMTP_SERVER}
+      smtp_port: ${SMTP_PORT}
+      dadata_api_key: ${DADATA_API_KEY}
     depends_on: [db, redis]
     restart: unless-stopped
 
