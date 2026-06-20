@@ -395,7 +395,7 @@ async def list_users(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if user.role not in (UserRole.admin, UserRole.dispatcher, UserRole.manager):
+    if user.role not in (UserRole.admin, UserRole.dispatcher, UserRole.manager, UserRole.accountant):
         raise HTTPException(403, "Недостаточно прав для просмотра списка пользователей")
 
     result = await db.execute(select(User))

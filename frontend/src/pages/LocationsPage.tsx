@@ -45,9 +45,9 @@ export const LocationsPage: React.FC = () => {
     setLoading(true);
     setPageError(null);
     Promise.all([
-      api.get('/locations'),
-      api.get('/users/list'),
-      api.get('/admin/customers'),
+      api.get('/locations').catch(() => ({ data: [] })),
+      api.get('/users/list').catch(() => ({ data: [] })),
+      api.get('/admin/customers').catch(() => ({ data: [] })),
     ])
       .then(([locRes, userRes, custRes]) => {
         setLocations(locRes.data);

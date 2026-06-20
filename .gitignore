@@ -37,6 +37,8 @@ history.log
 
 # Archives
 *.tar.gz
+*.sql
+*.enc
 backup/
 
 # Uploads
