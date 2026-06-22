@@ -234,9 +234,19 @@ const DevicesReport: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get('/replacement-devices')
-      .then(r => { setRows(r.data); setLoading(false); })
-      .catch(() => setLoading(false));
+    Promise.all([
+      api.get('/replacement/devices').catch(() => ({ data: [] })),
+      api.get('/replacement/transactions').catch(() => ({ data: [] })),
+    ]).then(([d, t]) => {
+      const txns = t.data;
+      const merged = d.data.map((dev: any) => {
+        const devTx = txns.filter((tx: any) => tx.device_id === dev.id);
+        const takenTx = devTx.filter((tx: any) => tx.type === 'outgoing').slice(-1)[0];
+        return { ...dev, taken_by_name: takenTx?.taken_by_name || null, location_name: takenTx?.location_name || null };
+      });
+      setRows(merged);
+      setLoading(false);
+    }).catch(() => setLoading(false));
   }, []);
 
   if (loading) return <div className="loading" style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)' }}>Загрузка...</div>;
@@ -246,7 +256,7 @@ const DevicesReport: React.FC = () => {
   return (
     <div className="table-wrapper">
       <table>
-        <thead><tr><th>Прибор</th><th>Поверка до</th><th>У кого</th><th>Объект</th><th>Возврат</th></tr></thead>
+        <thead><tr><th>Прибор</th><th>Поверка до</th><th>Остаток</th><th>У кого</th><th>Объект</th></tr></thead>
         <tbody>
           {rows.map(r => {
             const isOverdue = r.verification_expiry && new Date(r.verification_expiry) < now;
@@ -256,9 +266,9 @@ const DevicesReport: React.FC = () => {
                 <td style={{ color: isOverdue ? 'var(--danger)' : 'var(--text-secondary)' }}>
                   {r.verification_expiry ? r.verification_expiry.substring(0, 10) : '—'}
                 </td>
+                <td className="mono" style={{ fontWeight: 700, color: r.balance > 0 ? 'var(--success)' : 'var(--text-muted)' }}>{r.balance}</td>
                 <td>{r.taken_by_name || '—'}</td>
                 <td>{r.location_name || '—'}</td>
-                <td>{r.return_date ? r.return_date.substring(0, 10) : '—'}</td>
               </tr>
             );
           })}

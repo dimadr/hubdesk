@@ -345,111 +345,334 @@ export const WarehousePage: React.FC = () => {
 };
 
 const ReplacementTab: React.FC = () => {
+  const [tab, setTab] = useState<'catalog' | 'journal' | 'documents' | 'balance'>('catalog');
   const [devices, setDevices] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [locations, setLocations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
-  const [form, setForm] = useState({ name: '', serial_number: '', verification_date: '', verification_interval_years: '', verification_expiry: '', taken_by_id: '', location_id: '', return_date: '', passport_scan: '' });
-  const [users, setUsers] = useState<any[]>([]);
-  const [locations, setLocations] = useState<any[]>([]);
+  const [form, setForm] = useState({
+    name: '', serial_number: '', verification_date: '', verification_interval_years: '',
+    verification_expiry: '', passport_scan: '', accuracy_class: '', mounting: '',
+    type: 'outgoing', device_id: '', quantity: '1', taken_by_id: '', location_id: '', comment: '', document: '',
+  });
   const [error, setError] = useState('');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [quick, setQuick] = useState<{ devId: number; action: string; qty: string; taken_by_id: string; location_id: string } | null>(null);
 
   const load = () => {
     setLoading(true);
-    Promise.all([api.get('/replacement-devices'), api.get('/users/list'), api.get('/locations')])
-      .then(([d, u, l]) => { setDevices(d.data); setUsers(u.data); setLocations(l.data); setLoading(false); })
+    Promise.all([
+      api.get('/replacement/devices').catch(() => ({ data: [] })),
+      api.get('/replacement/transactions').catch(() => ({ data: [] })),
+    ]).then(([d, t]) => { setDevices(d.data); setTransactions(t.data); setLoading(false); })
       .catch(() => setLoading(false));
   };
-  useEffect(() => { load(); }, []);
 
-  const openForm = (d?: any) => {
-    if (d) { setEditId(d.id); setForm({ name: d.name, serial_number: d.serial_number || '', verification_date: d.verification_date || '', verification_expiry: d.verification_expiry || '', verification_interval_years: d.verification_interval_months ? String(d.verification_interval_months / 12) : '', taken_by_id: d.taken_by_id?.toString() || '', location_id: d.location_id?.toString() || '', return_date: d.return_date || '', passport_scan: d.passport_scan || '' }); }
-    else { setEditId(null); setForm({ name: '', serial_number: '', verification_date: '', verification_expiry: '', verification_interval_years: '', taken_by_id: '', location_id: '', return_date: '', passport_scan: '' }); }
+  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    api.get('/users/list').then(r => setUsers(r.data)).catch(() => {});
+    api.get('/locations').then(r => setLocations(r.data)).catch(() => {});
+  }, []);
+
+  const openDeviceForm = (d?: any) => {
+    if (d) {
+      setEditId(d.id);
+      setForm({ ...form, name: d.name, serial_number: d.serial_number || '', verification_date: d.verification_date || '', verification_interval_years: d.verification_interval_months ? String(d.verification_interval_months / 12) : '', verification_expiry: d.verification_expiry || '', passport_scan: d.passport_scan || '', accuracy_class: d.accuracy_class || '', mounting: d.mounting || '' });
+    } else {
+      setEditId(null);
+      setForm({ name: '', serial_number: '', verification_date: '', verification_interval_years: '', verification_expiry: '', passport_scan: '', accuracy_class: '', mounting: '', type: 'outgoing', device_id: '', quantity: '1', taken_by_id: '', location_id: '', comment: '', document: '' });
+    }
+    setShowForm(true); setError('');
+  };
+
+  const openTxForm = () => {
+    const now = new Date();
+    const doc = `ДОК-${String(now.getFullYear()).slice(2)}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+    setEditId(null);
+    setForm({ ...form, type: 'outgoing', device_id: '', quantity: '1', taken_by_id: '', location_id: '', comment: '', document: doc });
     setShowForm(true); setError('');
   };
 
   const submit = async () => {
-    if (!form.name.trim()) { setError('Название обязательно'); return; }
     try {
-      const months = form.verification_interval_years ? Number(form.verification_interval_years) * 12 : null;
-      const expiry = form.verification_date && months
-        ? new Date(new Date(form.verification_date).setMonth(new Date(form.verification_date).getMonth() + months)).toISOString().substring(0, 10)
-        : form.verification_expiry || null;
-      const body: any = { name: form.name, serial_number: form.serial_number, verification_date: form.verification_date || null, verification_interval_months: months, verification_expiry: expiry, taken_by_id: form.taken_by_id ? Number(form.taken_by_id) : null, location_id: form.location_id ? Number(form.location_id) : null, return_date: form.return_date || null, passport_scan: form.passport_scan || null };
-      if (editId) await api.patch(`/replacement-devices/${editId}`, body);
-      else await api.post('/replacement-devices', body);
+      if (tab === 'catalog') {
+        if (!form.name.trim()) { setError('Название обязательно'); return; }
+        const months = form.verification_interval_years ? Number(form.verification_interval_years) * 12 : null;
+        const expiry = form.verification_date && months
+          ? new Date(new Date(form.verification_date).setMonth(new Date(form.verification_date).getMonth() + months)).toISOString().substring(0, 10)
+          : form.verification_expiry || null;
+        const body: any = { name: form.name.trim(), serial_number: form.serial_number, verification_date: form.verification_date || null, verification_interval_months: months, verification_expiry: expiry, passport_scan: form.passport_scan || null, accuracy_class: form.accuracy_class || null, mounting: form.mounting || null };
+        let devId = editId;
+        if (editId) {
+          await api.patch(`/replacement/devices/${editId}`, body);
+        } else {
+          const resp = await api.post('/replacement/devices', body);
+          devId = resp.data.id;
+        }
+        const qty = parseInt(form.quantity);
+        if (qty > 0) {
+          await api.post('/replacement/transactions', { type: 'incoming', device_id: devId, quantity: qty });
+        }
+      } else {
+        if (!form.device_id || !form.quantity) { setError('Выберите прибор и укажите количество'); return; }
+        await api.post('/replacement/transactions', {
+          type: form.type, device_id: Number(form.device_id), quantity: Number(form.quantity),
+          taken_by_id: form.taken_by_id ? Number(form.taken_by_id) : null,
+          location_id: form.location_id ? Number(form.location_id) : null,
+          comment: form.comment || null, document: form.document || null,
+        });
+      }
       setShowForm(false); load();
-    } catch (e: any) { setError(e.response?.data?.detail || 'Ошибка'); }
+    } catch (e: any) { setError(e.response?.data?.detail || e.message || 'Ошибка'); }
   };
 
-  const remove = async (id: number) => { if (!confirm('Удалить?')) return; try { await api.delete(`/replacement-devices/${id}`); load(); } catch {} };
+  const delDevice = async (id: number) => { if (!confirm('Удалить прибор и все его транзакции?')) return; try { await api.delete(`/replacement/devices/${id}`); load(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка удаления'); } };
+  const delTx = async (id: number) => { if (!confirm('Удалить транзакцию?')) return; try { await api.delete(`/replacement/transactions/${id}`); load(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка удаления'); } };
 
   if (loading) return <div className="loading">Загрузка...</div>;
 
+  const txLabels: Record<string, string> = { incoming: 'Приход', outgoing: 'Выдача', return: 'Возврат' };
+  const txColors: Record<string, string> = { incoming: 'var(--success)', outgoing: 'var(--warning)', return: 'var(--info)' };
+
   return (
     <div>
-      <div className="page-header"><h2>Подменный фонд</h2><button className="btn btn-primary" onClick={() => openForm()}>+ Добавить прибор</button></div>
-      <div className="table-wrapper">
-        <table>
-          <thead><tr><th>Наименование</th><th>Серийный №</th><th>Дата поверки</th><th>Интервал</th><th>Поверка до</th><th>Кто взял</th><th>Объект</th><th>Возврат</th><th></th></tr></thead>
-          <tbody>
-            {devices.map(d => (
-              <tr key={d.id}>
-                <td style={{ fontWeight: 600 }}>{d.name}</td>
-                <td className="mono" style={{ fontSize: 12 }}>{d.serial_number || '—'}</td>
-                <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.verification_date ? d.verification_date.substring(0, 10) : '—'}</td>
-                <td className="mono" style={{ fontSize: 12 }}>{d.verification_interval_months ? `${d.verification_interval_months / 12} лет` : '—'}</td>
-                <td style={{ fontSize: 12, color: d.verification_expiry && new Date(d.verification_expiry) < new Date() ? 'var(--danger)' : 'var(--text-secondary)' }}>{d.verification_expiry ? d.verification_expiry.substring(0, 10) : '—'}</td>
-                <td>{d.taken_by_name || '—'}</td>
-                <td style={{ fontSize: 12 }}>{d.location_name || '—'}</td>
-                <td style={{ fontSize: 12 }}>{d.return_date ? d.return_date.substring(0, 10) : '—'}</td>
-                <td>
-                  <button className="btn btn-secondary" onClick={() => openForm(d)} style={{ padding: '3px 8px', fontSize: 10 }}>✎</button>
-                  <button className="btn btn-danger" onClick={() => remove(d.id)} style={{ padding: '3px 8px', fontSize: 10, marginLeft: 4 }}>✕</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="tabs" style={{ marginBottom: 12, display: 'inline-flex' }}>
+        {(['catalog', 'journal', 'documents', 'balance'] as const).map(t => (
+          <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
+            {t === 'catalog' ? 'Каталог' : t === 'journal' ? 'Движения' : t === 'documents' ? 'Документы' : 'Остатки'}
+          </button>
+        ))}
       </div>
+      <div className="page-header" style={{ marginTop: 0 }}>
+        {tab === 'catalog' && <button className="btn btn-primary" onClick={() => openDeviceForm(undefined)}>+ Прибор</button>}
+        {tab === 'journal' && <button className="btn btn-primary" onClick={() => openTxForm()}>+ Операция</button>}
+        {tab === 'balance' && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Баланс рассчитывается из транзакций</span>}
+      </div>
+
+      {tab === 'catalog' && (
+        <div>
+          <div className="table-wrapper">
+            <table>
+              <thead><tr><th>Наименование</th><th>Серийный №</th><th>Класс</th><th>Крепление</th><th>Поверка до</th><th>Интервал</th><th>Остаток</th><th></th></tr></thead>
+              <tbody>
+                {devices.map(d => (
+                  <tr key={d.id}>
+                    <td style={{ fontWeight: 600 }}>{d.name}</td>
+                    <td className="mono" style={{ fontSize: 12 }}>{d.serial_number || '—'}</td>
+                    <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.accuracy_class || '—'}</td>
+                    <td style={{ fontSize: 12 }}>{d.mounting || '—'}</td>
+                    <td style={{ fontSize: 12, color: d.verification_expiry && new Date(d.verification_expiry) < new Date() ? 'var(--danger)' : 'var(--text-secondary)' }}>{d.verification_expiry ? d.verification_expiry.substring(0, 10) : '—'}</td>
+                    <td className="mono" style={{ fontSize: 12 }}>{d.verification_interval_months ? `${d.verification_interval_months / 12} лет` : '—'}</td>
+                    <td className="mono" style={{ fontWeight: 700, color: d.balance > 0 ? 'var(--success)' : d.balance < 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{d.balance}</td>
+                    <td>
+                      <button className="btn btn-success" onClick={() => setQuick({ devId: d.id, action: 'incoming', qty: '1', taken_by_id: '', location_id: '' })} style={{ padding: '2px 6px', fontSize: 11, marginRight: 2 }} title="Приход">+</button>
+                      <button className="btn btn-secondary" onClick={() => setQuick({ devId: d.id, action: 'outgoing', qty: '1', taken_by_id: '', location_id: '' })} style={{ padding: '2px 6px', fontSize: 11, marginRight: 2 }} title="Выдача">−</button>
+                      <button className="btn btn-secondary" onClick={() => openDeviceForm(d)} style={{ padding: '2px 6px', fontSize: 11 }}>✎</button>
+                      <button className="btn btn-danger" onClick={() => delDevice(d.id)} style={{ padding: '2px 6px', fontSize: 11, marginLeft: 2 }}>✕</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {quick && (
+            <div className="modal-overlay" onClick={() => setQuick(null)}>
+              <div className="modal-card" onClick={e => e.stopPropagation()} style={{ width: 340 }}>
+                <h3>Быстрый {quick.action === 'incoming' ? 'приход' : 'расход'}</h3>
+                <label>Количество</label>
+                <input type="number" value={quick.qty} onChange={e => setQuick({ ...quick, qty: e.target.value })} min="1" step="1" autoFocus />
+
+                {quick.action === 'outgoing' && (
+                  <>
+                    <label>Кто взял</label>
+                    <select value={quick.taken_by_id} onChange={e => setQuick({ ...quick, taken_by_id: e.target.value })}>
+                      <option value="">— Выберите сотрудника —</option>
+                      {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </select>
+                    <label>Объект назначения</label>
+                    <select value={quick.location_id} onChange={e => setQuick({ ...quick, location_id: e.target.value })}>
+                      <option value="">— Не выбран —</option>
+                      {locations.map(l => <option key={l.id} value={l.id}>{l.name} ({l.customer_name})</option>)}
+                    </select>
+                  </>
+                )}
+                <div className="modal-actions">
+                  <button className="btn btn-primary" onClick={async () => {
+                    const qty = parseInt(quick.qty);
+                    if (!qty || qty < 1) return;
+                    try {
+                      await api.post('/replacement/transactions', {
+                        type: quick.action, device_id: quick.devId, quantity: qty,
+                        taken_by_id: quick.action === 'outgoing' && quick.taken_by_id ? Number(quick.taken_by_id) : null,
+                        location_id: quick.action === 'outgoing' && quick.location_id ? Number(quick.location_id) : null,
+                      });
+                      setQuick(null); load();
+                    } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка проведения'); }
+                  }}>OK</button>
+                  <button className="btn btn-secondary" onClick={() => setQuick(null)}>Отмена</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'journal' && (
+        <div className="table-wrapper">
+          <table><thead><tr><th>Дата</th><th>Тип</th><th>Прибор</th><th>Кол-во</th><th>Кто</th><th>Куда</th><th></th></tr></thead>
+            <tbody>
+              {transactions.map(t => (
+                <tr key={t.id}>
+                  <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(t.created_at).toLocaleString('ru-RU')}</td>
+                  <td><span className="status-pill" style={{ background: `${txColors[t.type]}18`, color: txColors[t.type] }}>{txLabels[t.type] || t.type}</span></td>
+                  <td>{t.device_name}</td>
+                  <td className="mono" style={{ fontWeight: 600 }}>{t.quantity}</td>
+                  <td>{t.taken_by_name || '—'}</td>
+                  <td>{t.location_name || '—'}</td>
+                  <td><button className="btn btn-danger" onClick={() => delTx(t.id)} style={{ padding: '3px 8px', fontSize: 10 }}>✕</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === 'documents' && (() => {
+        const docs = transactions.reduce((acc: Record<string, any[]>, t: any) => {
+          const key = t.document || 'Без документа';
+          if (!acc[key]) acc[key] = [];
+          acc[key].push(t);
+          return acc;
+        }, {});
+        const docList = Object.entries(docs).sort(([a], [b]) => b.localeCompare(a));
+        return (
+          <div className="table-wrapper">
+            <table>
+              <thead><tr><th>Документ</th><th>Операций</th><th>Приход</th><th>Выдача</th><th>Возврат</th><th>Дата</th></tr></thead>
+              <tbody>
+                {docList.map(([doc, txs]) => {
+                  const incoming = txs.filter((t: any) => t.type === 'incoming').reduce((s: number, t: any) => s + t.quantity, 0);
+                  const outgoing = txs.filter((t: any) => t.type === 'outgoing').reduce((s: number, t: any) => s + t.quantity, 0);
+                  const returns = txs.filter((t: any) => t.type === 'return').reduce((s: number, t: any) => s + t.quantity, 0);
+                  const lastDate = txs[txs.length - 1].created_at;
+                  return (
+                    <tr key={doc}>
+                      <td style={{ fontWeight: 600 }}>{doc}</td>
+                      <td className="mono">{txs.length}</td>
+                      <td className="mono" style={{ color: 'var(--success)' }}>{incoming || '—'}</td>
+                      <td className="mono" style={{ color: 'var(--warning)' }}>{outgoing || '—'}</td>
+                      <td className="mono" style={{ color: 'var(--info)' }}>{returns || '—'}</td>
+                      <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{new Date(lastDate).toLocaleDateString('ru-RU')}</td>
+                    </tr>
+                  );
+                })}
+                {docList.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)' }}>Нет документов</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
+
+      {tab === 'balance' && (
+        <div className="table-wrapper">
+          <table><thead><tr><th>Прибор</th><th>Выдано</th><th>Остаток</th></tr></thead>
+            <tbody>
+              {devices.map(d => {
+                const out = transactions.filter(t => t.device_id === d.id && t.type === 'outgoing').reduce((s, t) => s + t.quantity, 0);
+                return (
+                  <tr key={d.id}>
+                    <td style={{ fontWeight: 600 }}>{d.name}</td>
+                    <td className="mono" style={{ color: out > 0 ? 'var(--warning)' : 'var(--text-muted)' }}>{out || 0}</td>
+                    <td className="mono" style={{ fontWeight: 700, color: d.balance > 0 ? 'var(--success)' : d.balance < 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{d.balance}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {showForm && (
         <div className="modal-overlay" onClick={() => setShowForm(false)}>
           <div className="modal-card" onClick={e => e.stopPropagation()}>
-            <h3>{editId ? 'Редактировать' : 'Добавить'} прибор</h3>
+            <h3>{tab === 'catalog' ? (editId ? 'Редактировать' : 'Новый прибор') : 'Новая операция'}</h3>
             {error && <p style={{ color: 'var(--danger)', fontSize: 13, background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 6 }}>{error}</p>}
-            <label>Наименование прибора *</label>
-            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Манометр МП-160" />
-            <label>Серийный номер</label>
-            <input value={form.serial_number} onChange={e => setForm({ ...form, serial_number: e.target.value })} placeholder="S/N: 2026-X991" />
-            <div style={{ display: 'flex', gap: 8 }}>
-              <div style={{ flex: 1 }}><label>Дата поверки</label><input type="date" value={form.verification_date} onChange={e => setForm({ ...form, verification_date: e.target.value })} /></div>
-              <div style={{ flex: 1 }}><label>Межповерочный интервал (лет)</label><input type="number" value={form.verification_interval_years} onChange={e => setForm({ ...form, verification_interval_years: e.target.value })} placeholder="1" /></div>
-            </div>
-            <label>ФИО кто взял прибор</label>
-            <select value={form.taken_by_id} onChange={e => setForm({ ...form, taken_by_id: e.target.value })}><option value="">— На складе —</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
-            <label>На какой объект взят прибор</label>
-            <select value={form.location_id} onChange={e => setForm({ ...form, location_id: e.target.value })}><option value="">— Не выбран —</option>{locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
-            <label>Примерная дата возврата</label>
-            <input type="date" value={form.return_date} onChange={e => setForm({ ...form, return_date: e.target.value })} />
-            <label>Фото/скан паспорта</label>
-            <input type="file" accept="image/*" onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
-              setUploadingPhoto(true);
-              const fd = new FormData();
-              fd.append('file', file);
-              try {
-                const resp = await api.post('/attachments', fd);
-                const url = resp.data?.file_url || resp.data?.url || '';
-                setForm({ ...form, passport_scan: url || file.name });
-              } catch { alert('Ошибка загрузки фото'); }
-              setUploadingPhoto(false);
-            }} style={{ fontSize: 12, color: 'var(--text-secondary)' }} disabled={uploadingPhoto} />
-            {uploadingPhoto && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Загрузка...</span>}
-            <label>Или ссылка на скан</label>
-            <input value={form.passport_scan} onChange={e => setForm({ ...form, passport_scan: e.target.value })} placeholder="https://..." />
-            <div className="modal-actions"><button className="btn btn-primary" onClick={submit}>{editId ? 'Сохранить' : 'Добавить'}</button><button className="btn btn-secondary" onClick={() => setShowForm(false)}>Отмена</button></div>
+            {tab === 'catalog' ? (
+              <>
+                <label>Наименование прибора *</label>
+                <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Манометр МП-160" />
+                <label>Серийный номер</label>
+                <input value={form.serial_number} onChange={e => setForm({ ...form, serial_number: e.target.value })} placeholder="S/N: 2026-X991" />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ flex: 1 }}><label>Дата поверки</label><input type="date" value={form.verification_date} onChange={e => setForm({ ...form, verification_date: e.target.value })} /></div>
+                  <div style={{ flex: 1 }}><label>Интервал (лет)</label><input type="number" value={form.verification_interval_years} onChange={e => setForm({ ...form, verification_interval_years: e.target.value })} placeholder="1" /></div>
+                </div>
+                <label>Фото/скан паспорта</label>
+                <input type="file" accept="image/*" onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setUploadingPhoto(true);
+                  const fd = new FormData();
+                  fd.append('file', file);
+                  try {
+                    const resp = await api.post('/attachments', fd);
+                    const url = resp.data?.file_url || resp.data?.url || '';
+                    setForm({ ...form, passport_scan: url || file.name });
+                  } catch { alert('Ошибка загрузки фото'); }
+                  setUploadingPhoto(false);
+                }} style={{ fontSize: 12, color: 'var(--text-secondary)' }} disabled={uploadingPhoto} />
+                {uploadingPhoto && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Загрузка...</span>}
+                <label>Или ссылка на скан</label>
+                <input value={form.passport_scan} onChange={e => setForm({ ...form, passport_scan: e.target.value })} placeholder="https://..." />
+                <label>Класс точности</label>
+                <input value={form.accuracy_class} onChange={e => setForm({ ...form, accuracy_class: e.target.value })} placeholder="0.5 / 1.0 / 1.5" />
+                <label>Крепление</label>
+                <select value={form.mounting} onChange={e => setForm({ ...form, mounting: e.target.value })}>
+                  <option value="">—</option>
+                  <option value="Фланцевое">Фланцевое</option>
+                  <option value="Сэндвич">Сэндвич</option>
+                </select>
+                <label>Начальное количество</label>
+                <input type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} min="0" step="1" placeholder="0" />
+              </>
+            ) : (
+              <>
+                <label>Тип операции</label>
+                <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
+                  <option value="incoming">Приход</option><option value="outgoing">Выдача</option><option value="return">Возврат</option>
+                </select>
+                <label>Прибор</label>
+                <select value={form.device_id} onChange={e => setForm({ ...form, device_id: e.target.value })}>
+                  <option value="">— Выберите —</option>
+                  {devices.map(d => <option key={d.id} value={d.id}>{d.name} (остаток: {d.balance})</option>)}
+                </select>
+                <label>Количество</label>
+                <input type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} min="1" step="1" />
+                {form.type !== 'incoming' && (
+                  <>
+                    <label>Кто взял</label>
+                    <select value={form.taken_by_id} onChange={e => setForm({ ...form, taken_by_id: e.target.value })}>
+                      <option value="">— Не выбран —</option>
+                      {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </select>
+                    <label>Объект</label>
+                    <select value={form.location_id} onChange={e => setForm({ ...form, location_id: e.target.value })}>
+                      <option value="">— Не выбран —</option>
+                      {locations.map(l => <option key={l.id} value={l.id}>{l.name} ({l.customer_name})</option>)}
+                    </select>
+                  </>
+                )}
+                <label>Комментарий</label>
+                <textarea value={form.comment} onChange={e => setForm({ ...form, comment: e.target.value })} rows={2} placeholder="Дополнительная информация" style={{ width: '100%', padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, background: 'var(--bg-surface)', color: 'var(--text)', resize: 'vertical', fontFamily: 'inherit' }} />
+                <label>Документ</label>
+                <input value={form.document} onChange={e => setForm({ ...form, document: e.target.value })} placeholder="Накладная / Заявка #..." />
+              </>
+            )}
+            <div className="modal-actions"><button className="btn btn-primary" onClick={submit}>{editId ? 'Сохранить' : 'Создать'}</button><button className="btn btn-secondary" onClick={() => setShowForm(false)}>Отмена</button></div>
           </div>
         </div>
       )}

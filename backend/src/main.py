@@ -67,6 +67,62 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
 
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE replacement_devices ADD COLUMN IF NOT EXISTS accuracy_class VARCHAR(50)"))
+    except Exception:
+        pass
+
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE replacement_devices ADD COLUMN IF NOT EXISTS mounting VARCHAR(50)"))
+    except Exception:
+        pass
+
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS replacement_transactions (
+                    id SERIAL PRIMARY KEY,
+                    type VARCHAR(20) NOT NULL,
+                    device_id INTEGER NOT NULL REFERENCES replacement_devices(id),
+                    quantity INTEGER NOT NULL,
+                    taken_by_id INTEGER REFERENCES users(id),
+                    location_id INTEGER REFERENCES asset_locations(id),
+                    comment VARCHAR(1000),
+                    document VARCHAR(255),
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+    except Exception:
+        pass
+
+    try:
+        async with engine.begin() as conn:
+            result = await conn.execute(text("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'replacement_devices' AND column_name = 'taken_by_id'
+            """))
+            if result.fetchone():
+                await conn.execute(text("""
+                    INSERT INTO replacement_transactions (type, device_id, quantity, taken_by_id, location_id)
+                    SELECT 'incoming', id, 1, NULL, NULL
+                    FROM replacement_devices
+                    WHERE id NOT IN (SELECT device_id FROM replacement_transactions)
+                """))
+                await conn.execute(text("""
+                    INSERT INTO replacement_transactions (type, device_id, quantity, taken_by_id, location_id, comment)
+                    SELECT 'outgoing', id, 1, taken_by_id, location_id, 'Миграция: прибор выдан (исторические данные)'
+                    FROM replacement_devices
+                    WHERE taken_by_id IS NOT NULL
+                """))
+                await conn.execute(text("ALTER TABLE replacement_devices DROP COLUMN IF EXISTS taken_by_id"))
+                await conn.execute(text("ALTER TABLE replacement_devices DROP COLUMN IF EXISTS location_id"))
+                await conn.execute(text("ALTER TABLE replacement_devices DROP COLUMN IF EXISTS return_date"))
+                await conn.execute(text("ALTER TABLE replacement_devices DROP COLUMN IF EXISTS status"))
+    except Exception:
+        pass
+
     yield
 
     logger.info("Остановка приложения: завершение фонового воркера...")
