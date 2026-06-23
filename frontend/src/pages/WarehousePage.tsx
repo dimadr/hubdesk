@@ -361,6 +361,7 @@ const ReplacementTab: React.FC = () => {
   const [error, setError] = useState('');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [quick, setQuick] = useState<{ devId: number; action: string; qty: string; taken_by_id: string; location_id: string } | null>(null);
+  const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -523,19 +524,24 @@ const ReplacementTab: React.FC = () => {
 
       {tab === 'journal' && (
         <div className="table-wrapper">
-          <table><thead><tr><th>Дата</th><th>Тип</th><th>Прибор</th><th>Кол-во</th><th>Кто</th><th>Куда</th><th></th></tr></thead>
+          <table><thead><tr><th>Дата</th><th>Тип</th><th>Прибор</th><th>Сер.№</th><th>Кол-во</th><th>Кто</th><th>Куда</th><th>Документ</th><th></th></tr></thead>
             <tbody>
-              {transactions.map(t => (
+              {transactions.map(t => {
+                const dev = devices.find(d => d.id === t.device_id);
+                return (
                 <tr key={t.id}>
                   <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(t.created_at).toLocaleString('ru-RU')}</td>
                   <td><span className="status-pill" style={{ background: `${txColors[t.type]}18`, color: txColors[t.type] }}>{txLabels[t.type] || t.type}</span></td>
                   <td>{t.device_name}</td>
+                  <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{dev?.serial_number || '—'}</td>
                   <td className="mono" style={{ fontWeight: 600 }}>{t.quantity}</td>
                   <td>{t.taken_by_name || '—'}</td>
                   <td>{t.location_name || '—'}</td>
+                  <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t.document || '—'}</td>
                   <td><button className="btn btn-danger" onClick={() => delTx(t.id)} style={{ padding: '3px 8px', fontSize: 10 }}>✕</button></td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -560,7 +566,7 @@ const ReplacementTab: React.FC = () => {
                   const returns = txs.filter((t: any) => t.type === 'return').reduce((s: number, t: any) => s + t.quantity, 0);
                   const lastDate = txs[txs.length - 1].created_at;
                   return (
-                    <tr key={doc}>
+                    <tr key={doc} style={{ cursor: 'pointer' }} onClick={() => setSelectedDoc(doc)}>
                       <td style={{ fontWeight: 600 }}>{doc}</td>
                       <td className="mono">{txs.length}</td>
                       <td className="mono" style={{ color: 'var(--success)' }}>{incoming || '—'}</td>
@@ -595,6 +601,39 @@ const ReplacementTab: React.FC = () => {
           </table>
         </div>
       )}
+
+      {selectedDoc && (() => {
+        const docTx = transactions.filter((t: any) => (t.document || 'Без документа') === selectedDoc);
+        return (
+          <div className="modal-overlay" onClick={() => setSelectedDoc(null)}>
+            <div className="modal-card" onClick={e => e.stopPropagation()} style={{ width: 700 }}>
+              <h3>Документ: {selectedDoc}</h3>
+              <div className="table-wrapper" style={{ maxHeight: 400, overflowY: 'auto' }}>
+                <table>
+                  <thead><tr><th>Дата</th><th>Тип</th><th>Прибор</th><th>Сер.№</th><th>Кол-во</th><th>Кто</th><th>Куда</th></tr></thead>
+                  <tbody>
+                    {docTx.map(t => {
+                      const dev = devices.find(d => d.id === t.device_id);
+                      return (
+                        <tr key={t.id}>
+                          <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(t.created_at).toLocaleString('ru-RU')}</td>
+                          <td><span className="status-pill" style={{ background: `${txColors[t.type]}18`, color: txColors[t.type] }}>{txLabels[t.type] || t.type}</span></td>
+                          <td>{t.device_name}</td>
+                          <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{dev?.serial_number || '—'}</td>
+                          <td className="mono" style={{ fontWeight: 600 }}>{t.quantity}</td>
+                          <td>{t.taken_by_name || '—'}</td>
+                          <td>{t.location_name || '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setSelectedDoc(null)}>Закрыть</button></div>
+            </div>
+          </div>
+        );
+      })()}
 
       {showForm && (
         <div className="modal-overlay" onClick={() => setShowForm(false)}>
@@ -681,7 +720,6 @@ const ReplacementTab: React.FC = () => {
 };
 
 const InsertTab: React.FC = () => {
-  const [tab, setTab] = useState<'catalog' | 'journal' | 'balance' | 'documents'>('catalog');
   const [products, setProducts] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
@@ -689,10 +727,12 @@ const InsertTab: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
-  const [form, setForm] = useState({ name: '', diameter: '', length: '', flange_type: '', quantity: '1', type: 'incoming', product_id: '', taken_by_id: '', location_id: '', comment: '', document: '' });
+  const [form, setForm] = useState({ name: '', diameter_inner: '', diameter_outer: '', length: '', flange_type: '', notes: '', quantity: '1', type: 'incoming', product_id: '', taken_by_id: '', location_id: '', comment: '', document: '' });
   const [error, setError] = useState('');
 
   const [quick, setQuick] = useState<{ prodId: number; action: string; qty: string; taken_by_id: string; location_id: string } | null>(null);
+  const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
+  const [tab, setTab] = useState<'catalog' | 'journal' | 'documents' | 'balance'>('catalog');
 
   const load = () => {
     setLoading(true);
@@ -713,10 +753,10 @@ const InsertTab: React.FC = () => {
   const openProductForm = (p?: any) => {
     if (p) {
       setEditId(p.id);
-      setForm({ ...form, name: p.name, diameter: p.diameter || '', length: p.length || '', flange_type: p.flange_type || '' });
+      setForm({ ...form, name: p.name, diameter_inner: p.diameter_inner || '', diameter_outer: p.diameter_outer || '', length: p.length || '', flange_type: p.flange_type || '', notes: p.notes || '' });
     } else {
       setEditId(null);
-      setForm({ name: '', diameter: '', length: '', flange_type: '', quantity: '1', type: 'incoming', product_id: '', taken_by_id: '', location_id: '', comment: '', document: '' });
+      setForm({ name: '', diameter_inner: '', diameter_outer: '', length: '', flange_type: '', notes: '', quantity: '1', type: 'incoming', product_id: '', taken_by_id: '', location_id: '', comment: '', document: '' });
     }
     setShowForm(true);
     setError('');
@@ -726,7 +766,7 @@ const InsertTab: React.FC = () => {
     const now = new Date();
     const doc = `ДОК-${String(now.getFullYear()).slice(2)}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
     setEditId(null);
-    setForm({ name: '', diameter: '', length: '', flange_type: '', type: 'outgoing', quantity: '1', product_id: '', taken_by_id: '', location_id: '', comment: '', document: doc });
+    setForm({ name: '', diameter_inner: '', diameter_outer: '', length: '', flange_type: '', notes: '', type: 'outgoing', quantity: '1', product_id: '', taken_by_id: '', location_id: '', comment: '', document: doc });
     setShowForm(true);
     setError('');
   };
@@ -735,7 +775,7 @@ const InsertTab: React.FC = () => {
     try {
       if (tab === 'catalog') {
         if (!form.name.trim()) { setError('Название обязательно'); return; }
-        const body = { name: form.name, diameter: form.diameter || null, length: form.length || null, flange_type: form.flange_type || null };
+        const body = { name: form.name, diameter_inner: form.diameter_inner || null, diameter_outer: form.diameter_outer || null, length: form.length || null, flange_type: form.flange_type || null, notes: form.notes || null };
         let prodId = editId;
         if (editId) {
           await api.patch(`/insert/products/${editId}`, body);
@@ -792,14 +832,16 @@ const InsertTab: React.FC = () => {
         <div>
           <div className="table-wrapper">
             <table>
-              <thead><tr><th>Название</th><th>Диаметр</th><th>Длина</th><th>Фланец</th><th>Остаток</th><th></th></tr></thead>
+              <thead><tr><th>Название</th><th>Диаметр внутр.</th><th>Диаметр наруж.</th><th>Длина</th><th>Фланец</th><th>Примечание</th><th>Остаток</th><th></th></tr></thead>
               <tbody>
                 {products.map(p => (
                   <tr key={p.id}>
                     <td style={{ fontWeight: 600 }}>{p.name}</td>
-                    <td>{p.diameter || '—'}</td>
+                    <td>{p.diameter_inner || '—'}</td>
+                    <td>{p.diameter_outer || '—'}</td>
                     <td>{p.length || '—'}</td>
                     <td>{p.flange_type || '—'}</td>
+                    <td style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.notes || '—'}</td>
                     <td className="mono" style={{ fontWeight: 700, color: p.balance > 0 ? 'var(--success)' : p.balance < 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{p.balance}</td>
                     <td>
                       <button className="btn btn-success" onClick={() => setQuick({ prodId: p.id, action: 'incoming', qty: '1', taken_by_id: '', location_id: '' })} style={{ padding: '2px 6px', fontSize: 11, marginRight: 2 }} title="Приход">+</button>
@@ -898,7 +940,7 @@ const InsertTab: React.FC = () => {
                   const returns = txs.filter((t: any) => t.type === 'return').reduce((s: number, t: any) => s + t.quantity, 0);
                   const lastDate = txs[txs.length - 1].created_at;
                   return (
-                    <tr key={doc}>
+                    <tr key={doc} style={{ cursor: 'pointer' }} onClick={() => setSelectedDoc(doc)}>
                       <td style={{ fontWeight: 600 }}>{doc}</td>
                       <td className="mono">{txs.length}</td>
                       <td className="mono" style={{ color: 'var(--success)' }}>{incoming || '—'}</td>
@@ -944,13 +986,19 @@ const InsertTab: React.FC = () => {
               <>
                 <label>Название *</label><input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Вставка 50 мм" />
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <div style={{ flex: 1 }}><label>Диаметр</label><input value={form.diameter} onChange={e => setForm({ ...form, diameter: e.target.value })} /></div>
+                  <div style={{ flex: 1 }}><label>Ø внутр.</label><input value={form.diameter_inner} onChange={e => setForm({ ...form, diameter_inner: e.target.value })} /></div>
+                  <div style={{ flex: 1 }}><label>Ø наруж.</label><input value={form.diameter_outer} onChange={e => setForm({ ...form, diameter_outer: e.target.value })} /></div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
                   <div style={{ flex: 1 }}><label>Длина</label><input value={form.length} onChange={e => setForm({ ...form, length: e.target.value })} /></div>
+                  <div style={{ flex: 1 }}></div>
                 </div>
                 <label>Тип фланца</label>
                 <select value={form.flange_type} onChange={e => setForm({ ...form, flange_type: e.target.value })}><option value="">—</option><option value="Фланцевый">Фланцевый</option><option value="Сэндвич">Сэндвич</option><option value="Резьбовой">Резьбовой</option><option value="Пластик">Пластик</option><option value="С заглушкой">С заглушкой</option></select>
                 <label>Начальное количество</label>
                 <input type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} min="0" step="1" placeholder="0" />
+                <label>Примечание</label>
+                <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} placeholder="" style={{ width: '100%', padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, background: 'var(--bg-surface)', color: 'var(--text)', resize: 'vertical', fontFamily: 'inherit' }} />
               </>
             ) : (
               <>
@@ -989,6 +1037,62 @@ const InsertTab: React.FC = () => {
           </div>
         </div>
       )}
+      {selectedDoc && (() => {
+        const docTx = transactions.filter((t: any) => (t.document || 'Без документа') === selectedDoc);
+        const printDoc = () => {
+          const w = window.open('', '_blank', 'width=700,height=600');
+          if (!w) return;
+          const rows = docTx.map(t => `
+            <tr>
+              <td>${new Date(t.created_at).toLocaleString('ru-RU')}</td>
+              <td>${txLabels[t.type] || t.type}</td>
+              <td>${t.product_name}</td>
+              <td>${t.quantity}</td>
+              <td>${t.taken_by_name || '—'}</td>
+              <td>${t.location_name || '—'}</td>
+            </tr>`).join('');
+          w.document.write(`
+            <html><head><title>${selectedDoc}</title>
+            <style>body{{font-family:Arial;padding:20px}}h2{{margin-bottom:8px}}table{{width:100%;border-collapse:collapse}}th,td{{border:1px solid #ccc;padding:6px 8px;text-align:left;font-size:12px}}th{{background:#f5f5f5}}.sign{{display:flex;margin-top:40px;gap:60px}}.sign div{{flex:1}}.sign .line{{border-bottom:1px solid #000;margin-top:30px}}</style></head><body>
+            <h2>${selectedDoc}</h2>
+            <table><thead><tr><th>Дата</th><th>Тип</th><th>Продукт</th><th>Кол-во</th><th>Кто взял</th><th>Объект</th></tr></thead><tbody>${rows}</tbody></table>
+            <div class="sign"><div><div class="line"></div>Подпись получившего</div><div><div class="line"></div>Подпись выдавшего</div></div>
+            <script>window.print()</script></body></html>`);
+          w.document.close();
+        };
+        return (
+          <div className="modal-overlay" onClick={() => setSelectedDoc(null)}>
+            <div className="modal-card" onClick={e => e.stopPropagation()} style={{ width: 750 }}>
+              <h3>Документ: {selectedDoc}</h3>
+              <div className="table-wrapper" style={{ maxHeight: 400, overflowY: 'auto' }}>
+                <table>
+                  <thead><tr><th>Дата</th><th>Тип</th><th>Продукт</th><th>Диам.вн/нар</th><th>Кол-во</th><th>Кто</th><th>Куда</th></tr></thead>
+                  <tbody>
+                    {docTx.map(t => {
+                      const prod = products.find(p => p.id === t.product_id);
+                      return (
+                        <tr key={t.id}>
+                          <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(t.created_at).toLocaleString('ru-RU')}</td>
+                          <td><span className="status-pill" style={{ background: `${txColors[t.type]}18`, color: txColors[t.type] }}>{txLabels[t.type] || t.type}</span></td>
+                          <td>{t.product_name}</td>
+                          <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{prod ? `${prod.diameter_inner || '—'} / ${prod.diameter_outer || '—'}` : '—'}</td>
+                          <td className="mono" style={{ fontWeight: 600 }}>{t.quantity}</td>
+                          <td>{t.taken_by_name || '—'}</td>
+                          <td>{t.location_name || '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="modal-actions" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <button className="btn btn-primary" onClick={printDoc}>🖨 Печать</button>
+                <button className="btn btn-secondary" onClick={() => setSelectedDoc(null)}>Закрыть</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

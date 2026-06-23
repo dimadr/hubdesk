@@ -81,6 +81,24 @@ async def lifespan(app: FastAPI):
 
     try:
         async with engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE insert_products RENAME COLUMN diameter TO diameter_inner"))
+    except Exception:
+        pass
+
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE insert_products ADD COLUMN IF NOT EXISTS diameter_outer VARCHAR(50)"))
+    except Exception:
+        pass
+
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE insert_products ADD COLUMN IF NOT EXISTS notes VARCHAR(1000)"))
+    except Exception:
+        pass
+
+    try:
+        async with engine.begin() as conn:
             await conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS replacement_transactions (
                     id SERIAL PRIMARY KEY,

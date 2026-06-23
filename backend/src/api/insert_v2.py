@@ -19,24 +19,30 @@ insert_v2_router = APIRouter(prefix="/insert", tags=["Insert Stock v2"])
 
 class ProductCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
-    diameter: str | None = None
+    diameter_inner: str | None = None
+    diameter_outer: str | None = None
     length: str | None = None
     flange_type: str | None = None
+    notes: str | None = None
 
 
 class ProductUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
-    diameter: str | None = None
+    diameter_inner: str | None = None
+    diameter_outer: str | None = None
     length: str | None = None
     flange_type: str | None = None
+    notes: str | None = None
 
 
 class ProductResponse(BaseModel):
     id: int
     name: str
-    diameter: str | None = None
+    diameter_inner: str | None = None
+    diameter_outer: str | None = None
     length: str | None = None
     flange_type: str | None = None
+    notes: str | None = None
     balance: int
     created_at: datetime
 
@@ -117,8 +123,9 @@ async def list_products(user: User = Depends(get_current_user), db: AsyncSession
     for row in result.all():
         p, balance = row[0], row[1]
         out.append(ProductResponse(
-            id=p.id, name=p.name, diameter=p.diameter, length=p.length,
-            flange_type=p.flange_type, balance=int(balance),
+            id=p.id, name=p.name, diameter_inner=p.diameter_inner, diameter_outer=p.diameter_outer,
+            length=p.length,
+            flange_type=p.flange_type, notes=p.notes, balance=int(balance),
             created_at=p.created_at
         ))
     return out
@@ -138,7 +145,8 @@ async def create_product(data: ProductCreate, user: User = Depends(get_current_u
         )
 
     p = InsertProduct(
-        name=data.name.strip(), diameter=data.diameter, length=data.length, flange_type=data.flange_type
+        name=data.name.strip(), diameter_inner=data.diameter_inner, diameter_outer=data.diameter_outer,
+        length=data.length, flange_type=data.flange_type, notes=data.notes
     )
     db.add(p)
     await db.flush()
@@ -146,8 +154,9 @@ async def create_product(data: ProductCreate, user: User = Depends(get_current_u
 
     await log_audit(db, user, "product_created", "insert_product", p.id, f"Добавлен продукт «{p.name}»")
     return ProductResponse(
-        id=p.id, name=p.name, diameter=p.diameter, length=p.length,
-        flange_type=p.flange_type, balance=0,
+        id=p.id, name=p.name, diameter_inner=p.diameter_inner, diameter_outer=p.diameter_outer,
+        length=p.length,
+        flange_type=p.flange_type, notes=p.notes, balance=0,
         created_at=p.created_at
     )
 
@@ -171,8 +180,9 @@ async def update_product(product_id: int, data: ProductUpdate, user: User = Depe
     await log_audit(db, user, "product_updated", "insert_product", p.id, f"Обновлён продукт «{p.name}»")
 
     return ProductResponse(
-        id=p.id, name=p.name, diameter=p.diameter, length=p.length,
-        flange_type=p.flange_type, balance=current_bal,
+        id=p.id, name=p.name, diameter_inner=p.diameter_inner, diameter_outer=p.diameter_outer,
+        length=p.length,
+        flange_type=p.flange_type, notes=p.notes, balance=current_bal,
         created_at=p.created_at
     )
 
