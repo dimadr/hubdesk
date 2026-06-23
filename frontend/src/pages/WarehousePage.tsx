@@ -11,6 +11,14 @@ const DOC_TYPES = { INFLOW: 'Приход', TRANSFER: 'Перемещение', 
 const DOC_STATUS: Record<string, string> = { DRAFT: 'Черновик', APPROVAL: 'Согласование', DELIVERY: 'Доставка', ACCOUNTED: 'Учтён' };
 const WAREHOUSE_TYPES: Record<string, string> = { physical: 'Физический', personal: 'Персональный' };
 const NOM_TYPES: Record<string, string> = { material: 'Материал', product: 'Продукт', service: 'Услуга', work: 'Работа' };
+const HTML_ENTITIES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
+const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (ch) => HTML_ENTITIES[ch] || ch);
 
 export const WarehousePage: React.FC = () => {
   const [tab, setTab] = useState<'warehouses' | 'nomenclature' | 'docs' | 'balances' | 'replacement' | 'insert'>('docs');
@@ -59,12 +67,13 @@ export const WarehousePage: React.FC = () => {
   }, []);
 
   const handleSaveWarehouse = async () => {
-    if (!whForm.name) return;
+    const name = whForm.name.trim();
+    if (!name) return;
     try {
       if (whForm.id) {
-        await api.put(`/warehouses/${whForm.id}`, { name: whForm.name, type: whForm.type });
+        await api.put(`/warehouses/${whForm.id}`, { name, type: whForm.type });
       } else {
-        await api.post('/warehouses', { name: whForm.name, type: whForm.type });
+        await api.post('/warehouses', { name, type: whForm.type });
       }
       setShowWhModal(false);
       loadData();
@@ -72,12 +81,14 @@ export const WarehousePage: React.FC = () => {
   };
 
   const handleSaveNomenclature = async () => {
-    if (!nomForm.name) return;
+    const name = nomForm.name.trim();
+    const unit = nomForm.unit.trim();
+    if (!name || !unit) return;
     try {
       if (nomForm.id) {
-        await api.put(`/nomenclature/${nomForm.id}`, { name: nomForm.name, type: nomForm.type, unit: nomForm.unit });
+        await api.put(`/nomenclature/${nomForm.id}`, { name, type: nomForm.type, unit });
       } else {
-        await api.post('/nomenclature', { name: nomForm.name, type: nomForm.type, unit: nomForm.unit });
+        await api.post('/nomenclature', { name, type: nomForm.type, unit });
       }
       setShowNomModal(false);
       loadData();
@@ -86,14 +97,27 @@ export const WarehousePage: React.FC = () => {
 
   const handleCreateDoc = async () => {
     try {
+      const lines = docForm.lines.map(l => ({
+        nomenclature_id: Number(l.nomenclature_id),
+        quantity: Number(l.quantity)
+      }));
+      if (docForm.doc_type !== 'INFLOW' && !docForm.source_warehouse_id) {
+        alert('Выберите склад-источник');
+        return;
+      }
+      if (docForm.doc_type !== 'WRITE_OFF' && !docForm.target_warehouse_id) {
+        alert('Выберите склад-получатель');
+        return;
+      }
+      if (lines.some(l => !l.nomenclature_id || !Number.isFinite(l.quantity) || l.quantity <= 0)) {
+        alert('Заполните все строки документа и укажите количество больше нуля');
+        return;
+      }
       const payload = {
         doc_type: docForm.doc_type,
         source_warehouse_id: docForm.source_warehouse_id ? Number(docForm.source_warehouse_id) : null,
         target_warehouse_id: docForm.target_warehouse_id ? Number(docForm.target_warehouse_id) : null,
-        lines: docForm.lines.map(l => ({
-          nomenclature_id: Number(l.nomenclature_id),
-          quantity: Number(l.quantity)
-        }))
+        lines
       };
       await api.post('/warehouse-documents', payload);
       setShowDocModal(false);
@@ -105,7 +129,7 @@ export const WarehousePage: React.FC = () => {
 
   const handleAccountDoc = async (id: number) => {
     try {
-      await api.post(`/warehouse-docs/${id}/account`);
+      await api.post(`/warehouse-documents/${id}/account`);
       loadData();
     } catch (e: any) {
       alert(e.response?.data?.detail || 'Ошибка проведения документа');
@@ -381,7 +405,7 @@ const ReplacementTab: React.FC = () => {
   const openDeviceForm = (d?: any) => {
     if (d) {
       setEditId(d.id);
-      setForm({ ...form, name: d.name, serial_number: d.serial_number || '', verification_date: d.verification_date || '', verification_interval_years: d.verification_interval_months ? String(d.verification_interval_months / 12) : '', verification_expiry: d.verification_expiry || '', passport_scan: d.passport_scan || '', accuracy_class: d.accuracy_class || '', mounting: d.mounting || '' });
+      setForm({ ...form, name: d.name, serial_number: d.serial_number || '', verification_date: d.verification_date || '', verification_interval_years: d.verification_interval_months ? String(d.verification_interval_months / 12) : '', verification_expiry: d.verification_expiry || '', passport_scan: d.passport_scan || '', accuracy_class: d.accuracy_class || '', mounting: d.mounting || '', quantity: '0' });
     } else {
       setEditId(null);
       setForm({ name: '', serial_number: '', verification_date: '', verification_interval_years: '', verification_expiry: '', passport_scan: '', accuracy_class: '', mounting: '', type: 'outgoing', device_id: '', quantity: '1', taken_by_id: '', location_id: '', comment: '', document: '' });
@@ -414,7 +438,7 @@ const ReplacementTab: React.FC = () => {
           devId = resp.data.id;
         }
         const qty = parseInt(form.quantity);
-        if (qty > 0) {
+        if (!editId && qty > 0) {
           await api.post('/replacement/transactions', { type: 'incoming', device_id: devId, quantity: qty });
         }
       } else {
@@ -727,7 +751,7 @@ const InsertTab: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
-  const [form, setForm] = useState({ name: '', diameter_inner: '', diameter_outer: '', length: '', flange_type: '', notes: '', quantity: '1', type: 'incoming', product_id: '', taken_by_id: '', location_id: '', comment: '', document: '' });
+  const [form, setForm] = useState({ name: '', diameter_inner: '', diameter_outer: '', length: '', flange_type: '', cell: '', notes: '', quantity: '1', type: 'incoming', product_id: '', taken_by_id: '', location_id: '', comment: '', document: '' });
   const [error, setError] = useState('');
 
   const [quick, setQuick] = useState<{ prodId: number; action: string; qty: string; taken_by_id: string; location_id: string } | null>(null);
@@ -753,10 +777,10 @@ const InsertTab: React.FC = () => {
   const openProductForm = (p?: any) => {
     if (p) {
       setEditId(p.id);
-      setForm({ ...form, name: p.name, diameter_inner: p.diameter_inner || '', diameter_outer: p.diameter_outer || '', length: p.length || '', flange_type: p.flange_type || '', notes: p.notes || '' });
+      setForm({ ...form, name: p.name, diameter_inner: p.diameter_inner || '', diameter_outer: p.diameter_outer || '', length: p.length || '', flange_type: p.flange_type || '', cell: p.cell || '', notes: p.notes || '', quantity: '0' });
     } else {
       setEditId(null);
-      setForm({ name: '', diameter_inner: '', diameter_outer: '', length: '', flange_type: '', notes: '', quantity: '1', type: 'incoming', product_id: '', taken_by_id: '', location_id: '', comment: '', document: '' });
+      setForm({ name: '', diameter_inner: '', diameter_outer: '', length: '', flange_type: '', cell: '', notes: '', quantity: '1', type: 'incoming', product_id: '', taken_by_id: '', location_id: '', comment: '', document: '' });
     }
     setShowForm(true);
     setError('');
@@ -766,7 +790,7 @@ const InsertTab: React.FC = () => {
     const now = new Date();
     const doc = `ДОК-${String(now.getFullYear()).slice(2)}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
     setEditId(null);
-    setForm({ name: '', diameter_inner: '', diameter_outer: '', length: '', flange_type: '', notes: '', type: 'outgoing', quantity: '1', product_id: '', taken_by_id: '', location_id: '', comment: '', document: doc });
+    setForm({ name: '', diameter_inner: '', diameter_outer: '', length: '', flange_type: '', cell: '', notes: '', type: 'outgoing', quantity: '1', product_id: '', taken_by_id: '', location_id: '', comment: '', document: doc });
     setShowForm(true);
     setError('');
   };
@@ -775,7 +799,7 @@ const InsertTab: React.FC = () => {
     try {
       if (tab === 'catalog') {
         if (!form.name.trim()) { setError('Название обязательно'); return; }
-        const body = { name: form.name, diameter_inner: form.diameter_inner || null, diameter_outer: form.diameter_outer || null, length: form.length || null, flange_type: form.flange_type || null, notes: form.notes || null };
+        const body = { name: form.name, diameter_inner: form.diameter_inner || null, diameter_outer: form.diameter_outer || null, length: form.length || null, flange_type: form.flange_type || null, cell: form.cell || null, notes: form.notes || null };
         let prodId = editId;
         if (editId) {
           await api.patch(`/insert/products/${editId}`, body);
@@ -789,7 +813,7 @@ const InsertTab: React.FC = () => {
           }
         }
         const qty = parseInt(form.quantity);
-        if (qty > 0) {
+        if (!editId && qty > 0) {
           await api.post('/insert/transactions', { type: 'incoming', product_id: prodId, quantity: qty });
         }
       } else {
@@ -832,7 +856,7 @@ const InsertTab: React.FC = () => {
         <div>
           <div className="table-wrapper">
             <table>
-              <thead><tr><th>Название</th><th>Диаметр внутр.</th><th>Диаметр наруж.</th><th>Длина</th><th>Фланец</th><th>Примечание</th><th>Остаток</th><th></th></tr></thead>
+              <thead><tr><th>Название</th><th>Диаметр внутр.</th><th>Диаметр наруж.</th><th>Длина</th><th>Фланец</th><th>Ячейка</th><th>Примечание</th><th>Остаток</th><th></th></tr></thead>
               <tbody>
                 {products.map(p => (
                   <tr key={p.id}>
@@ -841,6 +865,7 @@ const InsertTab: React.FC = () => {
                     <td>{p.diameter_outer || '—'}</td>
                     <td>{p.length || '—'}</td>
                     <td>{p.flange_type || '—'}</td>
+                    <td>{p.cell || '—'}</td>
                     <td style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.notes || '—'}</td>
                     <td className="mono" style={{ fontWeight: 700, color: p.balance > 0 ? 'var(--success)' : p.balance < 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{p.balance}</td>
                     <td>
@@ -995,6 +1020,8 @@ const InsertTab: React.FC = () => {
                 </div>
                 <label>Тип фланца</label>
                 <select value={form.flange_type} onChange={e => setForm({ ...form, flange_type: e.target.value })}><option value="">—</option><option value="Фланцевый">Фланцевый</option><option value="Сэндвич">Сэндвич</option><option value="Резьбовой">Резьбовой</option><option value="Пластик">Пластик</option><option value="С заглушкой">С заглушкой</option></select>
+                <label>Ячейка</label>
+                <input value={form.cell || ''} onChange={e => setForm({ ...form, cell: e.target.value })} placeholder="A-12" />
                 <label>Начальное количество</label>
                 <input type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} min="0" step="1" placeholder="0" />
                 <label>Примечание</label>
@@ -1044,17 +1071,17 @@ const InsertTab: React.FC = () => {
           if (!w) return;
           const rows = docTx.map(t => `
             <tr>
-              <td>${new Date(t.created_at).toLocaleString('ru-RU')}</td>
-              <td>${txLabels[t.type] || t.type}</td>
-              <td>${t.product_name}</td>
-              <td>${t.quantity}</td>
-              <td>${t.taken_by_name || '—'}</td>
-              <td>${t.location_name || '—'}</td>
+              <td>${escapeHtml(new Date(t.created_at).toLocaleString('ru-RU'))}</td>
+              <td>${escapeHtml(txLabels[t.type] || t.type)}</td>
+              <td>${escapeHtml(t.product_name)}</td>
+              <td>${escapeHtml(t.quantity)}</td>
+              <td>${escapeHtml(t.taken_by_name || '—')}</td>
+              <td>${escapeHtml(t.location_name || '—')}</td>
             </tr>`).join('');
           w.document.write(`
-            <html><head><title>${selectedDoc}</title>
-            <style>body{{font-family:Arial;padding:20px}}h2{{margin-bottom:8px}}table{{width:100%;border-collapse:collapse}}th,td{{border:1px solid #ccc;padding:6px 8px;text-align:left;font-size:12px}}th{{background:#f5f5f5}}.sign{{display:flex;margin-top:40px;gap:60px}}.sign div{{flex:1}}.sign .line{{border-bottom:1px solid #000;margin-top:30px}}</style></head><body>
-            <h2>${selectedDoc}</h2>
+            <html><head><title>${escapeHtml(selectedDoc)}</title>
+            <style>body{font-family:Arial;padding:20px}h2{margin-bottom:8px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;font-size:12px}th{background:#f5f5f5}.sign{display:flex;margin-top:40px;gap:60px}.sign div{flex:1}.sign .line{border-bottom:1px solid #000;margin-top:30px}</style></head><body>
+            <h2>${escapeHtml(selectedDoc)}</h2>
             <table><thead><tr><th>Дата</th><th>Тип</th><th>Продукт</th><th>Кол-во</th><th>Кто взял</th><th>Объект</th></tr></thead><tbody>${rows}</tbody></table>
             <div class="sign"><div><div class="line"></div>Подпись получившего</div><div><div class="line"></div>Подпись выдавшего</div></div>
             <script>window.print()</script></body></html>`);

@@ -25,6 +25,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   logout: async () => {
     await AsyncStorage.multiRemove(['token', 'user']);
+    delete api.defaults.headers.common.Authorization;
     set({ token: null, user: null });
   },
 
@@ -32,7 +33,12 @@ export const useAuthStore = create<AuthState>((set) => ({
     const token = await AsyncStorage.getItem('token');
     const user = await AsyncStorage.getItem('user');
     if (token && user) {
-      set({ token, user: JSON.parse(user), loading: false });
+      try {
+        set({ token, user: JSON.parse(user), loading: false });
+      } catch {
+        await AsyncStorage.multiRemove(['token', 'user']);
+        set({ token: null, user: null, loading: false });
+      }
     } else {
       set({ loading: false });
     }

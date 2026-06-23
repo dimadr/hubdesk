@@ -180,14 +180,16 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
   const [error, setError] = useState('');
 
   const handleInnLookup = async () => {
-    if (!inn || (inn.length !== 10 && inn.length !== 12)) {
+    const normalizedInn = inn.replace(/\D/g, '');
+    if (normalizedInn !== inn) setInn(normalizedInn);
+    if (!normalizedInn || (normalizedInn.length !== 10 && normalizedInn.length !== 12)) {
       setError('Введите корректный ИНН (10 или 12 цифр)');
       return;
     }
     setInnLoading(true);
     setError('');
     try {
-      const { data } = await api.get('/locations/lookup-inn', { params: { inn } });
+      const { data } = await api.get('/locations/lookup-inn', { params: { inn: normalizedInn } });
       if (data.error) { setError(data.error); return; }
       setName(data.name || name);
       setAddress(data.address || address);
@@ -220,7 +222,7 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
       if (customerId) {
         body.customer_id = Number(customerId);
       } else if (loc) {
-        body.customer_id = 0;
+        body.customer_id = null;
       }
 
       if (loc) {

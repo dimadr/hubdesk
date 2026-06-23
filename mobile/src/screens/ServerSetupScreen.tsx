@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { saveUrl, initApi, getSavedUrl } from '../api/client';
+import { saveUrl, initApi, getSavedUrl, normalizeApiUrl } from '../api/client';
 
 interface Props {
   onDone: () => void;
@@ -24,7 +24,7 @@ export const ServerSetupScreen: React.FC<Props> = ({ onDone }) => {
   }, []);
 
   const testConnection = async () => {
-    const cleanUrl = url.trim().replace(/\/+$/, '');
+    const cleanUrl = normalizeApiUrl(url);
     
     if (!cleanUrl) { 
       Alert.alert('Ошибка', 'Введите адрес сервера'); 

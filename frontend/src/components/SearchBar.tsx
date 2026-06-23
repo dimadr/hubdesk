@@ -5,12 +5,17 @@ export const SearchBar: React.FC = () => {
   const [q, setQ] = useState('');
 
   const handleSearch = useDebounce((value: string) => {
-    if (!value.trim()) return;
-    if (/^\d+$/.test(value.trim())) {
-      window.location.hash = `/tickets/${value.trim()}`;
+    const trimmedValue = value.trim();
+
+    if (!trimmedValue) {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.hash}`);
       return;
     }
-    window.location.search = `?q=${encodeURIComponent(value)}`;
+    if (/^\d+$/.test(trimmedValue)) {
+      window.location.hash = `/tickets/${trimmedValue}`;
+      return;
+    }
+    window.location.search = `?q=${encodeURIComponent(trimmedValue)}`;
   }, 300);
 
   return (

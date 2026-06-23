@@ -5,9 +5,14 @@ export const api = axios.create({ baseURL: '/api' });
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const requestUrl = error.config?.url || '';
+    const isAuthRequest = requestUrl.endsWith('/login') || requestUrl.endsWith('/signup');
+
+    if (error.response?.status === 401 && !isAuthRequest) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
+      localStorage.removeItem('currentUserId');
+      delete api.defaults.headers.common.Authorization;
       window.location.reload();
     }
     return Promise.reject(error);

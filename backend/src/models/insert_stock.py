@@ -14,6 +14,7 @@ class InsertProduct(Base):
     length: Mapped[str | None] = mapped_column(String(50), nullable=True)
     flange_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    cell: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 

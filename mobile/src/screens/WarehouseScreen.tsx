@@ -16,7 +16,7 @@ export const WarehouseScreen: React.FC = () => {
 
     setLoading(true);
     Promise.all([
-      api.get('/replacement-devices').catch(() => ({ data: [] })),
+      api.get('/replacement/devices').catch(() => ({ data: [] })),
       api.get('/insert/products').catch(() => ({ data: [] })),
     ]).then(([d, i]) => {
       if (isMountedRef.current) {
@@ -64,7 +64,11 @@ export const WarehouseScreen: React.FC = () => {
   const renderInsert = useCallback(({ item }: { item: any }) => (
     <View style={styles.card}>
       <Text style={styles.cardTitle}>{item.name}</Text>
-      {item.diameter && <Text style={styles.cardRow}>Диаметр: {item.diameter}</Text>}
+      {(item.diameter_inner || item.diameter_outer) && (
+        <Text style={styles.cardRow}>
+          Диаметр: {item.diameter_inner || '—'} / {item.diameter_outer || '—'}
+        </Text>
+      )}
       {item.length && <Text style={styles.cardRow}>Длина: {item.length}</Text>}
       {item.flange_type && <Text style={styles.cardRow}>Тип: {item.flange_type}</Text>}
       <Text style={styles.cardRow}>

@@ -9,4 +9,6 @@ def set_http_client(client: httpx.AsyncClient):
 
 
 async def get_http_client() -> httpx.AsyncClient:
+    if _client is None:
+        raise RuntimeError("HTTP client is not initialized")
     return _client

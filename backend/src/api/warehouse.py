@@ -11,6 +11,7 @@ from src.services.warehouse_service import WarehouseService
 from src.api.schemas import WarehouseDocCreate, WarehouseDocResponse, WarehouseResponse, BalanceResponse
 from src.core.deps import get_current_user
 from src.services.acl_service import RoleChecker
+from src.core.fsm.exceptions import InvalidTransitionError, GuardFailedError
 
 warehouse_router = APIRouter(tags=["Warehouse"])
 
@@ -31,7 +32,12 @@ async def create_warehouse_doc(
     db: AsyncSession = Depends(get_db),
 ):
     svc = WarehouseService(db)
-    doc = await svc.create_document(data.model_dump(), user)
+    try:
+        doc = await svc.create_document(data.model_dump(), user)
+    except PermissionError:
+        raise HTTPException(403, "Недостаточно прав для создания складского документа")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     await db.commit()
     return WarehouseDocResponse.model_validate(doc)
 
@@ -49,7 +55,16 @@ async def list_documents(
 @warehouse_router.patch("/warehouse-documents/{doc_id}/approve", response_model=WarehouseDocResponse)
 async def approve_doc(doc_id: int, user=Depends(get_current_user), db=Depends(get_db)):
     svc = WarehouseService(db)
-    doc = await svc.approve(doc_id, user)
+    try:
+        doc = await svc.approve(doc_id, user)
+    except PermissionError:
+        raise HTTPException(403, "Недостаточно прав для изменения складского документа")
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    except InvalidTransitionError as e:
+        raise HTTPException(400, str(e))
+    except GuardFailedError as e:
+        raise HTTPException(400, str(e))
     await db.commit()
     return WarehouseDocResponse.model_validate(doc)
 
@@ -57,15 +72,34 @@ async def approve_doc(doc_id: int, user=Depends(get_current_user), db=Depends(ge
 @warehouse_router.patch("/warehouse-documents/{doc_id}/deliver", response_model=WarehouseDocResponse)
 async def deliver_doc(doc_id: int, user=Depends(get_current_user), db=Depends(get_db)):
     svc = WarehouseService(db)
-    doc = await svc.deliver(doc_id, user)
+    try:
+        doc = await svc.deliver(doc_id, user)
+    except PermissionError:
+        raise HTTPException(403, "Недостаточно прав для изменения складского документа")
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    except InvalidTransitionError as e:
+        raise HTTPException(400, str(e))
+    except GuardFailedError as e:
+        raise HTTPException(400, str(e))
     await db.commit()
     return WarehouseDocResponse.model_validate(doc)
 
 
+@warehouse_router.post("/warehouse-documents/{doc_id}/account", response_model=WarehouseDocResponse)
 @warehouse_router.patch("/warehouse-documents/{doc_id}/account", response_model=WarehouseDocResponse)
 async def account_doc(doc_id: int, user=Depends(get_current_user), db=Depends(get_db)):
     svc = WarehouseService(db)
-    doc = await svc.account(doc_id, user)
+    try:
+        doc = await svc.account(doc_id, user)
+    except PermissionError:
+        raise HTTPException(403, "Недостаточно прав для изменения складского документа")
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    except InvalidTransitionError as e:
+        raise HTTPException(400, str(e))
+    except GuardFailedError as e:
+        raise HTTPException(400, str(e))
     await db.commit()
     return WarehouseDocResponse.model_validate(doc)
 

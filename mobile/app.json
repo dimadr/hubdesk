@@ -16,32 +16,30 @@
     "android": {
       "package": "com.hubdesk.app",
       "versionCode": 2,
-       "softwareKeyboardLayoutMode": "adjustResize",
-       "permissions": [
+      "softwareKeyboardLayoutMode": "adjustResize",
+      "permissions": [
         "CAMERA",
-        "INTERNET",
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "INTERNET"
       ]
     },
-     "plugins": [
-       [
-         "expo-camera",
-         {
-           "cameraPermission": "Разрешение на использование камеры для фото заявок"
-         }
-       ],
-       "expo-asset",
-       "expo-font",
-       [
-         "expo-build-properties",
-         {
-           "android": {
-             "usesCleartextTraffic": true
-           }
-         }
-       ]
-     ],
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Разрешение на использование камеры для фото заявок"
+        }
+      ],
+      "expo-asset",
+      "expo-font",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
+    ],
     "extra": {
       "eas": {
         "projectId": "01978e1c-a7f9-4f8a-a6e0-de464db2d673"

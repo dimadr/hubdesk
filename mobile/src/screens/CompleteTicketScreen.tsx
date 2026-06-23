@@ -49,9 +49,7 @@ export const CompleteTicketScreen: React.FC<Props> = ({ ticket, onBack, onSubmit
         form.append('file', fileData as unknown as Blob);
         form.append('ticket_id', String(ticket.id));
 
-        const resp = await api.post('/attachments', form, { 
-          headers: { 'Content-Type': 'multipart/form-data' } 
-        });
+        const resp = await api.post('/attachments', form);
         photoUrl = resp.data?.file_url || '(фото)';
       }
 

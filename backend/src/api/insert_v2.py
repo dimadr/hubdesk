@@ -24,6 +24,7 @@ class ProductCreate(BaseModel):
     length: str | None = None
     flange_type: str | None = None
     notes: str | None = None
+    cell: str | None = None
 
 
 class ProductUpdate(BaseModel):
@@ -33,6 +34,7 @@ class ProductUpdate(BaseModel):
     length: str | None = None
     flange_type: str | None = None
     notes: str | None = None
+    cell: str | None = None
 
 
 class ProductResponse(BaseModel):
@@ -43,6 +45,7 @@ class ProductResponse(BaseModel):
     length: str | None = None
     flange_type: str | None = None
     notes: str | None = None
+    cell: str | None = None
     balance: int
     created_at: datetime
 

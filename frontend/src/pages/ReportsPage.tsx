@@ -13,7 +13,7 @@ const PRIORITY_LABELS: Record<string, string> = {
   critical: 'Критический', high: 'Высокий', medium: 'Средний', low: 'Низкий',
 };
 const TYPE_LABELS: Record<string, string> = {
-  repair: 'Ремонт', installation: 'Монтаж', maintenance: 'ТО', inspection: 'Инспекция', emergency: 'Авария',
+  repair: 'Ремонт', installation: 'Монтаж', maintenance: 'ТО', inspection: 'Инспекция', emergency: 'Авария', verification: 'Поверка',
 };
 
 function valColor(v: number, good: number, warn: number): string {
@@ -34,8 +34,8 @@ export const ReportsPage: React.FC = () => {
 
   const getParams = () => {
     const p: any = {};
-    if (from) p.date_from = new Date(from).toISOString();
-    if (to) p.date_to = new Date(to).toISOString();
+    if (from) p.date_from = new Date(`${from}T00:00:00`).toISOString();
+    if (to) p.date_to = new Date(`${to}T23:59:59`).toISOString();
     return p;
   };
 
@@ -241,7 +241,10 @@ const DevicesReport: React.FC = () => {
       const txns = t.data;
       const merged = d.data.map((dev: any) => {
         const devTx = txns.filter((tx: any) => tx.device_id === dev.id);
-        const takenTx = devTx.filter((tx: any) => tx.type === 'outgoing').slice(-1)[0];
+        const takenTx = devTx
+          .filter((tx: any) => tx.type === 'outgoing')
+          .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+          .slice(-1)[0];
         return { ...dev, taken_by_name: takenTx?.taken_by_name || null, location_name: takenTx?.location_name || null };
       });
       setRows(merged);

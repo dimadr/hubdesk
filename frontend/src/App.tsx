@@ -201,12 +201,16 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
     if (!subject || !locationId) { setError('Заполните тему и выберите объект'); return; }
     try {
       const selected = locations.find(l => l.id === Number(locationId));
+      if (!selected) {
+        setError('Выбранный объект не найден. Обновите список объектов.');
+        return;
+      }
       await api.post('/tickets', {
         subject,
         body,
         type: ticketType || undefined,
         source_description: sourceDesc || undefined,
-        customer_id: selected?.customer_id ?? 1,
+        customer_id: selected.customer_id,
         location_id: Number(locationId),
         equipment_id: equipmentId ? Number(equipmentId) : undefined,
         priority,
@@ -223,7 +227,6 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
     }
   };
 
-  const engineers = users.filter(u => u.role === 'engineer');
   const assignables = users.filter(u => u.role !== 'admin');
   const eqForLocation = equipment.filter(e => !locationId || e.location_id === Number(locationId));
 
@@ -380,7 +383,6 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
     } finally { setSaving(false); }
   };
 
-  const engineers = users.filter(u => u.role === 'engineer');
   const assignables = users.filter(u => u.role !== 'admin');
   const eqForLocation = equipment.filter(e => !locationId || e.location_id === Number(locationId));
 
@@ -505,7 +507,7 @@ const TicketDetailModal: React.FC<{ ticket: TicketResponse; onClose: () => void 
   );
 };
 
-const CompleteTicketModal: React.FC<{ ticket: TicketResponse; onConfirm: (comment: string) => void; onClose: () => void }> = ({ ticket, onConfirm, onClose }) => {
+const CompleteTicketModal: React.FC<{ ticket: TicketResponse; onConfirm: (comment: string) => Promise<void> | void; onClose: () => void }> = ({ ticket, onConfirm, onClose }) => {
   const [comment, setComment] = useState('');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState('');
@@ -523,20 +525,24 @@ const CompleteTicketModal: React.FC<{ ticket: TicketResponse; onConfirm: (commen
 
   const submit = async () => {
     setUploading(true);
-    let photoUrl = '';
-    if (photoFile) {
-      try {
-        const form = new FormData();
-        form.append('file', photoFile);
-        form.append('ticket_id', String(ticket.id));
-        const resp = await api.post('/attachments', form);
-        photoUrl = resp.data?.file_url || `(файл: ${photoFile.name})`;
-      } catch {
-        photoUrl = `(файл: ${photoFile.name})`;
+    try {
+      let photoUrl = '';
+      if (photoFile) {
+        try {
+          const form = new FormData();
+          form.append('file', photoFile);
+          form.append('ticket_id', String(ticket.id));
+          const resp = await api.post('/attachments', form);
+          photoUrl = resp.data?.file_url || `(файл: ${photoFile.name})`;
+        } catch {
+          photoUrl = `(файл: ${photoFile.name})`;
+        }
       }
+      const fullComment = [comment, photoUrl ? `Фото: ${photoUrl}` : ''].filter(Boolean).join('\n\n');
+      await onConfirm(fullComment);
+    } finally {
+      setUploading(false);
     }
-    const fullComment = [comment, photoUrl ? `Фото: ${photoUrl}` : ''].filter(Boolean).join('\n\n');
-    onConfirm(fullComment);
   };
 
   return (
@@ -696,8 +702,16 @@ const App: React.FC = () => {
     const token = localStorage.getItem('token');
     const userStr = localStorage.getItem('user');
     if (token && userStr) {
-      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      setAuth({ token, user: JSON.parse(userStr) });
+      try {
+        const user = JSON.parse(userStr);
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        setAuth({ token, user });
+      } catch {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        localStorage.removeItem('currentUserId');
+        delete api.defaults.headers.common.Authorization;
+      }
     }
   }, []);
 
@@ -726,6 +740,7 @@ const App: React.FC = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     localStorage.removeItem('currentUserId');
+    delete api.defaults.headers.common.Authorization;
     setAuth(null);
   };
 

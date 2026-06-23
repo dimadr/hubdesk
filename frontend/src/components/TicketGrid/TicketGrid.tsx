@@ -42,8 +42,9 @@ export const TicketGrid: React.FC<{ users: UserInfo[]; onEdit?: (ticket: any) =>
       else if (activeTab === 'archive') { filters.archived = true; }
       else if (activeTab !== 'all') filters.status = activeTab;
       if (activeTab === 'all') filters.archived = false;
-      if (search) filters.q = search;
-      Object.assign(filters, colFilter);
+      if (search.trim()) filters.q = search.trim();
+      const { created, deadline, ...apiFilters } = colFilter;
+      Object.assign(filters, apiFilters);
 
       await fetchTickets(filters, controller.signal);
     }, 300);
@@ -52,7 +53,7 @@ export const TicketGrid: React.FC<{ users: UserInfo[]; onEdit?: (ticket: any) =>
       clearTimeout(timer);
       controller.abort();
     };
-  }, [activeTab, search, colFilter]);
+  }, [activeTab, search, colFilter, fetchTickets]);
 
   const toggleFilter = useCallback((key: string, value: string) => {
     setColFilter(prev => prev[key as keyof ColFilter] === value ? { ...prev, [key]: undefined } : { ...prev, [key]: value });

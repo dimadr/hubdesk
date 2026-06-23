@@ -1,5 +1,6 @@
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, desc, and_
 from pydantic import BaseModel, ConfigDict
@@ -90,7 +91,7 @@ async def clear_logs(
     if user.role != UserRole.admin:
         raise HTTPException(403, "Только администратор может очистить журнал")
 
-    if not bcrypt.verify(data.password, user.password_hash):
+    if not await run_in_threadpool(bcrypt.verify, data.password, user.password_hash):
         raise HTTPException(403, "Неверный пароль")
 
     await db.execute(delete(AuditLog))

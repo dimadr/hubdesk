@@ -35,7 +35,12 @@ export const KanbanScreen: React.FC = () => {
     try {
       const user = await AsyncStorage.getItem('user');
       if (!user) return;
-      const userId = JSON.parse(user).user_id;
+      let userId = 0;
+      try {
+        userId = JSON.parse(user).user_id;
+      } catch {
+        return;
+      }
       const { data } = await api.get('/tickets', { params: { assignee_id: userId, limit: 50 } });
       if (isMountedRef.current) setTickets(data);
     } catch (e) {

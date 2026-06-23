@@ -38,8 +38,8 @@ class TicketService:
             group_id=data.get("group_id"),
             site_contact_name=data.get("site_contact_name"),
             site_contact_phone=data.get("site_contact_phone"),
-            scheduled_start=data.get("scheduled_start"),
-            scheduled_end=data.get("scheduled_end"),
+            scheduled_start=self._naive_datetime(data.get("scheduled_start")),
+            scheduled_end=self._naive_datetime(data.get("scheduled_end")),
             source_description=data.get("source_description"),
             created_at=now_utc,
         )
@@ -49,7 +49,7 @@ class TicketService:
             ticket.response_deadline = now_utc + timedelta(hours=contract.sla_hours)
             ticket.resolution_deadline = now_utc + timedelta(hours=contract.resolution_sla_hours)
         elif data.get("resolution_deadline"):
-            ticket.resolution_deadline = data.get("resolution_deadline")
+            ticket.resolution_deadline = self._naive_datetime(data.get("resolution_deadline"))
 
         self.session.add(ticket)
         await self.session.flush()
@@ -77,6 +77,7 @@ class TicketService:
 
     async def change_status(self, ticket_id: int, target: str, user: User) -> Ticket:
         ticket = await self._get(ticket_id)
+        from_status = ticket.status.value
 
         if not RoleChecker.can_view_ticket(user, ticket):
             raise HTTPException(403, "Доступ к данной заявке запрещен")
@@ -99,9 +100,15 @@ class TicketService:
         await self.session.flush()
         await log_audit(
             self.session, user, "ticket_status_changed", "ticket",
-            ticket_id, f"Статус заявки №{ticket.number}: → {target} (был {ticket.status})"
+            ticket_id, f"Статус заявки №{ticket.number}: {from_status} → {target}"
         )
         return ticket
+
+    @staticmethod
+    def _naive_datetime(value):
+        if isinstance(value, datetime) and value.tzinfo is not None:
+            return value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
 
     async def _get(self, ticket_id: int) -> Ticket:
         stmt = (

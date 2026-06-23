@@ -96,7 +96,7 @@ export default function App() {
                   <TicketDetailScreen
                     ticket={route.params.ticket}
                     onBack={() => navigation.goBack()}
-                    onStatusChange={() => {}}
+                    onStatusChange={() => navigation.goBack()}
                     onComplete={(t) => navigation.navigate('CompleteTicket', { ticket: t })}
                   />
                 )}

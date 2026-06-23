@@ -66,7 +66,13 @@ class MailService:
                 if not customer_id:
                     cust_result = await db.execute(select(Customer).limit(1))
                     first_cust = cust_result.scalar_one_or_none()
-                    customer_id = first_cust.id if first_cust else 1
+                    if first_cust:
+                        customer_id = first_cust.id
+                    else:
+                        customer = Customer(name=sender or "Email", type="company")
+                        db.add(customer)
+                        await db.flush()
+                        customer_id = customer.id
 
                 loc_result = await db.execute(select(AssetLocation).limit(1))
                 first_loc = loc_result.scalar_one_or_none()

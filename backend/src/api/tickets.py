@@ -145,7 +145,10 @@ def create_ticket_router() -> APIRouter:
         if user.role not in (UserRole.admin, UserRole.dispatcher, UserRole.engineer, UserRole.customer):
             raise HTTPException(403, "Недостаточно прав для добавления комментариев")
         svc = CommentService(db)
-        comment = await svc.add(ticket_id, data.body, data.is_internal, user)
+        try:
+            comment = await svc.add(ticket_id, data.body, data.is_internal, user)
+        except PermissionError as e:
+            raise HTTPException(403, str(e))
         await db.commit()
         log_history("Добавлен комментарий", f"к заявке #{ticket_id}", user.name)
         return CommentResponse.model_validate(comment)
@@ -248,13 +251,17 @@ def create_ticket_router() -> APIRouter:
         if not ticket:
             raise HTTPException(404)
         old_assignee = ticket.assignee_id
-        ticket.assignee_id = data.assignee_id
         if data.assignee_id:
             eng = await db.get(User, data.assignee_id)
+            if not eng:
+                raise HTTPException(404, "Исполнитель не найден")
+            if eng.role != UserRole.engineer:
+                raise HTTPException(400, "Назначать можно только пользователя с ролью engineer")
             eng_name = eng.name if eng else str(data.assignee_id)
             log_history("Назначен инженер", f"#{ticket.number} → {eng_name}", user.name)
         else:
             log_history("Снят исполнитель", f"#{ticket.number}", user.name)
+        ticket.assignee_id = data.assignee_id
         await db.commit()
         return TicketResponse.model_validate(ticket)
 

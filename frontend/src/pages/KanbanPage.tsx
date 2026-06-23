@@ -26,7 +26,6 @@ export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[] }> = ({ ro
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<number | ''>('');
   const currentUserId = Number(localStorage.getItem('currentUserId') || 0);
-  const targetId = (role === 'admin' && selectedUser) ? Number(selectedUser) : (role === 'admin' ? currentUserId : 0);
 
   useEffect(() => { loadTasks(); }, [selectedUser]);
 
@@ -117,11 +116,9 @@ export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[] }> = ({ ro
             {tickets.filter(t => ticketToColumn(t.status) === col.key).map(t => (
               <div
                 key={`ticket-${t.id}`}
-                draggable
-                onDragStart={e => e.dataTransfer.setData('text', String(t.id))}
                 style={{
                   background: 'var(--bg-card)', borderRadius: 7, padding: 10, marginBottom: 8,
-                  cursor: 'grab', border: '1px solid var(--border)', fontSize: 13,
+                  border: '1px solid var(--border)', fontSize: 13,
                   borderLeft: `3px solid ${t.priority === 'critical' ? '#f87171' : t.priority === 'high' ? '#fbbf24' : 'var(--border)'}`,
                 }}
               >

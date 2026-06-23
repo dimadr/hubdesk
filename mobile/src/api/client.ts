@@ -4,6 +4,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const STORAGE_KEY = 'server_url';
 const DEFAULT_URL = 'http://192.168.0.178:8002/api';
 
+export const normalizeApiUrl = (url: string): string => {
+  const sanitizedUrl = url.trim().replace(/\/+$/, '');
+  if (!sanitizedUrl) return '';
+  return sanitizedUrl.endsWith('/api') ? sanitizedUrl : `${sanitizedUrl}/api`;
+};
+
 export const getSavedUrl = async (): Promise<string> => {
   return (await AsyncStorage.getItem(STORAGE_KEY)) || DEFAULT_URL;
 };
@@ -13,7 +19,7 @@ export const hasSavedUrl = async (): Promise<boolean> => {
 };
 
 export const saveUrl = async (url: string): Promise<void> => {
-  const sanitizedUrl = url.replace(/\/+$/, '');
+  const sanitizedUrl = normalizeApiUrl(url);
   await AsyncStorage.setItem(STORAGE_KEY, sanitizedUrl);
   api.defaults.baseURL = sanitizedUrl;
 };
@@ -31,7 +37,8 @@ api.interceptors.request.use(async (config) => {
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
-    if (error.response?.status === 401) {
+    const requestUrl = error.config?.url || '';
+    if (error.response?.status === 401 && !requestUrl.includes('/login')) {
       await AsyncStorage.multiRemove(['token', 'user']);
     }
     return Promise.reject(error);

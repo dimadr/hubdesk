@@ -18,8 +18,15 @@ class WarehouseService:
     async def create_document(self, data: dict, user: User) -> AccountingDocument:
         if not RoleChecker.can_manage_warehouse(user):
             raise PermissionError("Access denied")
+        doc_type = DocType(data["doc_type"])
+        if doc_type != DocType.INFLOW and not data.get("source_warehouse_id"):
+            raise ValueError("Для документа требуется склад-источник")
+        if doc_type != DocType.WRITE_OFF and not data.get("target_warehouse_id"):
+            raise ValueError("Для документа требуется склад-получатель")
+        if not data.get("lines"):
+            raise ValueError("Документ должен содержать хотя бы одну строку")
         doc = AccountingDocument(
-            doc_type=DocType(data["doc_type"]),
+            doc_type=doc_type,
             source_warehouse_id=data.get("source_warehouse_id"),
             target_warehouse_id=data.get("target_warehouse_id"),
         )
@@ -37,6 +44,8 @@ class WarehouseService:
         return doc
 
     async def approve(self, doc_id: int, user: User) -> AccountingDocument:
+        if not RoleChecker.can_manage_warehouse(user):
+            raise PermissionError("Access denied")
         doc = await self._get(doc_id)
         await self.fsm.transition(doc, "APPROVAL", user.id)
         await self.session.flush()
@@ -44,6 +53,8 @@ class WarehouseService:
         return doc
 
     async def deliver(self, doc_id: int, user: User) -> AccountingDocument:
+        if not RoleChecker.can_manage_warehouse(user):
+            raise PermissionError("Access denied")
         doc = await self._get(doc_id)
         await self.fsm.transition(doc, "DELIVERY", user.id)
         await self.session.flush()
@@ -51,6 +62,8 @@ class WarehouseService:
         return doc
 
     async def account(self, doc_id: int, user: User) -> AccountingDocument:
+        if not RoleChecker.can_manage_warehouse(user):
+            raise PermissionError("Access denied")
         doc = await self._get(doc_id)
         await self.fsm.transition(doc, "ACCOUNTED", user.id)
         await self.fsm.post_account(doc)
@@ -70,4 +83,7 @@ class WarehouseService:
     async def _get(self, doc_id: int) -> AccountingDocument:
         stmt = select(AccountingDocument).where(AccountingDocument.id == doc_id).options(selectinload(AccountingDocument.lines))
         result = await self.session.execute(stmt)
-        return result.scalar_one()
+        doc = result.scalar_one_or_none()
+        if not doc:
+            raise LookupError(f"Складской документ {doc_id} не найден")
+        return doc

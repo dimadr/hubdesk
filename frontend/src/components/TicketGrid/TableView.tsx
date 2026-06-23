@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { api, TicketResponse } from '../../api/client';
 import { RowStyle } from './RowStyles';
 import { ColumnHeader } from './ColumnHeader';
+import { useTicketStore } from '../../store/tickets';
 import { DndContext, closestCenter, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 
@@ -73,10 +74,11 @@ interface CellProps {
   onStatusChange?: (ticket: TicketResponse, targetStatus: string) => void;
   currentUserId?: number;
   onFilter?: (key: string, value: string) => void;
+  onAssigneeChanged: (ticketId: number, assigneeId: number | null) => void;
 }
 
-const Cell = React.memo<CellProps>(({ ticket, col, width, userMap, engineerIds, onEdit, onStatusChange, currentUserId, onFilter }) => {
-  const content = renderCellContent(ticket, col, userMap, engineerIds, onEdit, onStatusChange, currentUserId);
+const Cell = React.memo<CellProps>(({ ticket, col, width, userMap, engineerIds, onEdit, onStatusChange, currentUserId, onFilter, onAssigneeChanged }) => {
+  const content = renderCellContent(ticket, col, userMap, engineerIds, onEdit, onStatusChange, currentUserId, onAssigneeChanged);
   const isFilterable = FILTERABLE_COLUMNS.includes(col.key);
 
   const clickHandler = isFilterable ? () => {
@@ -109,7 +111,7 @@ const Cell = React.memo<CellProps>(({ ticket, col, width, userMap, engineerIds, 
   );
 });
 
-function renderCellContent(ticket: TicketResponse, col: ColumnDef, userMap: Map<number, string>, engineerIds: number[], onEdit?: (ticket: TicketResponse) => void, onStatusChange?: (ticket: TicketResponse, targetStatus: string) => void, currentUserId?: number) {
+function renderCellContent(ticket: TicketResponse, col: ColumnDef, userMap: Map<number, string>, engineerIds: number[], onEdit?: (ticket: TicketResponse) => void, onStatusChange?: (ticket: TicketResponse, targetStatus: string) => void, currentUserId?: number, onAssigneeChanged?: (ticketId: number, assigneeId: number | null) => void) {
   if (col.key === 'subject') {
     return (
       <span className="cell-subject" style={{ fontWeight: ticket.status === 'ASSIGNED' || ticket.response_overdue ? 700 : 400 }}>
@@ -140,6 +142,7 @@ function renderCellContent(ticket: TicketResponse, col: ColumnDef, userMap: Map<
         const assigneeId = val === '' ? null : Number(val);
         try {
           await api.patch(`/tickets/${ticket.id}/assign`, { assignee_id: assigneeId });
+          onAssigneeChanged?.(ticket.id, assigneeId);
         } catch {
           alert('Ошибка назначения исполнителя');
         }
@@ -181,6 +184,7 @@ function renderCellContent(ticket: TicketResponse, col: ColumnDef, userMap: Map<
 }
 
 export const TableView: React.FC<Props> = ({ tickets, users, onEdit, onDetail, onStatusChange, currentUserId, colFilter, onFilter }) => {
+  const updateTicket = useTicketStore(s => s.updateTicket);
   const [columns, setColumns] = useState<ColumnDef[]>(() => {
     try {
       const saved = localStorage.getItem('ticket-columns-v2');
@@ -197,7 +201,7 @@ export const TableView: React.FC<Props> = ({ tickets, users, onEdit, onDetail, o
   }, [users]);
 
   const engineerIds = useMemo(
-    () => users.map(u => u.id),
+    () => users.filter(u => u.role === 'engineer').map(u => u.id),
     [users]
   );
 
@@ -215,12 +219,12 @@ export const TableView: React.FC<Props> = ({ tickets, users, onEdit, onDetail, o
     setColWidths(prev => ({ ...prev, [key]: Math.max(50, width) }));
   }, []);
 
-  if (tickets.length === 0) return <div className="loading">Нет заявок</div>;
-
   const visibleColumns = useMemo(
     () => columns.filter(c => c.key !== 'actions' || onEdit),
     [columns, onEdit]
   );
+
+  if (tickets.length === 0) return <div className="loading">Нет заявок</div>;
 
   return (
     <DndContext collisionDetection={closestCenter} onDragEnd={handleReorder}>
@@ -250,6 +254,7 @@ export const TableView: React.FC<Props> = ({ tickets, users, onEdit, onDetail, o
                     onStatusChange={onStatusChange}
                     currentUserId={currentUserId}
                     onFilter={onFilter}
+                    onAssigneeChanged={(ticketId, assigneeId) => updateTicket(ticketId, { assignee_id: assigneeId })}
                 />
               ))}
             </RowStyle>

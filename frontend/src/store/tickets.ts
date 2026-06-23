@@ -11,6 +11,7 @@ interface TicketStore {
   setActiveTab: (tab: string) => void;
   setViewType: (vt: 'table' | 'card' | 'tree') => void;
   fetchTickets: (filters: Record<string, any>, signal?: AbortSignal) => Promise<void>;
+  updateTicket: (id: number, patch: Partial<TicketResponse>) => void;
   updateCounter: (event: string, count: number) => void;
 }
 
@@ -28,12 +29,22 @@ export const useTicketStore = create<TicketStore>((set) => ({
     set({ loading: true });
     try {
       const { data } = await api.get('/tickets', { params: filters, signal });
-      set({ tickets: data, loading: false });
+      if (!signal?.aborted) {
+        set({ tickets: data, loading: false });
+      }
     } catch (err: any) {
       if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') {
         set({ loading: false });
       }
     }
+  },
+
+  updateTicket: (id, patch) => {
+    set((s) => ({
+      tickets: s.tickets.map((ticket) => (
+        ticket.id === id ? { ...ticket, ...patch } : ticket
+      )),
+    }));
   },
 
   updateCounter: (event, count) => {

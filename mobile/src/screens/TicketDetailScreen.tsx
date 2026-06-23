@@ -20,7 +20,11 @@ export const TicketDetailScreen: React.FC<Props> = ({ ticket, onBack, onStatusCh
     let isMounted = true;
     AsyncStorage.getItem('user').then((u) => {
       if (u && isMounted) {
-        setUserId(JSON.parse(u).user_id || 0);
+        try {
+          setUserId(JSON.parse(u).user_id || 0);
+        } catch {
+          setUserId(0);
+        }
       }
     });
     return () => { isMounted = false; };

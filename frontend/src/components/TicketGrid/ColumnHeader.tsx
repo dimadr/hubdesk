@@ -11,6 +11,7 @@ export const ColumnHeader: React.FC<Props> = ({ id, label, sticky, width, colKey
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
+    e.preventDefault();
     const startX = e.clientX;
     const startWidth = width;
     const onMove = (ev: MouseEvent) => onResize(colKey, startWidth + (ev.clientX - startX));
@@ -32,9 +33,8 @@ export const ColumnHeader: React.FC<Props> = ({ id, label, sticky, width, colKey
         transition,
       }}
       {...attributes}
-      {...listeners}
     >
-      {label}
+      <span {...listeners}>{label}</span>
       <div className="resize-handle" onMouseDown={handleMouseDown} />
     </th>
   );

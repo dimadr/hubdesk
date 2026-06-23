@@ -25,7 +25,8 @@ export const PRIORITY_LABELS: Record<string, string> = {
 };
 
 export const TYPE_LABELS: Record<string, string> = {
-  repair: 'Ремонт', installation: 'Монтаж', maintenance: 'ТО', inspection: 'Инспекция', emergency: 'Авария',
+  repair: 'Ремонт', installation: 'Монтаж', maintenance: 'ТО', inspection: 'Инспекция',
+  verification: 'Поверка', emergency: 'Авария',
 };
 
 export const NEXT_STATUS: Record<string, string> = {
@@ -34,8 +35,8 @@ export const NEXT_STATUS: Record<string, string> = {
 };
 
 export const BTN_LABELS: Record<string, string> = {
-  ACCEPTED: 'Еду', ON_THE_WAY: 'На месте', ARRIVED: 'Работаю',
-  IN_PROGRESS: 'Готово', REVIEW: 'Завершить',
+  ACCEPTED: 'Принять', ON_THE_WAY: 'Выехал', ARRIVED: 'На месте',
+  IN_PROGRESS: 'Начать работу', REVIEW: 'На проверку', COMPLETED: 'Завершить',
 };
 
 export const FILTER_TABS = [

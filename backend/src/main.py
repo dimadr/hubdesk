@@ -99,6 +99,12 @@ async def lifespan(app: FastAPI):
 
     try:
         async with engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE insert_products ADD COLUMN IF NOT EXISTS cell VARCHAR(100)"))
+    except Exception:
+        pass
+
+    try:
+        async with engine.begin() as conn:
             await conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS replacement_transactions (
                     id SERIAL PRIMARY KEY,
