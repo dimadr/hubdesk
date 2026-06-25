@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import List, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete as sa_delete, func as sa_func, case
+from sqlalchemy import select, delete as sa_delete, func as sa_func, case, cast, Integer
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -117,7 +117,7 @@ async def list_products(user: User = Depends(get_current_user), db: AsyncSession
         )
         .outerjoin(InsertTransaction, InsertTransaction.product_id == InsertProduct.id)
         .group_by(InsertProduct.id)
-        .order_by(InsertProduct.name)
+        .order_by(cast(InsertProduct.diameter_inner, Integer).asc().nulls_last(), InsertProduct.name)
     )
 
     result = await db.execute(stmt)

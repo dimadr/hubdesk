@@ -777,7 +777,7 @@ const InsertTab: React.FC = () => {
   const openProductForm = (p?: any) => {
     if (p) {
       setEditId(p.id);
-      setForm({ ...form, name: p.name, diameter_inner: p.diameter_inner || '', diameter_outer: p.diameter_outer || '', length: p.length || '', flange_type: p.flange_type || '', cell: p.cell || '', notes: p.notes || '', quantity: '0' });
+      setForm({ ...form, name: p.name, diameter_inner: p.diameter_inner || '', diameter_outer: p.diameter_outer || '', length: p.length || '', flange_type: p.flange_type || '', cell: p.cell || '', notes: p.notes || '', quantity: String(p.balance || 0) });
     } else {
       setEditId(null);
       setForm({ name: '', diameter_inner: '', diameter_outer: '', length: '', flange_type: '', cell: '', notes: '', quantity: '1', type: 'incoming', product_id: '', taken_by_id: '', location_id: '', comment: '', document: '' });
@@ -1022,8 +1022,8 @@ const InsertTab: React.FC = () => {
                 <select value={form.flange_type} onChange={e => setForm({ ...form, flange_type: e.target.value })}><option value="">—</option><option value="Фланцевый">Фланцевый</option><option value="Сэндвич">Сэндвич</option><option value="Резьбовой">Резьбовой</option><option value="Пластик">Пластик</option><option value="С заглушкой">С заглушкой</option></select>
                 <label>Ячейка</label>
                 <input value={form.cell || ''} onChange={e => setForm({ ...form, cell: e.target.value })} placeholder="A-12" />
-                <label>Начальное количество</label>
-                <input type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} min="0" step="1" placeholder="0" />
+                <label>Количество</label>
+                <input type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} min="0" step="1" placeholder="0" disabled={!!editId} />
                 <label>Примечание</label>
                 <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} placeholder="" style={{ width: '100%', padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, background: 'var(--bg-surface)', color: 'var(--text)', resize: 'vertical', fontFamily: 'inherit' }} />
               </>
