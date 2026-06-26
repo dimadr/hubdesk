@@ -100,6 +100,7 @@ class LocationResponse(BaseModel):
 class LocationCreate(BaseModel):
     name: str
     customer_id: int | None = None
+    customer_name: str | None = None
     address: str = ""
     contacts: str | None = None
     contact_name: str | None = None
@@ -267,11 +268,16 @@ async def create_location(
         eng = await db.get(User, data.assigned_engineer_id)
         if not eng or eng.role != UserRole.engineer:
             raise HTTPException(400, "Назначенный сотрудник должен иметь роль engineer")
-    cust = await db.get(Customer, data.customer_id) if data.customer_id else None
-    if not cust:
-        cust = Customer(name=data.name, type="company")
+    if data.customer_id:
+        cust = await db.get(Customer, data.customer_id)
+        if not cust:
+            raise HTTPException(400, "Клиент не найден")
+    elif data.customer_name:
+        cust = Customer(name=data.customer_name.strip(), type="company")
         db.add(cust)
         await db.flush()
+    else:
+        raise HTTPException(400, "Укажите клиента (customer_id или customer_name)")
 
     loc = AssetLocation(
         name=data.name, address=data.address, customer_id=cust.id,

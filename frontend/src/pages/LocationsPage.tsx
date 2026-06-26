@@ -45,9 +45,9 @@ export const LocationsPage: React.FC = () => {
     setLoading(true);
     setPageError(null);
     Promise.all([
-      api.get('/locations').catch(() => ({ data: [] })),
-      api.get('/users/list').catch(() => ({ data: [] })),
-      api.get('/admin/customers').catch(() => ({ data: [] })),
+      api.get('/locations'),
+      api.get('/users/list'),
+      api.get('/admin/customers'),
     ])
       .then(([locRes, userRes, custRes]) => {
         setLocations(locRes.data);
@@ -56,7 +56,7 @@ export const LocationsPage: React.FC = () => {
       })
       .catch((err) => {
         console.error("Ошибка инициализации страницы:", err);
-        setPageError("Не удалось загрузить данные страницы. Попробуйте обновить позже.");
+        setPageError(err.response?.data?.detail || "Не удалось загрузить данные. Проверьте права доступа.");
       })
       .finally(() => setLoading(false));
   };
@@ -115,12 +115,6 @@ export const LocationsPage: React.FC = () => {
                   </td>
                   <td>
                     <button onClick={() => setEditId(l.id)} className="btn btn-secondary" style={{ padding: '3px 8px', fontSize: 11 }}>✎</button>
-                    {' '}
-                    <button onClick={() => handleDelete(l.id)}
-                      className={confirmDelete === l.id ? 'btn btn-danger' : 'btn btn-secondary'}
-                      style={{ padding: '3px 8px', fontSize: 11 }}>
-                      {confirmDelete === l.id ? 'Точно?' : '✕'}
-                    </button>
                   </td>
                 </tr>
               );
@@ -167,6 +161,7 @@ interface LocFormProps {
 const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, loc }) => {
   const [name, setName] = useState(loc?.name || '');
   const [customerId, setCustomerId] = useState<string>(loc?.customer_id != null ? loc.customer_id.toString() : '');
+  const [newCustomerName, setNewCustomerName] = useState('');
   const [address, setAddress] = useState(loc?.address || '');
   const [contactName, setContactName] = useState(loc?.contact_name || '');
   const [contactPhone, setContactPhone] = useState(loc?.contact_phone || '');
@@ -177,7 +172,10 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
   const [to, setTo] = useState(loc?.contract_valid_to ? loc.contract_valid_to.substring(0, 10) : '');
   const [inn, setInn] = useState(loc?.inn || '');
   const [innLoading, setInnLoading] = useState(false);
+  const [innResult, setInnResult] = useState<string | null>(null);
   const [error, setError] = useState('');
+
+  const engineers = users.filter(u => u.role === 'engineer');
 
   const handleInnLookup = async () => {
     const normalizedInn = inn.replace(/\D/g, '');
@@ -188,12 +186,30 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
     }
     setInnLoading(true);
     setError('');
+    setInnResult(null);
     try {
       const { data } = await api.get('/locations/lookup-inn', { params: { inn: normalizedInn } });
       if (data.error) { setError(data.error); return; }
-      setName(data.name || name);
-      setAddress(data.address || address);
-      if (data.phone) setContactPhone(data.phone);
+      const filled: string[] = [];
+      if (data.short_name) {
+        setName(data.short_name);
+        filled.push('название (краткое)');
+      } else if (data.name && !name) {
+        setName(data.name);
+        filled.push('название');
+      }
+      if (data.address) { setAddress(data.address); filled.push('адрес'); }
+      if (data.phone) { setContactPhone(data.phone); filled.push('телефон'); }
+      if (data.name && !customerId && !loc) {
+        setNewCustomerName(data.name);
+        filled.push('клиент');
+      }
+      const notFound = ['название', 'адрес', 'телефон'].filter(f => !filled.includes(f));
+      setInnResult(
+        `Заполнено: ${filled.join(', ')}.` +
+        (notFound.length ? ` Не найдено: ${notFound.join(', ')}.` : '') +
+        (data.name && data.name !== (data.short_name || data.name) ? ` Полное наименование: ${data.name}` : '')
+      );
     } catch (e: any) {
       setError(e.response?.data?.detail || 'Ошибка при поиске ИНН');
     } finally {
@@ -203,6 +219,10 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
 
   const submit = async () => {
     if (!name.trim()) { setError('Название объекта обязательно'); return; }
+    if (!loc && !customerId && !newCustomerName.trim()) {
+      setError('Выберите клиента или введите название нового');
+      return;
+    }
 
     try {
       const body: any = {
@@ -222,7 +242,9 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
       if (customerId) {
         body.customer_id = Number(customerId);
       } else if (loc) {
-        body.customer_id = null;
+        body.customer_id = null;  // редактирование: не менять клиента
+      } else if (newCustomerName.trim()) {
+        body.customer_name = newCustomerName.trim();
       }
 
       if (loc) {
@@ -241,14 +263,29 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
       <div className="modal-card modal-card-wide" onClick={e => e.stopPropagation()} style={{ maxHeight: '85vh', overflow: 'auto' }}>
         <h3>{loc ? 'Редактировать' : 'Добавить'} объект</h3>
         {error && <p style={{ color: 'var(--danger)', fontSize: 13, background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 6, marginBottom: 14 }}>{error}</p>}
+        {innResult && <p style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--primary-bg)', padding: '6px 10px', borderRadius: 6, marginBottom: 12 }}>{innResult}</p>}
 
         <div className="modal-form-grid">
           <div className="span-2">
-            <label>Компания (Клиент)</label>
-            <select value={customerId} onChange={e => setCustomerId(e.target.value)}>
-              <option value="">— Создать из названия объекта —</option>
+            <label>Клиент <span className="required">*</span></label>
+            <select value={customerId || (newCustomerName ? '__new__' : '')} onChange={e => {
+              const v = e.target.value;
+              if (v === '__new__') return;
+              setCustomerId(v);
+              setNewCustomerName('');
+            }}>
+              <option value="">— Выберите —</option>
               {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {!loc && <option value="__new__">+ Создать нового клиента</option>}
             </select>
+            {(!customerId && !loc) && (
+              <input
+                placeholder="Название нового клиента"
+                value={newCustomerName}
+                onChange={e => setNewCustomerName(e.target.value)}
+                style={{ marginTop: 6 }}
+              />
+            )}
           </div>
 
           <div className="span-2">
@@ -290,7 +327,7 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
             <label>Ответственный инженер</label>
             <select value={engId} onChange={e => setEngId(e.target.value)}>
               <option value="">— Не назначен —</option>
-              {users.filter(u => u.role === 'engineer' || u.role === 'admin').map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              {engineers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           </div>
 

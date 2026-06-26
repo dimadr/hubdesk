@@ -51,6 +51,7 @@ async def lookup_inn(inn: str, client: httpx.AsyncClient | None = None) -> dict:
 
     return {
         "name": name_data.get("full_with_opf") or company.get("value") or "Наименование не указано",
+        "short_name": name_data.get("short_with_opf") or name_data.get("short") or "",
         "address": company.get("address", {}).get("value"),
         "kpp": company.get("kpp"),
         "ogrn": company.get("ogrn"),
