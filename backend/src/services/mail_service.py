@@ -31,7 +31,7 @@ class MailService:
             mail.select(cfg.folder)
 
             search_criteria = f'(UID {int(cfg.last_uid or 0) + 1}:*)' if cfg.last_uid else 'ALL'
-            status, data = mail.uid('search', None, 'ALL')
+            status, data = mail.uid('search', None, search_criteria)
 
             if status != 'OK' or not data[0]:
                 mail.logout()
@@ -79,7 +79,7 @@ class MailService:
                 location_id = first_loc.id if first_loc else None
 
                 last_num_result = await db.execute(
-                    select(Ticket.number).order_by(Ticket.number.desc()).limit(1)
+                    select(Ticket.number).order_by(Ticket.number.desc()).limit(1).with_for_update()
                 )
                 last_num = last_num_result.scalar() or 999
                 ticket = Ticket(

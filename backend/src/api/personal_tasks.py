@@ -15,6 +15,7 @@ class TaskCreate(BaseModel):
     description: str = ""
     column: str = "todo"
     ticket_id: int | None = None
+    user_id: int | None = None
 
 
 class TaskUpdate(BaseModel):
@@ -70,12 +71,15 @@ async def list_tasks(
 
 @personal_tasks_router.post("", status_code=201, response_model=TaskResponse)
 async def create_task(data: TaskCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    target_user_id = user.id
+    if data.user_id and user.role == UserRole.admin:
+        target_user_id = data.user_id
     pos_result = await db.execute(
-        select(PersonalTask).where(PersonalTask.user_id == user.id, PersonalTask.column == data.column)
+        select(PersonalTask).where(PersonalTask.user_id == target_user_id, PersonalTask.column == data.column)
     )
     max_pos = len(pos_result.scalars().all())
     task = PersonalTask(
-        user_id=user.id, title=data.title, description=data.description,
+        user_id=target_user_id, title=data.title, description=data.description,
         column=data.column, position=max_pos, ticket_id=data.ticket_id,
     )
     db.add(task)
@@ -91,7 +95,7 @@ async def create_task(data: TaskCreate, user: User = Depends(get_current_user), 
 @personal_tasks_router.patch("/{task_id}", response_model=TaskResponse)
 async def update_task(task_id: int, data: TaskUpdate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     task = await db.get(PersonalTask, task_id)
-    if not task or task.user_id != user.id:
+    if not task or (task.user_id != user.id and user.role != UserRole.admin):
         raise HTTPException(404)
     if data.title is not None:
         task.title = data.title
@@ -112,7 +116,7 @@ async def update_task(task_id: int, data: TaskUpdate, user: User = Depends(get_c
 @personal_tasks_router.delete("/{task_id}")
 async def delete_task(task_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     task = await db.get(PersonalTask, task_id)
-    if not task or task.user_id != user.id:
+    if not task or (task.user_id != user.id and user.role != UserRole.admin):
         raise HTTPException(404)
     await db.delete(task)
     await db.commit()

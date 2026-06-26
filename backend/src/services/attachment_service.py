@@ -3,10 +3,13 @@ import os
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.attachment import Attachment
 from src.models.comment import Comment
+from src.models.ticket import Ticket
 from src.models.user import User
-from fastapi import UploadFile
+from src.services.acl_service import RoleChecker
+from fastapi import UploadFile, HTTPException
 
 UPLOAD_DIR = "uploads"
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
 class AttachmentService:
@@ -20,6 +23,13 @@ class AttachmentService:
         comment_id: int | None,
         user: User,
     ) -> Attachment:
+        if ticket_id:
+            ticket = await self.session.get(Ticket, ticket_id)
+            if not ticket:
+                raise HTTPException(404, "Заявка не найдена")
+            if not await RoleChecker.can_view_ticket_async(user, ticket, self.session):
+                raise HTTPException(403, "Нет доступа к заявке")
+
         is_internal = False
         if comment_id:
             comment = await self.session.get(Comment, comment_id)
@@ -29,7 +39,13 @@ class AttachmentService:
         filename = f"{uuid.uuid4()}_{file.filename}"
         path = os.path.join(UPLOAD_DIR, filename)
         os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+        if file.size is not None and file.size > MAX_UPLOAD_SIZE:
+            raise HTTPException(413, f"Файл превышает лимит {MAX_UPLOAD_SIZE // (1024*1024)} МБ")
+
         content = await file.read()
+        if len(content) > MAX_UPLOAD_SIZE:
+            raise HTTPException(413, f"Файл превышает лимит {MAX_UPLOAD_SIZE // (1024*1024)} МБ")
         with open(path, "wb") as f:
             f.write(content)
 

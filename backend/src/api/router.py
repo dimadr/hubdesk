@@ -180,15 +180,14 @@ async def signup(data: SignupRequest, db: AsyncSession = Depends(get_db)):
 
     try:
         await db.flush()
+        await log_audit(
+            db, None, "user_signup_requested", "user", user.id,
+            f"Заявка на регистрацию: {user.name} ({user.email}), роль: {data.role}. Ожидает утверждения."
+        )
         await db.commit()
     except IntegrityError:
         await db.rollback()
         raise HTTPException(400, "Email уже зарегистрирован (ошибка параллельного запроса)")
-
-    await log_audit(
-        db, None, "user_signup_requested", "user", user.id,
-        f"Заявка на регистрацию: {user.name} ({user.email}), роль: {data.role}. Ожидает утверждения."
-    )
 
     return AuthResponse(
         token="",
@@ -262,6 +261,12 @@ async def create_location(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if user.role not in (UserRole.admin, UserRole.dispatcher):
+        raise HTTPException(403, "Недостаточно прав")
+    if data.assigned_engineer_id:
+        eng = await db.get(User, data.assigned_engineer_id)
+        if not eng or eng.role != UserRole.engineer:
+            raise HTTPException(400, "Назначенный сотрудник должен иметь роль engineer")
     cust = await db.get(Customer, data.customer_id) if data.customer_id else None
     if not cust:
         cust = Customer(name=data.name, type="company")
@@ -282,9 +287,8 @@ async def create_location(
     )
     db.add(loc)
     await db.flush()
-    await db.commit()
-
     await log_audit(db, user, "location_created", "location", loc.id, f"Создан объект «{loc.name}» ({loc.address})")
+    await db.commit()
 
     eng_name = None
     if data.assigned_engineer_id:
@@ -314,6 +318,8 @@ async def update_location(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if user.role not in (UserRole.admin, UserRole.dispatcher):
+        raise HTTPException(403, "Недостаточно прав")
     result = await db.execute(
         select(AssetLocation)
         .where(AssetLocation.id == location_id)
@@ -324,6 +330,11 @@ async def update_location(
         raise HTTPException(404, "Объект не найден")
 
     update_data = data.model_dump(exclude_unset=True)
+
+    if "assigned_engineer_id" in update_data and update_data["assigned_engineer_id"]:
+        eng = await db.get(User, update_data["assigned_engineer_id"])
+        if not eng or eng.role != UserRole.engineer:
+            raise HTTPException(400, "Назначенный сотрудник должен иметь роль engineer")
 
     if "customer_id" in update_data:
         cust = await db.get(Customer, update_data["customer_id"]) if update_data["customer_id"] else None
@@ -336,6 +347,7 @@ async def update_location(
     for field, value in update_data.items():
         setattr(loc, field, value)
 
+    await log_audit(db, user, "location_updated", "location", loc.id, f"Изменён объект «{loc.name}»")
     await db.commit()
 
     if "assigned_engineer_id" in update_data:
@@ -343,8 +355,6 @@ async def update_location(
 
     cust = await db.get(Customer, loc.customer_id)
     cust_name = cust.name if cust else ""
-
-    await log_audit(db, user, "location_updated", "location", loc.id, f"Изменён объект «{loc.name}»")
 
     return LocationResponse(
         id=loc.id, name=loc.name, address=loc.address, customer_id=loc.customer_id,
@@ -364,6 +374,8 @@ async def update_location(
 
 @api_router.delete("/locations/{location_id}", tags=["Locations"])
 async def delete_location(location_id: int, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    raise HTTPException(403, detail="Удаление отключено в RC-режиме")
+    # RC: удаление только с прямого одобрения пользователя
     if user.role != UserRole.admin:
         raise HTTPException(403, "Только администратор может удалять объекты")
 
@@ -380,8 +392,8 @@ async def delete_location(location_id: int, user=Depends(get_current_user), db: 
         raise HTTPException(400, f"Нельзя удалить объект с заявками ({ticket_count} шт.)")
 
     await db.delete(loc)
-    await db.commit()
     await log_audit(db, user, "location_deleted", "location", location_id, f"Удалён объект «{loc.name}»")
+    await db.commit()
     return {"ok": True}
 
 
@@ -395,7 +407,7 @@ async def list_users(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if user.role not in (UserRole.admin, UserRole.dispatcher, UserRole.manager, UserRole.accountant):
+    if user.role not in (UserRole.admin, UserRole.dispatcher, UserRole.accountant):
         raise HTTPException(403, "Недостаточно прав для просмотра списка пользователей")
 
     result = await db.execute(select(User))

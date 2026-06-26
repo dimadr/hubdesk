@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from src.database import get_db
 from src.models.replacement_device import ReplacementDevice, ReplacementTransaction
-from src.models.user import User
+from src.models.user import User, UserRole
 from src.core.deps import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -153,6 +153,8 @@ async def list_devices(user: User = Depends(get_current_user), db: AsyncSession 
 
 @replacement_router.post("/devices", status_code=201, response_model=DeviceResponse)
 async def create_device(data: DeviceCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if user.role not in (UserRole.admin, UserRole.storekeeper):
+        raise HTTPException(403, "Недостаточно прав")
     d = ReplacementDevice(
         name=data.name.strip(), serial_number=data.serial_number,
         verification_date=date.fromisoformat(data.verification_date) if data.verification_date else None,
@@ -171,6 +173,8 @@ async def create_device(data: DeviceCreate, user: User = Depends(get_current_use
 
 @replacement_router.patch("/devices/{device_id}", response_model=DeviceResponse)
 async def update_device(device_id: int, data: DeviceUpdate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if user.role not in (UserRole.admin, UserRole.storekeeper):
+        raise HTTPException(403, "Недостаточно прав")
     d = await db.get(ReplacementDevice, device_id)
     if not d:
         raise HTTPException(404, detail="Прибор не найден")
@@ -189,6 +193,8 @@ async def update_device(device_id: int, data: DeviceUpdate, user: User = Depends
 
 @replacement_router.delete("/devices/{device_id}")
 async def delete_device(device_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    raise HTTPException(403, detail="Удаление отключено в RC-режиме")
+    # RC: удаление только с прямого одобрения пользователя
     d = await db.get(ReplacementDevice, device_id)
     if not d:
         raise HTTPException(404, detail="Прибор не найден")
@@ -227,6 +233,8 @@ async def list_transactions(user: User = Depends(get_current_user), db: AsyncSes
 
 @replacement_router.post("/transactions", status_code=201, response_model=TransactionResponse)
 async def create_transaction(data: TransactionCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if user.role not in (UserRole.admin, UserRole.storekeeper):
+        raise HTTPException(403, "Недостаточно прав")
     if data.type not in ("incoming", "outgoing", "return"):
         raise HTTPException(400, detail="Неверный тип транзакции")
 
@@ -235,6 +243,10 @@ async def create_transaction(data: TransactionCreate, user: User = Depends(get_c
         raise HTTPException(404, detail="Прибор не найден")
 
     if data.type == "outgoing":
+        # lock device row to prevent concurrent withdrawals
+        await db.execute(
+            select(ReplacementDevice).where(ReplacementDevice.id == data.device_id).with_for_update()
+        )
         bal = await _get_device_balance(db, data.device_id)
         if bal < data.quantity:
             raise HTTPException(400, detail=f"Недостаточно приборов (Доступно: {bal}, запрашивается: {data.quantity})")
@@ -276,6 +288,8 @@ async def create_transaction(data: TransactionCreate, user: User = Depends(get_c
 
 @replacement_router.delete("/transactions/{tx_id}")
 async def delete_transaction(tx_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    raise HTTPException(403, detail="Удаление отключено в RC-режиме")
+    # RC: удаление только с прямого одобрения пользователя
     t = await db.get(ReplacementTransaction, tx_id)
     if not t:
         raise HTTPException(404, detail="Транзакция не найдена")

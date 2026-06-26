@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from datetime import datetime
 from pydantic import BaseModel
 from src.database import get_db
 from src.models.ticket import Ticket
+from src.models.customer import Customer
 from src.services.ticket_service import TicketService
 from src.services.acl_service import RoleChecker
 from src.services.sla_service import SLAService
@@ -33,7 +35,7 @@ def create_ticket_router() -> APIRouter:
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
-        stmt = select(Ticket)
+        stmt = select(Ticket).options(selectinload(Ticket.customer))
         if filters.status:
             stmt = stmt.where(Ticket.status == filters.status)
         if filters.priority:
@@ -49,7 +51,8 @@ def create_ticket_router() -> APIRouter:
         if filters.q:
             stmt = stmt.where(Ticket.subject.ilike(f"%{filters.q}%"))
         if user.role.value == "customer":
-            stmt = stmt.where(Ticket.customer_id == user.id)
+            customer_subq = select(Customer.id).where(Customer.name == user.name).correlate(Ticket).scalar_subquery()
+            stmt = stmt.where(Ticket.customer_id == customer_subq)
         elif user.role.value == "engineer":
             stmt = stmt.where(Ticket.assignee_id == user.id)
         if filters.archived is True:
@@ -62,6 +65,7 @@ def create_ticket_router() -> APIRouter:
         output = []
         for t in tickets:
             d = TicketResponse.model_validate(t)
+            d.customer_name = t.customer.name if t.customer else None
             d.response_overdue = SLAService.is_response_overdue(t)
             d.resolution_overdue = SLAService.is_resolution_overdue(t)
             d.is_archived = t.archived_at is not None
@@ -75,9 +79,10 @@ def create_ticket_router() -> APIRouter:
         db: AsyncSession = Depends(get_db),
     ):
         ticket = await db.get(Ticket, ticket_id)
-        if not ticket or not RoleChecker.can_view_ticket(user, ticket):
+        if not ticket or not await RoleChecker.can_view_ticket_async(user, ticket, db):
             raise HTTPException(404)
         d = TicketResponse.model_validate(ticket)
+        d.customer_name = ticket.customer.name if ticket.customer else None
         d.response_overdue = SLAService.is_response_overdue(ticket)
         d.resolution_overdue = SLAService.is_resolution_overdue(ticket)
         d.is_archived = ticket.archived_at is not None
@@ -109,9 +114,17 @@ def create_ticket_router() -> APIRouter:
         ticket = await db.get(Ticket, ticket_id)
         if not ticket:
             raise HTTPException(404)
-        if not RoleChecker.can_view_ticket(user, ticket):
+        if not await RoleChecker.can_view_ticket_async(user, ticket, db):
             raise HTTPException(404)
         for field, value in data.model_dump(exclude_unset=True).items():
+            if field in ('status', 'assigned_at', 'completed_at'):
+                continue
+            if field == 'assignee_id' and value is not None:
+                if user.role not in (UserRole.admin, UserRole.dispatcher):
+                    raise HTTPException(403, "Только диспетчер или администратор может назначать исполнителя")
+                eng = await db.get(User, value)
+                if not eng or eng.role != UserRole.engineer:
+                    raise HTTPException(400, "Исполнитель должен иметь роль engineer")
             if isinstance(value, datetime):
                 value = value.replace(tzinfo=None)
             setattr(ticket, field, value)
@@ -174,6 +187,8 @@ def create_ticket_router() -> APIRouter:
         ticket = await db.get(Ticket, ticket_id)
         if not ticket:
             raise HTTPException(404)
+        if not await RoleChecker.can_view_ticket_async(user, ticket, db):
+            raise HTTPException(403, "Нет доступа к заявке")
         cl = Checklist(ticket_id=ticket_id, name="Чек-лист")
         db.add(cl)
         await db.flush()
@@ -209,6 +224,11 @@ def create_ticket_router() -> APIRouter:
     ):
         if user.role in (UserRole.viewer, UserRole.customer, UserRole.storekeeper):
             raise HTTPException(403, "Недостаточно прав")
+        ticket = await db.get(Ticket, ticket_id)
+        if not ticket:
+            raise HTTPException(404)
+        if not await RoleChecker.can_view_ticket_async(user, ticket, db):
+            raise HTTPException(403, "Нет доступа к заявке")
         ftype = FieldType[data.field_type] if data.field_type in FieldType._member_names_ else FieldType.checkbox
         field = ChecklistField(checklist_id=checklist_id, label=data.label, field_type=ftype, is_mandatory=data.is_mandatory)
         db.add(field)
@@ -228,6 +248,11 @@ def create_ticket_router() -> APIRouter:
     ):
         if user.role in (UserRole.viewer, UserRole.customer, UserRole.storekeeper):
             raise HTTPException(403, "Недостаточно прав")
+        ticket = await db.get(Ticket, ticket_id)
+        if not ticket:
+            raise HTTPException(404)
+        if not await RoleChecker.can_view_ticket_async(user, ticket, db):
+            raise HTTPException(403, "Нет доступа к заявке")
         field = await db.get(ChecklistField, field_id)
         if not field:
             raise HTTPException(404)

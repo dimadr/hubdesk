@@ -28,9 +28,7 @@ async def log_audit(
         )
         db.add(entry)
         await db.flush()
-        await db.commit()
         return entry
     except Exception as e:
-        await db.rollback()
         logger.error(f"Не удалось записать audit log: {e}", exc_info=True)
         return None

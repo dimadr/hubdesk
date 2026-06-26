@@ -437,14 +437,14 @@ const ReplacementTab: React.FC = () => {
           const resp = await api.post('/replacement/devices', body);
           devId = resp.data.id;
         }
-        const qty = parseInt(form.quantity);
-        if (!editId && qty > 0) {
+        const qty = parseInt(form.quantity, 10);
+        if (!editId && Number.isFinite(qty) && qty > 0) {
           await api.post('/replacement/transactions', { type: 'incoming', device_id: devId, quantity: qty });
         }
       } else {
         if (!form.device_id || !form.quantity) { setError('Выберите прибор и укажите количество'); return; }
         await api.post('/replacement/transactions', {
-          type: form.type, device_id: Number(form.device_id), quantity: Number(form.quantity),
+          type: form.type, device_id: Number(form.device_id), quantity: parseInt(form.quantity, 10) || 0,
           taken_by_id: form.taken_by_id ? Number(form.taken_by_id) : null,
           location_id: form.location_id ? Number(form.location_id) : null,
           comment: form.comment || null, document: form.document || null,
@@ -454,8 +454,8 @@ const ReplacementTab: React.FC = () => {
     } catch (e: any) { setError(e.response?.data?.detail || e.message || 'Ошибка'); }
   };
 
-  const delDevice = async (id: number) => { if (!confirm('Удалить прибор и все его транзакции?')) return; try { await api.delete(`/replacement/devices/${id}`); load(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка удаления'); } };
-  const delTx = async (id: number) => { if (!confirm('Удалить транзакцию?')) return; try { await api.delete(`/replacement/transactions/${id}`); load(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка удаления'); } };
+  const delDevice = async (id: number) => { if (!confirm('Удалить прибор и все его транзакции?')) return; if (prompt('Введите УДАЛИТЬ для подтверждения:') !== 'УДАЛИТЬ') return; try { await api.delete(`/replacement/devices/${id}`); load(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка удаления'); } };
+  const delTx = async (id: number) => { if (!confirm('Удалить транзакцию?')) return; if (prompt('Введите УДАЛИТЬ для подтверждения:') !== 'УДАЛИТЬ') return; try { await api.delete(`/replacement/transactions/${id}`); load(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка удаления'); } };
 
   if (loading) return <div className="loading">Загрузка...</div>;
 
@@ -481,7 +481,7 @@ const ReplacementTab: React.FC = () => {
         <div>
           <div className="table-wrapper">
             <table>
-              <thead><tr><th>Наименование</th><th>Серийный №</th><th>Класс</th><th>Крепление</th><th>Поверка до</th><th>Интервал</th><th>Остаток</th><th></th></tr></thead>
+              <thead><tr><th>Наименование</th><th>Серийный №</th><th>Класс</th><th>Исполнение</th><th>Поверка до</th><th>Интервал</th><th>Остаток</th><th></th></tr></thead>
               <tbody>
                 {devices.map(d => (
                   <tr key={d.id}>
@@ -490,7 +490,7 @@ const ReplacementTab: React.FC = () => {
                     <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.accuracy_class || '—'}</td>
                     <td style={{ fontSize: 12 }}>{d.mounting || '—'}</td>
                     <td style={{ fontSize: 12, color: d.verification_expiry && new Date(d.verification_expiry) < new Date() ? 'var(--danger)' : 'var(--text-secondary)' }}>{d.verification_expiry ? d.verification_expiry.substring(0, 10) : '—'}</td>
-                    <td className="mono" style={{ fontSize: 12 }}>{d.verification_interval_months ? `${d.verification_interval_months / 12} лет` : '—'}</td>
+                    <td className="mono" style={{ fontSize: 12 }}>{d.verification_interval_months ? `${d.verification_interval_months / 12} год` : '—'}</td>
                     <td className="mono" style={{ fontWeight: 700, color: d.balance > 0 ? 'var(--success)' : d.balance < 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{d.balance}</td>
                     <td>
                       <button className="btn btn-success" onClick={() => setQuick({ devId: d.id, action: 'incoming', qty: '1', taken_by_id: '', location_id: '' })} style={{ padding: '2px 6px', fontSize: 11, marginRight: 2 }} title="Приход">+</button>
@@ -527,8 +527,8 @@ const ReplacementTab: React.FC = () => {
                 )}
                 <div className="modal-actions">
                   <button className="btn btn-primary" onClick={async () => {
-                    const qty = parseInt(quick.qty);
-                    if (!qty || qty < 1) return;
+                    const qty = parseInt(quick.qty, 10);
+                    if (!Number.isFinite(qty) || qty < 1) return;
                     try {
                       await api.post('/replacement/transactions', {
                         type: quick.action, device_id: quick.devId, quantity: qty,
@@ -672,7 +672,7 @@ const ReplacementTab: React.FC = () => {
                 <input value={form.serial_number} onChange={e => setForm({ ...form, serial_number: e.target.value })} placeholder="S/N: 2026-X991" />
                 <div style={{ display: 'flex', gap: 8 }}>
                   <div style={{ flex: 1 }}><label>Дата поверки</label><input type="date" value={form.verification_date} onChange={e => setForm({ ...form, verification_date: e.target.value })} /></div>
-                  <div style={{ flex: 1 }}><label>Интервал (лет)</label><input type="number" value={form.verification_interval_years} onChange={e => setForm({ ...form, verification_interval_years: e.target.value })} placeholder="1" /></div>
+                  <div style={{ flex: 1 }}><label>Интервал (год)</label><input type="number" value={form.verification_interval_years} onChange={e => setForm({ ...form, verification_interval_years: e.target.value })} placeholder="1" /></div>
                 </div>
                 <label>Фото/скан паспорта</label>
                 <input type="file" accept="image/*" onChange={async (e) => {
@@ -684,7 +684,7 @@ const ReplacementTab: React.FC = () => {
                   try {
                     const resp = await api.post('/attachments', fd);
                     const url = resp.data?.file_url || resp.data?.url || '';
-                    setForm({ ...form, passport_scan: url || file.name });
+                    setForm(prev => ({ ...prev, passport_scan: url || file.name }));
                   } catch { alert('Ошибка загрузки фото'); }
                   setUploadingPhoto(false);
                 }} style={{ fontSize: 12, color: 'var(--text-secondary)' }} disabled={uploadingPhoto} />
@@ -693,7 +693,7 @@ const ReplacementTab: React.FC = () => {
                 <input value={form.passport_scan} onChange={e => setForm({ ...form, passport_scan: e.target.value })} placeholder="https://..." />
                 <label>Класс точности</label>
                 <input value={form.accuracy_class} onChange={e => setForm({ ...form, accuracy_class: e.target.value })} placeholder="0.5 / 1.0 / 1.5" />
-                <label>Крепление</label>
+                <label>Исполнение</label>
                 <select value={form.mounting} onChange={e => setForm({ ...form, mounting: e.target.value })}>
                   <option value="">—</option>
                   <option value="Фланцевое">Фланцевое</option>
@@ -812,14 +812,14 @@ const InsertTab: React.FC = () => {
             prodId = resp.data.id;
           }
         }
-        const qty = parseInt(form.quantity);
-        if (!editId && qty > 0) {
+        const qty = parseInt(form.quantity, 10);
+        if (!editId && Number.isFinite(qty) && qty > 0) {
           await api.post('/insert/transactions', { type: 'incoming', product_id: prodId, quantity: qty });
         }
       } else {
         if (!form.product_id || !form.quantity) { setError('Выберите продукт и укажите количество'); return; }
         await api.post('/insert/transactions', {
-          type: form.type, product_id: Number(form.product_id), quantity: Number(form.quantity),
+          type: form.type, product_id: Number(form.product_id), quantity: parseInt(form.quantity, 10) || 0,
           taken_by_id: form.taken_by_id ? Number(form.taken_by_id) : null,
           location_id: form.location_id ? Number(form.location_id) : null,
           comment: form.comment || null, document: form.document || null,
@@ -829,8 +829,8 @@ const InsertTab: React.FC = () => {
     } catch (e: any) { setError(e.response?.data?.detail || e.message || 'Ошибка'); }
   };
 
-  const delProduct = async (id: number) => { if (!confirm('Удалить продукт и все его транзакции?')) return; try { await api.delete(`/insert/products/${id}`); load(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка удаления'); } };
-  const delTx = async (id: number) => { if (!confirm('Удалить транзакцию?')) return; try { await api.delete(`/insert/transactions/${id}`); load(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка удаления'); } };
+  const delProduct = async (id: number) => { if (!confirm('Удалить продукт и все его транзакции?')) return; if (prompt('Введите УДАЛИТЬ для подтверждения:') !== 'УДАЛИТЬ') return; try { await api.delete(`/insert/products/${id}`); load(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка удаления'); } };
+  const delTx = async (id: number) => { if (!confirm('Удалить транзакцию?')) return; if (prompt('Введите УДАЛИТЬ для подтверждения:') !== 'УДАЛИТЬ') return; try { await api.delete(`/insert/transactions/${id}`); load(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка удаления'); } };
 
   if (loading) return <div className="loading">Загрузка...</div>;
 
@@ -904,8 +904,8 @@ const InsertTab: React.FC = () => {
                 )}
                 <div className="modal-actions">
                   <button className="btn btn-primary" onClick={async () => {
-                    const qty = parseInt(quick.qty);
-                    if (!qty || qty < 1) return;
+                    const qty = parseInt(quick.qty, 10);
+                    if (!Number.isFinite(qty) || qty < 1) return;
                     try {
                       await api.post('/insert/transactions', {
                         type: quick.action,

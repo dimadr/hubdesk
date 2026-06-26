@@ -1,10 +1,11 @@
 from pydantic_settings import BaseSettings
+from pydantic import model_validator
 
 
 class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/fsm"
     redis_url: str = "redis://localhost:6379/0"
-    secret_key: str = "change-me"
+    secret_key: str = ""
     access_token_ttl: int = 604800
     mailbox_email: str = ""
     mailbox_password: str = ""
@@ -13,6 +14,12 @@ class Settings(BaseSettings):
     smtp_server: str = "smtp.timeweb.ru"
     smtp_port: int = 465
     dadata_api_key: str = ""
+
+    @model_validator(mode="after")
+    def validate_secret_key(self):
+        if not self.secret_key:
+            raise ValueError("SECRET_KEY is required — set it in .env")
+        return self
 
     class Config:
         env_file = ".env"

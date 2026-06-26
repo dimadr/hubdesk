@@ -73,24 +73,6 @@ export const AuditLogPage: React.FC = () => {
     load(1, false);
   };
 
-  const handleClear = () => {
-    const confirmed = confirm('Очистить весь журнал действий? Это действие необратимо.');
-    if (!confirmed) return;
-
-    const password = prompt('Введите пароль администратора для подтверждения:');
-    if (!password) return;
-
-    api.delete('/audit-log', { data: { password } })
-      .then(() => {
-        alert('Журнал очищен');
-        setPage(1);
-        setLogs([]);
-        setHasMore(false);
-        load(1, false);
-      })
-      .catch((e: any) => alert(e.response?.data?.detail || 'Ошибка при очистке'));
-  };
-
   return (
     <div>
       <div className="cal-header">
@@ -123,13 +105,6 @@ export const AuditLogPage: React.FC = () => {
             disabled={loading}
           >
             Найти
-          </button>
-          <button
-            className="btn btn-danger"
-            style={{ padding: '4px 12px', fontSize: 12, marginLeft: 8 }}
-            onClick={handleClear}
-          >
-            Очистить
           </button>
         </div>
       </div>

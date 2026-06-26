@@ -10,7 +10,7 @@ class MailboxConfig(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     email: Mapped[str] = mapped_column(String(255), default="")
-    password: Mapped[str] = mapped_column(String(255), default="")
+    # RC: пароль только в .env, не хранится в БД
     imap_server: Mapped[str] = mapped_column(String(255), default="imap.gmail.com")
     imap_port: Mapped[int] = mapped_column(Integer, default=993)
     folder: Mapped[str] = mapped_column(String(100), default="INBOX")

@@ -20,9 +20,15 @@ def check_access(user: User):
 async def ticket_query(db: AsyncSession, date_from: str | None, date_to: str | None):
     stmt = select(Ticket)
     if date_from:
-        stmt = stmt.where(Ticket.created_at >= datetime.fromisoformat(date_from))
+        try:
+            stmt = stmt.where(Ticket.created_at >= datetime.fromisoformat(date_from))
+        except ValueError:
+            raise HTTPException(400, f"Некорректная дата: {date_from}")
     if date_to:
-        stmt = stmt.where(Ticket.created_at <= datetime.fromisoformat(date_to.rstrip("Z")))
+        try:
+            stmt = stmt.where(Ticket.created_at <= datetime.fromisoformat(date_to.rstrip("Z")))
+        except ValueError:
+            raise HTTPException(400, f"Некорректная дата: {date_to}")
     result = await db.execute(stmt)
     return result.scalars().all()
 

@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from src.database import get_db
 from src.models.equipment import Equipment
 from src.api.schemas import EquipmentCreate, EquipmentResponse
 from src.core.deps import get_current_user
+from src.models.user import User, UserRole
 
 equipment_router = APIRouter(prefix="/equipment", tags=["Equipment"])
 
@@ -24,6 +25,8 @@ async def create_equipment(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if user.role not in (UserRole.admin, UserRole.storekeeper):
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
     eq = Equipment(**data.model_dump())
     db.add(eq)
     await db.flush()

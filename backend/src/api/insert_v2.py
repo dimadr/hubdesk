@@ -117,7 +117,16 @@ async def list_products(user: User = Depends(get_current_user), db: AsyncSession
         )
         .outerjoin(InsertTransaction, InsertTransaction.product_id == InsertProduct.id)
         .group_by(InsertProduct.id)
-        .order_by(cast(InsertProduct.diameter_inner, Integer).asc().nulls_last(), InsertProduct.name)
+        .order_by(
+            cast(
+                sa_func.nullif(
+                    sa_func.regexp_replace(InsertProduct.diameter_inner, '[^0-9].*', '', 'g'),
+                    ''
+                ),
+                Integer
+            ).asc().nulls_last(),
+            InsertProduct.name
+        )
     )
 
     result = await db.execute(stmt)
@@ -128,7 +137,7 @@ async def list_products(user: User = Depends(get_current_user), db: AsyncSession
         out.append(ProductResponse(
             id=p.id, name=p.name, diameter_inner=p.diameter_inner, diameter_outer=p.diameter_outer,
             length=p.length,
-            flange_type=p.flange_type, notes=p.notes, balance=int(balance),
+            flange_type=p.flange_type, notes=p.notes, cell=p.cell, balance=int(balance),
             created_at=p.created_at
         ))
     return out
@@ -149,17 +158,17 @@ async def create_product(data: ProductCreate, user: User = Depends(get_current_u
 
     p = InsertProduct(
         name=data.name.strip(), diameter_inner=data.diameter_inner, diameter_outer=data.diameter_outer,
-        length=data.length, flange_type=data.flange_type, notes=data.notes
+        length=data.length, flange_type=data.flange_type, cell=data.cell, notes=data.notes
     )
     db.add(p)
     await db.flush()
-    await db.commit()
 
     await log_audit(db, user, "product_created", "insert_product", p.id, f"Добавлен продукт «{p.name}»")
+    await db.commit()
     return ProductResponse(
         id=p.id, name=p.name, diameter_inner=p.diameter_inner, diameter_outer=p.diameter_outer,
         length=p.length,
-        flange_type=p.flange_type, notes=p.notes, balance=0,
+        flange_type=p.flange_type, notes=p.notes, cell=p.cell, balance=0,
         created_at=p.created_at
     )
 
@@ -177,21 +186,22 @@ async def update_product(product_id: int, data: ProductUpdate, user: User = Depe
     for field, value in update_data.items():
         setattr(p, field, value)
 
-    await db.commit()
-
     current_bal = await _get_product_balance(db, p.id)
     await log_audit(db, user, "product_updated", "insert_product", p.id, f"Обновлён продукт «{p.name}»")
+    await db.commit()
 
     return ProductResponse(
         id=p.id, name=p.name, diameter_inner=p.diameter_inner, diameter_outer=p.diameter_outer,
         length=p.length,
-        flange_type=p.flange_type, notes=p.notes, balance=current_bal,
+        flange_type=p.flange_type, notes=p.notes, cell=p.cell, balance=current_bal,
         created_at=p.created_at
     )
 
 
 @insert_v2_router.delete("/products/{product_id}")
 async def delete_product(product_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    raise HTTPException(status_code=403, detail="Удаление отключено в RC-режиме")
+    # RC: удаление только с прямого одобрения пользователя
     p = await db.get(InsertProduct, product_id)
     if not p:
         raise HTTPException(status_code=404, detail="Продукт не найден")
@@ -253,7 +263,6 @@ async def create_transaction(data: TransactionCreate, user: User = Depends(get_c
     )
     db.add(t)
     await db.flush()
-    await db.commit()
 
     stmt = (
         select(InsertTransaction)
@@ -271,6 +280,7 @@ async def create_transaction(data: TransactionCreate, user: User = Depends(get_c
         db, user, f"insert_{data.type}", "insert_transaction", t.id,
         f"{labels.get(data.type, data.type)}: {data.quantity} шт (продукт «{t_refreshed.product.name if t_refreshed.product else data.product_id}»)"
     )
+    await db.commit()
 
     return TransactionResponse(
         id=t_refreshed.id, type=t_refreshed.type, product_id=t_refreshed.product_id,
@@ -285,6 +295,8 @@ async def create_transaction(data: TransactionCreate, user: User = Depends(get_c
 
 @insert_v2_router.delete("/transactions/{tx_id}")
 async def delete_transaction(tx_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    raise HTTPException(status_code=403, detail="Удаление отключено в RC-режиме")
+    # RC: удаление только с прямого одобрения пользователя
     t = await db.get(InsertTransaction, tx_id)
     if not t:
         raise HTTPException(status_code=404, detail="Транзакция не найдена")

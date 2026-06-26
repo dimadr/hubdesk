@@ -31,6 +31,7 @@ export const ReportsPage: React.FC = () => {
   const [ticketStats, setTicketStats] = useState<TicketStats | null>(null);
   const [engineers, setEngineers] = useState<EngineerRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const getParams = () => {
     const p: any = {};
@@ -43,13 +44,16 @@ export const ReportsPage: React.FC = () => {
     setLoading(true);
     const params = getParams();
     Promise.all([
-      api.get('/reports/objects', { params }).catch(() => ({ data: [] })),
-      api.get('/reports/tickets', { params }).catch(() => ({ data: null })),
-      api.get('/reports/engineers', { params }).catch(() => ({ data: [] })),
+      api.get('/reports/objects', { params }),
+      api.get('/reports/tickets', { params }),
+      api.get('/reports/engineers', { params }),
     ]).then(([o, t, e]) => {
       setObjects(o.data);
       setTicketStats(t.data);
       setEngineers(e.data);
+      setLoading(false);
+    }).catch((err: any) => {
+      setError(err.response?.data?.detail || 'Ошибка загрузки отчётов');
       setLoading(false);
     });
   };

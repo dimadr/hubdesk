@@ -22,7 +22,7 @@ api.interceptors.response.use(
 export interface TicketResponse {
   id: number; number: number; subject: string; body: string;
   status: string; priority: string; type: string | null; is_internal: boolean;
-  customer_id: number; location_id: number;
+  customer_id: number; customer_name?: string | null; location_id: number;
   equipment_id: number | null; assignee_id: number | null; group_id: number | null;
   site_contact_name: string | null; site_contact_phone: string | null;
   scheduled_start: string | null; scheduled_end: string | null;

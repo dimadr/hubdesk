@@ -1,7 +1,9 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from src.models.comment import Comment
+from src.models.ticket import Ticket
 from src.models.user import User, UserRole
+from src.services.acl_service import RoleChecker
 
 
 class CommentService:
@@ -22,6 +24,11 @@ class CommentService:
         return comment
 
     async def get_for_ticket(self, ticket_id: int, user: User) -> list[Comment]:
+        ticket = await self.session.get(Ticket, ticket_id)
+        if not ticket:
+            return []
+        if not await RoleChecker.can_view_ticket_async(user, ticket, self.session):
+            return []
         stmt = select(Comment).where(Comment.ticket_id == ticket_id)
         result = await self.session.execute(stmt)
         comments = result.scalars().all()

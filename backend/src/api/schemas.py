@@ -28,6 +28,7 @@ class UserRoleEnum:
     storekeeper = "storekeeper"
     viewer = "viewer"
     metrologist = "metrologist"
+    accountant = "accountant"
 
 
 class DocTypeEnum:
@@ -104,6 +105,7 @@ class TicketResponse(BaseModel):
     type: Optional[str] = None
     is_internal: bool
     customer_id: int
+    customer_name: Optional[str] = None
     location_id: Optional[int] = None
     equipment_id: Optional[int]
     assignee_id: Optional[int]

@@ -46,7 +46,6 @@ const ROLE_LABELS: Record<string, string> = {
   viewer: 'Наблюдатель',
   metrologist: 'Метролог',
   accountant: 'Бухгалтер',
-  manager: 'Менеджер',
 };
 
 const TICKET_TYPES: Record<string, string> = {
@@ -148,7 +147,6 @@ const AuthPage: React.FC<{ onLogin: (token: string, user: any) => void }> = ({ o
               <option value="viewer">Наблюдатель</option>
               <option value="metrologist">Метролог</option>
               <option value="accountant">Бухгалтер</option>
-              <option value="manager">Менеджер</option>
             </select>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer', marginBottom: 12, marginTop: 4 }}>
               <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--primary)' }} />
@@ -227,7 +225,7 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
     }
   };
 
-  const assignables = users.filter(u => u.role !== 'admin');
+  const assignables = users.filter(u => u.role === 'engineer');
   const eqForLocation = equipment.filter(e => !locationId || e.location_id === Number(locationId));
 
   return (
@@ -383,7 +381,7 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
     } finally { setSaving(false); }
   };
 
-  const assignables = users.filter(u => u.role !== 'admin');
+  const assignables = users.filter(u => u.role === 'engineer');
   const eqForLocation = equipment.filter(e => !locationId || e.location_id === Number(locationId));
 
   return (
@@ -610,7 +608,6 @@ const AddEmployeeModal: React.FC<{ onClose: () => void; onAdded: () => void }> =
           <option value="storekeeper">Кладовщик</option>
           <option value="customer">Заказчик</option>
           <option value="viewer">Наблюдатель</option>
-          <option value="manager">Менеджер</option>
         </select>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer', marginTop: 8 }}>
           <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--primary)' }} />
@@ -785,8 +782,8 @@ const App: React.FC = () => {
         <nav className="sidebar-nav">
           <div className="nav-section">Навигация</div>
           {NAV_ITEMS.filter(item => !('adminOnly' in item) || user.role === 'admin')
-            .filter(item => item.key !== 'reports' || ['admin', 'dispatcher', 'accountant', 'manager'].includes(user.role))
-            .filter(item => item.key !== 'audit' || ['admin', 'manager'].includes(user.role))
+            .filter(item => item.key !== 'reports' || ['admin', 'dispatcher', 'accountant'].includes(user.role))
+            .filter(item => item.key !== 'audit' || ['admin'].includes(user.role))
             .filter(item => item.key !== 'kanban' || ['admin', 'dispatcher', 'engineer'].includes(user.role))
             .map(item => (
               <button

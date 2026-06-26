@@ -7,7 +7,7 @@ from datetime import date, datetime
 import os
 from src.database import get_db
 from src.models.insert_item import InsertItem
-from src.models.user import User
+from src.models.user import User, UserRole
 from src.core.deps import get_current_user
 
 
@@ -55,6 +55,8 @@ async def list_inserts(user=Depends(get_current_user), db: AsyncSession = Depend
 
 @insert_router.post("", status_code=201)
 async def create_insert(data: InsertCreate, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if user.role not in (UserRole.admin, UserRole.storekeeper):
+        raise HTTPException(403, "Недостаточно прав")
     i = InsertItem(
         device_name=data.device_name, diameter=data.diameter, length=data.length,
         flange_type=data.flange_type, taken_by_id=data.taken_by_id, location_id=data.location_id,
@@ -71,6 +73,8 @@ async def create_insert(data: InsertCreate, user=Depends(get_current_user), db: 
 
 @insert_router.patch("/{item_id}")
 async def update_insert(item_id: int, data: InsertCreate, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if user.role not in (UserRole.admin, UserRole.storekeeper):
+        raise HTTPException(403, "Недостаточно прав")
     i = await db.get(InsertItem, item_id)
     if not i:
         raise HTTPException(404)
@@ -88,6 +92,8 @@ async def update_insert(item_id: int, data: InsertCreate, user=Depends(get_curre
 
 @insert_router.delete("/{item_id}")
 async def delete_insert(item_id: int, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    raise HTTPException(403, detail="Удаление отключено в RC-режиме")
+    # RC: удаление только с прямого одобрения пользователя
     i = await db.get(InsertItem, item_id)
     if not i:
         raise HTTPException(404)

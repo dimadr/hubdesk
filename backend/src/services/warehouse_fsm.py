@@ -5,6 +5,9 @@ from src.models.warehouse import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class WarehouseDocFSM(BaseFSM, AuditMixin):
@@ -27,7 +30,10 @@ class WarehouseDocFSM(BaseFSM, AuditMixin):
     async def log_transition(
         self, entity: AccountingDocument, from_status: str, to_status: str, user_id: int, context: dict
     ) -> None:
-        pass
+        logger.info(
+            "Складской FSM: документ #%d %s → %s (user=%s)",
+            entity.id, from_status, to_status, user_id
+        )
 
     async def post_account(self, document: AccountingDocument) -> None:
         for line in document.lines:
@@ -46,19 +52,24 @@ class WarehouseDocFSM(BaseFSM, AuditMixin):
         if doc_type == DocType.INFLOW and target_id:
             await self._delta(target_id, nom_id, +qty)
         elif doc_type == DocType.WRITE_OFF and source_id:
-            await self._delta(source_id, nom_id, -qty)
+            await self._delta(source_id, nom_id, -qty, check_negative=True)
         elif doc_type == DocType.TRANSFER and source_id and target_id:
-            await self._delta(source_id, nom_id, -qty)
+            await self._delta(source_id, nom_id, -qty, check_negative=True)
             await self._delta(target_id, nom_id, +qty)
 
-    async def _delta(self, warehouse_id: int, nom_id: int, delta: float):
+    async def _delta(self, warehouse_id: int, nom_id: int, delta: float, check_negative: bool = False):
         stmt = select(StockBalance).where(
             StockBalance.warehouse_id == warehouse_id,
             StockBalance.nomenclature_id == nom_id,
-        )
+        ).with_for_update()
         result = await self.session.execute(stmt)
         balance = result.scalar_one_or_none()
         if not balance:
             balance = StockBalance(warehouse_id=warehouse_id, nomenclature_id=nom_id, quantity=0)
             self.session.add(balance)
+        if check_negative and balance.quantity + delta < 0:
+            raise ValueError(
+                f"Недостаточно остатка на складе {warehouse_id}: "
+                f"требуется {abs(delta)}, доступно {balance.quantity}"
+            )
         balance.quantity += delta

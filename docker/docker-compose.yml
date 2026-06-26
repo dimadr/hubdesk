@@ -31,6 +31,7 @@ services:
       smtp_server: ${SMTP_SERVER}
       smtp_port: ${SMTP_PORT}
       dadata_api_key: ${DADATA_API_KEY}
+      secret_key: ${SECRET_KEY}
     depends_on: [db, redis]
     restart: unless-stopped
 

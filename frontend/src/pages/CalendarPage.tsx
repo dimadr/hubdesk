@@ -56,7 +56,8 @@ export const CalendarPage: React.FC = () => {
   const prevMonth = () => setCurrent(new Date(year, month - 1, 1));
   const nextMonth = () => setCurrent(new Date(year, month + 1, 1));
 
-  const today = new Date().toISOString().substring(0, 10);
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const todayParts = today.split('-').map(Number);
   const isToday = (d: number) =>
     todayParts[0] === year && todayParts[1] === month + 1 && todayParts[2] === d;

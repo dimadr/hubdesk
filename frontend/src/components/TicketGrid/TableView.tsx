@@ -132,7 +132,7 @@ function renderCellContent(ticket: TicketResponse, col: ColumnDef, userMap: Map<
     try { return new Date(ticket.created_at).toLocaleDateString('ru-RU'); }
     catch { return ticket.created_at?.substring(0, 10) || '—'; }
   }
-  if (col.key === 'customer') return ticket.customer_id;
+  if (col.key === 'customer') return ticket.customer_name || ticket.customer_id;
   if (col.key === 'assignee') return (
     <select
       className="assignee-select"

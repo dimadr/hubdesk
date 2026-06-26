@@ -34,7 +34,7 @@ class TicketService:
             type=data.get("type"),
             priority=data.get("priority", "medium"),
             is_internal=data.get("is_internal", False),
-            assignee_id=data.get("assignee_id"),
+            assignee_id=data.get("assignee_id") if data.get("assignee_id") and await self._is_engineer(data["assignee_id"]) else None,
             group_id=data.get("group_id"),
             site_contact_name=data.get("site_contact_name"),
             site_contact_phone=data.get("site_contact_phone"),
@@ -79,7 +79,7 @@ class TicketService:
         ticket = await self._get(ticket_id)
         from_status = ticket.status.value
 
-        if not RoleChecker.can_view_ticket(user, ticket):
+        if not await RoleChecker.can_view_ticket_async(user, ticket, self.session):
             raise HTTPException(403, "Доступ к данной заявке запрещен")
 
         if not RoleChecker.can_change_status(user, ticket, target):
@@ -141,3 +141,7 @@ class TicketService:
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def _is_engineer(self, user_id: int) -> bool:
+        u = await self.session.get(User, user_id)
+        return u is not None and u.role == UserRole.engineer

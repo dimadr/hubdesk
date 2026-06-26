@@ -12,7 +12,7 @@ v1_router = APIRouter(prefix="/v1", tags=["API v1"])
 class TicketCreateV1(BaseModel):
     subject: str = Field(..., max_length=500)
     body: str = Field(default="", max_length=5000)
-    customer_id: int = 1
+    customer_id: int = Field(..., description="ID заказчика")
     location_id: int | None = None
     priority: str = "medium"
     type: str | None = None

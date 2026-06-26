@@ -1,5 +1,11 @@
 from src.models.user import User, UserRole
 from src.models.ticket import Ticket
+from src.models.customer import Customer
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class RoleChecker:
@@ -19,7 +25,23 @@ class RoleChecker:
         if user.role == UserRole.engineer:
             return ticket.assignee_id == user.id
         if user.role == UserRole.customer:
-            return ticket.customer_id == user.id
+            return ticket.customer_id is not None and ticket.customer_id == getattr(user, '_customer_id', None)
+        return False
+
+    @staticmethod
+    async def can_view_ticket_async(user: User, ticket: Ticket, db: AsyncSession) -> bool:
+        if user.role in (UserRole.admin, UserRole.dispatcher, UserRole.viewer):
+            return True
+        if user.role == UserRole.engineer:
+            return ticket.assignee_id == user.id
+        if user.role == UserRole.customer:
+            if ticket.customer_id is None:
+                return False
+            result = await db.execute(
+                select(Customer.id).where(Customer.name == user.name)
+            )
+            cust_id = result.scalar_one_or_none()
+            return cust_id is not None and ticket.customer_id == cust_id
         return False
 
     @staticmethod

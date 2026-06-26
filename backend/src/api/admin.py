@@ -212,13 +212,15 @@ async def update_user(
             raise HTTPException(status_code=400, detail="Неизвестный статус")
         target.status = UserStatus(data.status)
 
-    await db.commit()
     await log_audit(db, admin, "user_updated", "user", target.id, f"Изменён пользователь: {target.name}")
+    await db.commit()
     return {"ok": True}
 
 
 @admin_router.delete("/users/{user_id}")
 async def delete_user(user_id: int, admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    raise HTTPException(status_code=403, detail="Удаление отключено в RC-режиме")
+    # RC: удаление только с прямого одобрения пользователя
     if user_id == admin.id:
         raise HTTPException(status_code=400, detail="Нельзя удалить самого себя")
 
@@ -234,7 +236,7 @@ async def delete_user(user_id: int, admin: User = Depends(require_admin), db: As
 
 @admin_router.get("/customers", response_model=List[CustomerResponse])
 async def list_customers(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if user.role not in (UserRole.admin, UserRole.manager, UserRole.accountant):
+    if user.role not in (UserRole.admin, UserRole.accountant):
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     stmt = (
         select(Customer, func.count(AssetLocation.id).label("loc_count"))
@@ -284,17 +286,8 @@ async def update_customer(customer_id: int, data: CustomerUpdate, admin: User = 
 
 @admin_router.delete("/customers/{customer_id}")
 async def delete_customer(customer_id: int, admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
-    c = await db.get(Customer, customer_id)
-    if not c:
-        raise HTTPException(status_code=404, detail="Контрагент не найден")
-
-    loc_check = (await db.execute(select(func.count()).select_from(AssetLocation).where(AssetLocation.customer_id == customer_id))).scalar() or 0
-    if loc_check > 0:
-        raise HTTPException(status_code=400, detail="Нельзя удалить клиента с активными объектами. Сначала удалите объекты.")
-
-    await db.delete(c)
-    await db.commit()
-    return {"ok": True}
+    raise HTTPException(status_code=403, detail="Удаление отключено в RC-режиме")
+    # RC: удаление только с прямого одобрения пользователя
 
 
 @admin_router.get("/pending-users", response_model=List[PendingUserResponse])

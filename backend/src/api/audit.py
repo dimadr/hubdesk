@@ -46,7 +46,7 @@ async def list_logs(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if user.role not in (UserRole.admin, UserRole.manager):
+    if user.role != UserRole.admin:
         raise HTTPException(403, "Недостаточно прав для просмотра логов")
 
     conditions = []
@@ -88,13 +88,5 @@ async def clear_logs(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if user.role != UserRole.admin:
-        raise HTTPException(403, "Только администратор может очистить журнал")
-
-    if not await run_in_threadpool(bcrypt.verify, data.password, user.password_hash):
-        raise HTTPException(403, "Неверный пароль")
-
-    await db.execute(delete(AuditLog))
-    await db.commit()
-
-    return {"ok": True, "detail": "Журнал очищен"}
+    raise HTTPException(403, detail="Очистка журнала отключена в RC-режиме")
+    # RC: удаление только с прямого одобрения пользователя

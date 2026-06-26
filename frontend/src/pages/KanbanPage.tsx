@@ -53,7 +53,9 @@ export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[] }> = ({ ro
 
   const addTask = async (column: string) => {
     if (!newTitle.trim()) return;
-    await api.post('/personal-tasks', { title: newTitle, column });
+    const body: any = { title: newTitle, column };
+    if (role === 'admin' && selectedUser) body.user_id = Number(selectedUser);
+    await api.post('/personal-tasks', body);
     setNewTitle('');
     setAddingCol(null);
     loadTasks();

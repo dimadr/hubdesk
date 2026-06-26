@@ -49,35 +49,37 @@ async def lifespan(app: FastAPI):
 
     mail_task = asyncio.create_task(mail_worker_loop())
 
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(text("ALTER TYPE tickettype ADD VALUE IF NOT EXISTS 'verification'"))
-    except Exception:
-        pass
+    # RC: миграции на старте отключены — включать только через ENABLE_AUTO_MIGRATIONS=true
+    if os.getenv("ENABLE_AUTO_MIGRATIONS", "").lower() == "true":
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text("ALTER TYPE tickettype ADD VALUE IF NOT EXISTS 'verification'"))
+        except Exception:
+            pass
 
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(text("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'manager'"))
-    except Exception:
-        pass
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text("ALTER TABLE replacement_devices ADD COLUMN IF NOT EXISTS serial_number VARCHAR(100) DEFAULT ''"))
+        except Exception:
+            pass
 
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(text("ALTER TABLE replacement_devices ADD COLUMN IF NOT EXISTS serial_number VARCHAR(100) DEFAULT ''"))
-    except Exception:
-        pass
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text("ALTER TABLE replacement_devices ADD COLUMN IF NOT EXISTS accuracy_class VARCHAR(50)"))
+        except Exception:
+            pass
 
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(text("ALTER TABLE replacement_devices ADD COLUMN IF NOT EXISTS accuracy_class VARCHAR(50)"))
-    except Exception:
-        pass
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text("ALTER TABLE replacement_devices ADD COLUMN IF NOT EXISTS mounting VARCHAR(50)"))
+        except Exception:
+            pass
 
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(text("ALTER TABLE replacement_devices ADD COLUMN IF NOT EXISTS mounting VARCHAR(50)"))
-    except Exception:
-        pass
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text("ALTER TABLE mailbox_config DROP COLUMN IF EXISTS password"))
+        except Exception:
+            pass
 
     try:
         async with engine.begin() as conn:
