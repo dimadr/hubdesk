@@ -46,6 +46,7 @@ const ROLE_LABELS: Record<string, string> = {
   viewer: 'Наблюдатель',
   metrologist: 'Метролог',
   accountant: 'Бухгалтер',
+  director: 'Директор',
 };
 
 const TICKET_TYPES: Record<string, string> = {
@@ -782,9 +783,9 @@ const App: React.FC = () => {
         <nav className="sidebar-nav">
           <div className="nav-section">Навигация</div>
           {NAV_ITEMS.filter(item => !('adminOnly' in item) || user.role === 'admin')
-            .filter(item => item.key !== 'reports' || ['admin', 'dispatcher', 'accountant'].includes(user.role))
-            .filter(item => item.key !== 'audit' || ['admin'].includes(user.role))
-            .filter(item => item.key !== 'kanban' || ['admin', 'dispatcher', 'engineer'].includes(user.role))
+            .filter(item => item.key !== 'reports' || ['admin', 'director', 'dispatcher', 'accountant'].includes(user.role))
+            .filter(item => item.key !== 'audit' || ['admin', 'director'].includes(user.role))
+            .filter(item => item.key !== 'kanban' || ['admin', 'director', 'dispatcher', 'engineer'].includes(user.role))
             .map(item => (
               <button
                 key={item.key}

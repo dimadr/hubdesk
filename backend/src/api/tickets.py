@@ -94,7 +94,7 @@ def create_ticket_router() -> APIRouter:
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
-        if user.role not in (UserRole.admin, UserRole.dispatcher):
+        if user.role not in (UserRole.admin, UserRole.director, UserRole.dispatcher):
             raise HTTPException(403, "Только диспетчер или администратор может создавать заявки")
         svc = TicketService(db)
         ticket = await svc.create(data.model_dump(), user)
@@ -109,7 +109,7 @@ def create_ticket_router() -> APIRouter:
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
-        if user.role not in (UserRole.admin, UserRole.dispatcher, UserRole.engineer):
+        if user.role not in (UserRole.admin, UserRole.director, UserRole.dispatcher, UserRole.engineer):
             raise HTTPException(403, "Недостаточно прав для редактирования заявки")
         ticket = await db.get(Ticket, ticket_id)
         if not ticket:
@@ -120,7 +120,7 @@ def create_ticket_router() -> APIRouter:
             if field in ('status', 'assigned_at', 'completed_at'):
                 continue
             if field == 'assignee_id' and value is not None:
-                if user.role not in (UserRole.admin, UserRole.dispatcher):
+                if user.role not in (UserRole.admin, UserRole.director, UserRole.dispatcher):
                     raise HTTPException(403, "Только диспетчер или администратор может назначать исполнителя")
                 eng = await db.get(User, value)
                 if not eng or eng.role != UserRole.engineer:
@@ -155,7 +155,7 @@ def create_ticket_router() -> APIRouter:
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
-        if user.role not in (UserRole.admin, UserRole.dispatcher, UserRole.engineer, UserRole.customer):
+        if user.role not in (UserRole.admin, UserRole.director, UserRole.dispatcher, UserRole.engineer, UserRole.customer):
             raise HTTPException(403, "Недостаточно прав для добавления комментариев")
         svc = CommentService(db)
         try:

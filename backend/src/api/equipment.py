@@ -25,7 +25,7 @@ async def create_equipment(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if user.role not in (UserRole.admin, UserRole.storekeeper):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     eq = Equipment(**data.model_dump())
     db.add(eq)

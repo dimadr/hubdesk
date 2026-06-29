@@ -136,7 +136,7 @@ async def list_nomenclature(user=Depends(get_current_user), db: AsyncSession = D
 
 @warehouse_router.post("/nomenclature", status_code=201, response_model=NomenclatureResponse)
 async def create_nomenclature(data: NomenclatureCreate, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if user.role not in (UserRole.admin, UserRole.storekeeper):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
         raise HTTPException(403, "Недостаточно прав")
     n = Nomenclature(name=data.name, type=NomenclatureType[data.type] if data.type in NomenclatureType._member_names_ else NomenclatureType.material, unit=data.unit)
     db.add(n)

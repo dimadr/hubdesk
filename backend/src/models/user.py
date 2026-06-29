@@ -16,6 +16,7 @@ class UserRole(str, enum.Enum):
     viewer = "viewer"
     metrologist = "metrologist"
     accountant = "accountant"
+    director = "director"
 
 
 class UserStatus(str, enum.Enum):

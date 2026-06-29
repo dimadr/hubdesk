@@ -59,6 +59,12 @@ async def lifespan(app: FastAPI):
 
         try:
             async with engine.begin() as conn:
+                await conn.execute(text("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'director'"))
+        except Exception:
+            pass
+
+        try:
+            async with engine.begin() as conn:
                 await conn.execute(text("ALTER TABLE replacement_devices ADD COLUMN IF NOT EXISTS serial_number VARCHAR(100) DEFAULT ''"))
         except Exception:
             pass

@@ -153,7 +153,7 @@ async def list_devices(user: User = Depends(get_current_user), db: AsyncSession 
 
 @replacement_router.post("/devices", status_code=201, response_model=DeviceResponse)
 async def create_device(data: DeviceCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if user.role not in (UserRole.admin, UserRole.storekeeper):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
         raise HTTPException(403, "Недостаточно прав")
     d = ReplacementDevice(
         name=data.name.strip(), serial_number=data.serial_number,
@@ -173,7 +173,7 @@ async def create_device(data: DeviceCreate, user: User = Depends(get_current_use
 
 @replacement_router.patch("/devices/{device_id}", response_model=DeviceResponse)
 async def update_device(device_id: int, data: DeviceUpdate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if user.role not in (UserRole.admin, UserRole.storekeeper):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
         raise HTTPException(403, "Недостаточно прав")
     d = await db.get(ReplacementDevice, device_id)
     if not d:
@@ -233,7 +233,7 @@ async def list_transactions(user: User = Depends(get_current_user), db: AsyncSes
 
 @replacement_router.post("/transactions", status_code=201, response_model=TransactionResponse)
 async def create_transaction(data: TransactionCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if user.role not in (UserRole.admin, UserRole.storekeeper):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
         raise HTTPException(403, "Недостаточно прав")
     if data.type not in ("incoming", "outgoing", "return"):
         raise HTTPException(400, detail="Неверный тип транзакции")

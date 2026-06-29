@@ -29,6 +29,7 @@ class UserRoleEnum:
     viewer = "viewer"
     metrologist = "metrologist"
     accountant = "accountant"
+    director = "director"
 
 
 class DocTypeEnum:

@@ -55,7 +55,7 @@ async def list_inserts(user=Depends(get_current_user), db: AsyncSession = Depend
 
 @insert_router.post("", status_code=201)
 async def create_insert(data: InsertCreate, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if user.role not in (UserRole.admin, UserRole.storekeeper):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
         raise HTTPException(403, "Недостаточно прав")
     i = InsertItem(
         device_name=data.device_name, diameter=data.diameter, length=data.length,
@@ -73,7 +73,7 @@ async def create_insert(data: InsertCreate, user=Depends(get_current_user), db: 
 
 @insert_router.patch("/{item_id}")
 async def update_insert(item_id: int, data: InsertCreate, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if user.role not in (UserRole.admin, UserRole.storekeeper):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
         raise HTTPException(403, "Недостаточно прав")
     i = await db.get(InsertItem, item_id)
     if not i:

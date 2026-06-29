@@ -262,7 +262,7 @@ async def create_location(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if user.role not in (UserRole.admin, UserRole.dispatcher):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.dispatcher):
         raise HTTPException(403, "Недостаточно прав")
     if data.assigned_engineer_id:
         eng = await db.get(User, data.assigned_engineer_id)
@@ -324,7 +324,7 @@ async def update_location(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if user.role not in (UserRole.admin, UserRole.dispatcher):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.dispatcher):
         raise HTTPException(403, "Недостаточно прав")
     result = await db.execute(
         select(AssetLocation)
