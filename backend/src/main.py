@@ -3,10 +3,17 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
+# Monkey-patch passlib для bcrypt >= 4.1 (убран __about__)
+import bcrypt
+if not hasattr(bcrypt, '__about__'):
+    class _About:
+        __version__ = bcrypt.__version__
+    bcrypt.__about__ = _About()
+
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
@@ -17,18 +24,22 @@ from src.core.http_client import set_http_client
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-FRONTEND_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "frontend",
-    "dist",
-)
+# Docker: /frontend/dist, локально: ../frontend/dist
+if os.path.exists("/frontend/dist"):
+    FRONTEND_DIR = "/frontend/dist"
+else:
+    FRONTEND_DIR = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "frontend", "dist",
+    )
 STATIC_DIR = os.path.join(FRONTEND_DIR, "assets") if os.path.exists(os.path.join(FRONTEND_DIR, "assets")) else None
 
 
 async def mail_worker_loop():
     from src.services.mail_service import MailService
 
-    logger.info("Фоновый почтовый воркер успешно запущен.")
+    await asyncio.sleep(10)
+    logger.info("Фоновый почтовый воркер запущен.")
     while True:
         try:
             async with async_session() as session:
@@ -37,7 +48,7 @@ async def mail_worker_loop():
             logger.info("Получен сигнал остановки почтового воркера.")
             break
         except Exception as e:
-            logger.error(f"Ошибка в работе почтового воркера: {e}", exc_info=True)
+            logger.error(f"Ошибка почтового воркера: {e}", exc_info=True)
 
         await asyncio.sleep(120)
 
@@ -47,122 +58,98 @@ async def lifespan(app: FastAPI):
     http_client = httpx.AsyncClient(timeout=10.0)
     set_http_client(http_client)
 
-    mail_task = asyncio.create_task(mail_worker_loop())
+    mail_task = None
+    if os.getenv("ENABLE_MAIL_WORKER", "").lower() == "true":
+        mail_task = asyncio.create_task(mail_worker_loop())
 
-    # RC: миграции на старте отключены — включать только через ENABLE_AUTO_MIGRATIONS=true
     if os.getenv("ENABLE_AUTO_MIGRATIONS", "").lower() == "true":
+        migrations = [
+            "ALTER TYPE tickettype ADD VALUE IF NOT EXISTS 'verification'",
+            "ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'director'",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id)",
+            "ALTER TABLE replacement_devices ADD COLUMN IF NOT EXISTS serial_number VARCHAR(100) DEFAULT ''",
+            "ALTER TABLE replacement_devices ADD COLUMN IF NOT EXISTS accuracy_class VARCHAR(50)",
+            "ALTER TABLE replacement_devices ADD COLUMN IF NOT EXISTS mounting VARCHAR(50)",
+            "ALTER TABLE mailbox_config DROP COLUMN IF EXISTS password",
+            "ALTER TABLE insert_products ADD COLUMN IF NOT EXISTS diameter_outer VARCHAR(50)",
+            "ALTER TABLE insert_products ADD COLUMN IF NOT EXISTS notes VARCHAR(1000)",
+            "ALTER TABLE insert_products ADD COLUMN IF NOT EXISTS cell VARCHAR(100)",
+        ]
+        for sql in migrations:
+            try:
+                async with engine.begin() as conn:
+                    await conn.execute(text(sql))
+            except Exception as e:
+                logger.warning(f"Миграция не выполнена: {sql[:60]}... — {e}")
+
+        # Переименование diameter → diameter_inner (идемпотентно)
         try:
             async with engine.begin() as conn:
-                await conn.execute(text("ALTER TYPE tickettype ADD VALUE IF NOT EXISTS 'verification'"))
-        except Exception:
-            pass
+                result = await conn.execute(text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name = 'insert_products' AND column_name = 'diameter'"
+                ))
+                if result.fetchone():
+                    await conn.execute(text("ALTER TABLE insert_products RENAME COLUMN diameter TO diameter_inner"))
+        except Exception as e:
+            logger.warning(f"Миграция rename diameter: {e}")
 
+        # replacement_transactions
         try:
             async with engine.begin() as conn:
-                await conn.execute(text("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'director'"))
-        except Exception:
-            pass
-
-        try:
-            async with engine.begin() as conn:
-                await conn.execute(text("ALTER TABLE replacement_devices ADD COLUMN IF NOT EXISTS serial_number VARCHAR(100) DEFAULT ''"))
-        except Exception:
-            pass
-
-        try:
-            async with engine.begin() as conn:
-                await conn.execute(text("ALTER TABLE replacement_devices ADD COLUMN IF NOT EXISTS accuracy_class VARCHAR(50)"))
-        except Exception:
-            pass
-
-        try:
-            async with engine.begin() as conn:
-                await conn.execute(text("ALTER TABLE replacement_devices ADD COLUMN IF NOT EXISTS mounting VARCHAR(50)"))
-        except Exception:
-            pass
-
-        try:
-            async with engine.begin() as conn:
-                await conn.execute(text("ALTER TABLE mailbox_config DROP COLUMN IF EXISTS password"))
-        except Exception:
-            pass
-
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(text("ALTER TABLE insert_products RENAME COLUMN diameter TO diameter_inner"))
-    except Exception:
-        pass
-
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(text("ALTER TABLE insert_products ADD COLUMN IF NOT EXISTS diameter_outer VARCHAR(50)"))
-    except Exception:
-        pass
-
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(text("ALTER TABLE insert_products ADD COLUMN IF NOT EXISTS notes VARCHAR(1000)"))
-    except Exception:
-        pass
-
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(text("ALTER TABLE insert_products ADD COLUMN IF NOT EXISTS cell VARCHAR(100)"))
-    except Exception:
-        pass
-
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS replacement_transactions (
-                    id SERIAL PRIMARY KEY,
-                    type VARCHAR(20) NOT NULL,
-                    device_id INTEGER NOT NULL REFERENCES replacement_devices(id),
-                    quantity INTEGER NOT NULL,
-                    taken_by_id INTEGER REFERENCES users(id),
-                    location_id INTEGER REFERENCES asset_locations(id),
-                    comment VARCHAR(1000),
-                    document VARCHAR(255),
-                    created_at TIMESTAMP DEFAULT NOW()
-                )
-            """))
-    except Exception:
-        pass
-
-    try:
-        async with engine.begin() as conn:
-            result = await conn.execute(text("""
-                SELECT column_name FROM information_schema.columns
-                WHERE table_name = 'replacement_devices' AND column_name = 'taken_by_id'
-            """))
-            if result.fetchone():
                 await conn.execute(text("""
-                    INSERT INTO replacement_transactions (type, device_id, quantity, taken_by_id, location_id)
-                    SELECT 'incoming', id, 1, NULL, NULL
-                    FROM replacement_devices
-                    WHERE id NOT IN (SELECT device_id FROM replacement_transactions)
+                    CREATE TABLE IF NOT EXISTS replacement_transactions (
+                        id SERIAL PRIMARY KEY,
+                        type VARCHAR(20) NOT NULL,
+                        device_id INTEGER NOT NULL REFERENCES replacement_devices(id),
+                        quantity INTEGER NOT NULL,
+                        taken_by_id INTEGER REFERENCES users(id),
+                        location_id INTEGER REFERENCES asset_locations(id),
+                        comment VARCHAR(1000),
+                        document VARCHAR(255),
+                        created_at TIMESTAMP DEFAULT NOW()
+                    )
                 """))
-                await conn.execute(text("""
-                    INSERT INTO replacement_transactions (type, device_id, quantity, taken_by_id, location_id, comment)
-                    SELECT 'outgoing', id, 1, taken_by_id, location_id, 'Миграция: прибор выдан (исторические данные)'
-                    FROM replacement_devices
-                    WHERE taken_by_id IS NOT NULL
+        except Exception as e:
+            logger.warning(f"Миграция replacement_transactions: {e}")
+
+        # Перенос данных
+        try:
+            async with engine.begin() as conn:
+                result = await conn.execute(text("""
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_name = 'replacement_devices' AND column_name = 'taken_by_id'
                 """))
-                await conn.execute(text("ALTER TABLE replacement_devices DROP COLUMN IF EXISTS taken_by_id"))
-                await conn.execute(text("ALTER TABLE replacement_devices DROP COLUMN IF EXISTS location_id"))
-                await conn.execute(text("ALTER TABLE replacement_devices DROP COLUMN IF EXISTS return_date"))
-                await conn.execute(text("ALTER TABLE replacement_devices DROP COLUMN IF EXISTS status"))
-    except Exception:
-        pass
+                if result.fetchone():
+                    await conn.execute(text("""
+                        INSERT INTO replacement_transactions (type, device_id, quantity, taken_by_id, location_id)
+                        SELECT 'incoming', id, 1, NULL, NULL
+                        FROM replacement_devices
+                        WHERE id NOT IN (SELECT device_id FROM replacement_transactions)
+                    """))
+                    await conn.execute(text("""
+                        INSERT INTO replacement_transactions (type, device_id, quantity, taken_by_id, location_id, comment)
+                        SELECT 'outgoing', id, 1, taken_by_id, location_id, 'Миграция: прибор выдан (исторические данные)'
+                        FROM replacement_devices
+                        WHERE taken_by_id IS NOT NULL
+                          AND id NOT IN (SELECT device_id FROM replacement_transactions WHERE type = 'outgoing')
+                    """))
+                    await conn.execute(text("ALTER TABLE replacement_devices DROP COLUMN IF EXISTS taken_by_id"))
+                    await conn.execute(text("ALTER TABLE replacement_devices DROP COLUMN IF EXISTS location_id"))
+                    await conn.execute(text("ALTER TABLE replacement_devices DROP COLUMN IF EXISTS return_date"))
+                    await conn.execute(text("ALTER TABLE replacement_devices DROP COLUMN IF EXISTS status"))
+        except Exception as e:
+            logger.warning(f"Миграция данных replacement: {e}")
 
     yield
 
     logger.info("Остановка приложения: завершение фонового воркера...")
-    mail_task.cancel()
-    try:
-        await mail_task
-    except asyncio.CancelledError:
-        pass
+    if mail_task:
+        mail_task.cancel()
+        try:
+            await mail_task
+        except asyncio.CancelledError:
+            pass
 
     await http_client.aclose()
     await engine.dispose()
@@ -178,15 +165,26 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()] if os.getenv("ALLOWED_ORIGINS") else []
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+if ALLOWED_ORIGINS and ALLOWED_ORIGINS != [""]:
+    # Явные origins — можно credentials
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=ALLOWED_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    # Нет origins — wildcard, credentials запрещены (CORS spec)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 app.include_router(api_router, prefix="/api")
 
@@ -206,10 +204,10 @@ if os.path.exists(FRONTEND_DIR):
 
     @app.get("/{path:path}")
     async def spa_fallback(path: str):
-        if path.startswith("api"):
-            return {"detail": "Not Found"}
+        if path.startswith("api/"):
+            return JSONResponse(status_code=404, content={"detail": "Not Found"})
 
         index_path = os.path.join(FRONTEND_DIR, "index.html")
         if os.path.exists(index_path):
             return FileResponse(index_path)
-        return {"detail": "Not Found"}
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})

@@ -32,6 +32,8 @@ services:
       smtp_port: ${SMTP_PORT}
       dadata_api_key: ${DADATA_API_KEY}
       secret_key: ${SECRET_KEY}
+      ENABLE_MAIL_WORKER: ${ENABLE_MAIL_WORKER}
+      ENABLE_AUTO_MIGRATIONS: ${ENABLE_AUTO_MIGRATIONS}
     depends_on: [db, redis]
     restart: unless-stopped
 
