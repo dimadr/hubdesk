@@ -11,6 +11,7 @@ from src.services.ticket_service import TicketService
 from src.services.acl_service import RoleChecker
 from src.services.sla_service import SLAService
 from src.services.comment_service import CommentService
+from src.services.mail_service import MailService
 from src.api.schemas import (
     TicketCreate, TicketUpdate, TicketResponse, StatusChange, TicketFilter,
     CommentCreate, CommentResponse,
@@ -100,6 +101,12 @@ def create_ticket_router() -> APIRouter:
         ticket = await svc.create(data.model_dump(), user)
         await db.commit()
         log_history("Создана заявка", f"#{ticket.number} {ticket.subject}", user.name)
+        # Отправка email инженеру при назначении
+        if ticket.assignee_id:
+            eng = await db.get(User, ticket.assignee_id)
+            if eng:
+                await db.refresh(ticket, ['customer', 'location'])
+                await MailService.notify_engineer_assigned(ticket, eng, db)
         return TicketResponse.model_validate(ticket)
 
     @router.patch("/{ticket_id}", response_model=TicketResponse)
@@ -130,6 +137,12 @@ def create_ticket_router() -> APIRouter:
             setattr(ticket, field, value)
         await db.commit()
         log_history("Обновлена заявка", f"#{ticket.number} {ticket.subject}", user.name)
+        # Отправка email инженеру при смене исполнителя
+        if 'assignee_id' in data.model_dump(exclude_unset=True) and ticket.assignee_id:
+            eng = await db.get(User, ticket.assignee_id)
+            if eng:
+                await db.refresh(ticket, ['customer', 'location'])
+                await MailService.notify_engineer_assigned(ticket, eng, db)
         return TicketResponse.model_validate(ticket)
 
     @router.patch("/{ticket_id}/status", response_model=TicketResponse)

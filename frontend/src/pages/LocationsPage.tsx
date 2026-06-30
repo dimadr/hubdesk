@@ -23,6 +23,8 @@ interface UserInfo { id: number; email: string; name: string; role: string; }
 interface CustomerInfo { id: number; name: string; }
 
 export const LocationsPage: React.FC = () => {
+  const role = (() => { try { return JSON.parse(localStorage.getItem('user') || '{}').role || ''; } catch { return ''; } })();
+  const isAdmin = role === 'admin';
   const [locations, setLocations] = useState<Location[]>([]);
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [customers, setCustomers] = useState<CustomerInfo[]>([]);
@@ -115,6 +117,15 @@ export const LocationsPage: React.FC = () => {
                   </td>
                   <td>
                     <button onClick={() => setEditId(l.id)} className="btn btn-secondary" style={{ padding: '3px 8px', fontSize: 11 }}>✎</button>
+                    {isAdmin && (
+                      <button
+                        onClick={() => handleDelete(l.id)}
+                        className="btn btn-secondary"
+                        style={{ padding: '3px 8px', fontSize: 11, marginLeft: 4, color: confirmDelete === l.id ? 'var(--danger)' : undefined }}
+                      >
+                        {confirmDelete === l.id ? 'Подтвердить?' : '✕'}
+                      </button>
+                    )}
                   </td>
                 </tr>
               );

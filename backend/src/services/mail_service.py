@@ -1,6 +1,9 @@
 import imaplib
+import smtplib
+import logging
 import email
 from email.header import decode_header
+from email.mime.text import MIMEText
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -13,6 +16,51 @@ from src.config import settings
 
 
 class MailService:
+    @staticmethod
+    async def send_email(to: str, subject: str, body: str):
+        """Отправка email через SMTP."""
+        try:
+            msg = MIMEText(body, 'plain', 'utf-8')
+            msg['Subject'] = subject
+            msg['From'] = settings.mailbox_email
+            msg['To'] = to
+
+            with smtplib.SMTP_SSL(settings.smtp_server, settings.smtp_port) as s:
+                s.login(settings.mailbox_email, settings.mailbox_password)
+                s.send_message(msg)
+            return True
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(f"Ошибка отправки email на {to}: {e}")
+            return False
+
+    @staticmethod
+    async def notify_engineer_assigned(ticket: Ticket, engineer: User, db: AsyncSession):
+        """Уведомление инженеру о назначении заявки."""
+        subject = f"Вам назначена заявка №{ticket.number}"
+        body = (
+            f"Заявка №{ticket.number}\n"
+            f"Тема: {ticket.subject}\n"
+            f"Приоритет: {ticket.priority.value}\n\n"
+            f"Заказчик: {ticket.customer.name if ticket.customer else '—'}\n"
+            f"Объект: {ticket.location.name if ticket.location else '—'}\n\n"
+            f"Откройте заявку в HubDesk для подробностей."
+        )
+        if engineer.email:
+            await MailService.send_email(engineer.email, subject, body)
+
+    @staticmethod
+    async def notify_creator_accepted(ticket: Ticket, engineer: User, creator: User):
+        """Уведомление создателю заявки о принятии инженером."""
+        subject = f"Инженер принял заявку №{ticket.number}"
+        body = (
+            f"Заявка №{ticket.number} «{ticket.subject}»\n\n"
+            f"Инженер {engineer.name} принял заявку в работу.\n"
+            f"Статус: ACCEPTED\n"
+            f"Время: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        )
+        if creator.email:
+            await MailService.send_email(creator.email, subject, body)
     @staticmethod
     async def fetch_and_create_tickets(db: AsyncSession):
         cfg_result = await db.execute(select(MailboxConfig).limit(1))

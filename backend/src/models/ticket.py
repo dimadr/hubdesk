@@ -59,6 +59,7 @@ class Ticket(Base):
     location_id: Mapped[int | None] = mapped_column(ForeignKey("asset_locations.id"), nullable=True)
     equipment_id: Mapped[int | None] = mapped_column(ForeignKey("equipment.id"), nullable=True)
     assignee_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     group_id: Mapped[int | None] = mapped_column(ForeignKey("groups.id"), nullable=True)
 
     site_contact_name: Mapped[str | None] = mapped_column(String(255), nullable=True)

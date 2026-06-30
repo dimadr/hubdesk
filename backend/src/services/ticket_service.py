@@ -12,6 +12,7 @@ from src.models.checklist import Checklist
 from src.services.ticket_fsm import TicketFSM
 from src.services.acl_service import RoleChecker
 from src.services.audit_service import log_audit
+from src.services.mail_service import MailService
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ class TicketService:
             scheduled_end=self._naive_datetime(data.get("scheduled_end")),
             source_description=data.get("source_description"),
             created_at=now_utc,
+            created_by=user.id if user else None,
         )
 
         contract = await self._get_active_contract(ticket.customer_id, now_utc.date())
@@ -102,6 +104,11 @@ class TicketService:
             self.session, user, "ticket_status_changed", "ticket",
             ticket_id, f"Статус заявки №{ticket.number}: {from_status} → {target}"
         )
+        # Уведомление создателю заявки о принятии инженером
+        if target == "ACCEPTED" and ticket.created_by:
+            creator = await self.session.get(User, ticket.created_by)
+            if creator:
+                await MailService.notify_creator_accepted(ticket, user, creator)
         return ticket
 
     @staticmethod

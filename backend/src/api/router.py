@@ -380,8 +380,6 @@ async def update_location(
 
 @api_router.delete("/locations/{location_id}", tags=["Locations"])
 async def delete_location(location_id: int, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    raise HTTPException(403, detail="Удаление отключено в RC-режиме")
-    # RC: удаление только с прямого одобрения пользователя
     if user.role != UserRole.admin:
         raise HTTPException(403, "Только администратор может удалять объекты")
 
@@ -392,7 +390,7 @@ async def delete_location(location_id: int, user=Depends(get_current_user), db: 
     ticket_count_res = await db.execute(
         select(func.count()).select_from(Ticket).where(Ticket.location_id == location_id)
     )
-    ticket_count = ticket_count_res.scalar()
+    ticket_count = ticket_count_res.scalar() or 0
 
     if ticket_count > 0:
         raise HTTPException(400, f"Нельзя удалить объект с заявками ({ticket_count} шт.)")
