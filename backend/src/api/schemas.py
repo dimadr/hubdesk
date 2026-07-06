@@ -6,10 +6,7 @@ from typing import Optional
 class TicketStatusEnum:
     ASSIGNED = "ASSIGNED"
     ACCEPTED = "ACCEPTED"
-    ON_THE_WAY = "ON_THE_WAY"
-    ARRIVED = "ARRIVED"
     IN_PROGRESS = "IN_PROGRESS"
-    REVIEW = "REVIEW"
     COMPLETED = "COMPLETED"
 
 

@@ -23,7 +23,7 @@ const ViewSwitcher: React.FC = () => {
   );
 };
 
-export const TicketGrid: React.FC<{ users: UserInfo[]; onEdit?: (ticket: any) => void; onDetail?: (ticket: any) => void; onStatusChange?: (ticket: any, status: string) => void; currentUserId?: number }> = ({ users, onEdit, onDetail, onStatusChange, currentUserId }) => {
+export const TicketGrid: React.FC<{ users: UserInfo[]; onEdit?: (ticket: any) => void; onDetail?: (ticket: any) => void; onStatusChange?: (ticket: any, status: string) => void; onDelete?: (ticket: any) => void; currentUserId?: number; role?: string }> = ({ users, onEdit, onDetail, onStatusChange, onDelete, currentUserId, role }) => {
   const { tickets, activeTab, viewType, fetchTickets, loading } = useTicketStore();
   const [search, setSearch] = useState('');
   const [colFilter, setColFilter] = useState<ColFilter>({});
@@ -97,7 +97,7 @@ export const TicketGrid: React.FC<{ users: UserInfo[]; onEdit?: (ticket: any) =>
         </div>
       )}
       {loading ? <div className="loading">Загрузка...</div> : (
-        viewType === 'table' ? <TableView tickets={filteredTickets} users={users} onEdit={onEdit} onDetail={onDetail} onStatusChange={onStatusChange} currentUserId={currentUserId} colFilter={colFilter} onFilter={toggleFilter} /> :
+        viewType === 'table' ? <TableView tickets={filteredTickets} users={users} onEdit={onEdit} onDetail={onDetail} onStatusChange={onStatusChange} onDelete={onDelete} currentUserId={currentUserId} role={role} colFilter={colFilter} onFilter={toggleFilter} /> :
         viewType === 'card' ? <CardView tickets={filteredTickets} users={users} /> :
         <TreeView tickets={filteredTickets} />
       )}
@@ -106,8 +106,7 @@ export const TicketGrid: React.FC<{ users: UserInfo[]; onEdit?: (ticket: any) =>
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  ASSIGNED: 'Назначена', ACCEPTED: 'Принята', ON_THE_WAY: 'В пути',
-  ARRIVED: 'На месте', IN_PROGRESS: 'В работе', REVIEW: 'Проверка', COMPLETED: 'Завершена',
+  ASSIGNED: 'Назначена', ACCEPTED: 'Принята', IN_PROGRESS: 'В работе', COMPLETED: 'Завершена',
 };
 
 const PRIORITY_LABELS: Record<string, string> = {

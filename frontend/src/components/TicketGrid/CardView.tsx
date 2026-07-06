@@ -11,8 +11,7 @@ interface Props {
 }
 
 const STATUS_MAP: Record<string, string> = {
-  ASSIGNED: 'Назначена', ACCEPTED: 'Принята', ON_THE_WAY: 'В пути',
-  ARRIVED: 'На месте', IN_PROGRESS: 'В работе', REVIEW: 'Проверка', COMPLETED: 'Завершена',
+  ASSIGNED: 'Назначена', ACCEPTED: 'Принята', IN_PROGRESS: 'В работе', COMPLETED: 'Завершена',
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -61,8 +60,7 @@ export const CardView: React.FC<Props> = ({ tickets, users }) => {
 
 const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
   const cssMap: Record<string, string> = {
-    ASSIGNED: 'st-assigned', ACCEPTED: 'st-accepted', ON_THE_WAY: 'st-on_the_way',
-    ARRIVED: 'st-arrived', IN_PROGRESS: 'st-in_progress', REVIEW: 'st-review', COMPLETED: 'st-completed',
+    ASSIGNED: 'st-assigned', ACCEPTED: 'st-accepted', IN_PROGRESS: 'st-in_progress', COMPLETED: 'st-completed',
   };
   return <span className={`status-pill ${cssMap[status] || ''}`}>{STATUS_MAP[status] || status}</span>;
 };

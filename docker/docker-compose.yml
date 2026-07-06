@@ -1,10 +1,9 @@
 services:
   db:
     image: postgres:15-alpine
+    env_file: ../backend/.env
     environment:
       POSTGRES_DB: fsm
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports: ["5434:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     restart: unless-stopped
@@ -18,22 +17,11 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+    env_file: ../backend/.env
     ports: ["8002:8000"]
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/fsm
+      DATABASE_URL: postgresql+asyncpg://postgres:0a5ODVipwmKX3431IWndTz2Np0Fxnr@db:5432/fsm
       REDIS_URL: redis://redis:6379/0
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      mailbox_email: ${MAILBOX_EMAIL}
-      mailbox_password: ${MAILBOX_PASSWORD}
-      mailbox_imap_server: ${MAILBOX_IMAP_SERVER}
-      mailbox_imap_port: ${MAILBOX_IMAP_PORT}
-      smtp_server: ${SMTP_SERVER}
-      smtp_port: ${SMTP_PORT}
-      dadata_api_key: ${DADATA_API_KEY}
-      secret_key: ${SECRET_KEY}
-      ENABLE_MAIL_WORKER: ${ENABLE_MAIL_WORKER}
-      ENABLE_AUTO_MIGRATIONS: ${ENABLE_AUTO_MIGRATIONS}
     depends_on: [db, redis]
     restart: unless-stopped
 

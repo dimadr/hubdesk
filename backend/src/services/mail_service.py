@@ -41,7 +41,7 @@ class MailService:
         body = (
             f"Заявка №{ticket.number}\n"
             f"Тема: {ticket.subject}\n"
-            f"Приоритет: {ticket.priority.value}\n\n"
+            f"Приоритет: {ticket.priority}\n\n"
             f"Заказчик: {ticket.customer.name if ticket.customer else '—'}\n"
             f"Объект: {ticket.location.name if ticket.location else '—'}\n\n"
             f"Откройте заявку в HubDesk для подробностей."

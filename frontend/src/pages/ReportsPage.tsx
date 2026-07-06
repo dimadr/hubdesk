@@ -6,8 +6,7 @@ interface TicketStats { total: number; by_status: { label: string; count: number
 interface EngineerRow { engineer_id: number; engineer_name: string; total: number; completed: number; in_progress: number; overdue: number; avg_resolution_hours: number; }
 
 const STATUS_LABELS: Record<string, string> = {
-  ASSIGNED: 'Назначена', ACCEPTED: 'Принята', ON_THE_WAY: 'В пути',
-  ARRIVED: 'На месте', IN_PROGRESS: 'В работе', REVIEW: 'Проверка', COMPLETED: 'Завершена',
+  ASSIGNED: 'Назначена', ACCEPTED: 'Принята', IN_PROGRESS: 'В работе', COMPLETED: 'Завершена',
 };
 const PRIORITY_LABELS: Record<string, string> = {
   critical: 'Критический', high: 'Высокий', medium: 'Средний', low: 'Низкий',

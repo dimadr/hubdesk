@@ -11,11 +11,8 @@ logger = logging.getLogger(__name__)
 class RoleChecker:
     TRANSITION_ROLES: dict[str, list[UserRole]] = {
         "ASSIGNED->ACCEPTED":     [UserRole.engineer],
-        "ACCEPTED->ON_THE_WAY":   [UserRole.engineer],
-        "ON_THE_WAY->ARRIVED":    [UserRole.engineer],
-        "ARRIVED->IN_PROGRESS":   [UserRole.engineer],
-        "IN_PROGRESS->REVIEW":    [UserRole.engineer],
-        "REVIEW->COMPLETED":      [UserRole.engineer, UserRole.dispatcher],
+        "ACCEPTED->IN_PROGRESS":  [UserRole.engineer],
+        "IN_PROGRESS->COMPLETED": [UserRole.engineer, UserRole.dispatcher],
     }
 
     @staticmethod

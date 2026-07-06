@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 from datetime import datetime
 from pydantic import BaseModel
@@ -95,8 +95,10 @@ def create_ticket_router() -> APIRouter:
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
-        if user.role not in (UserRole.admin, UserRole.director, UserRole.dispatcher):
-            raise HTTPException(403, "Только диспетчер или администратор может создавать заявки")
+        if user.role == UserRole.engineer:
+            data.assignee_id = user.id
+        elif user.role not in (UserRole.admin, UserRole.director, UserRole.dispatcher):
+            raise HTTPException(403, "Только диспетчер, администратор или инженер может создавать заявки")
         svc = TicketService(db)
         ticket = await svc.create(data.model_dump(), user)
         await db.commit()
@@ -302,5 +304,27 @@ def create_ticket_router() -> APIRouter:
         ticket.assignee_id = data.assignee_id
         await db.commit()
         return TicketResponse.model_validate(ticket)
+
+    @router.delete("/{ticket_id}", status_code=204)
+    async def delete_ticket(
+        ticket_id: int,
+        user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+    ):
+        if user.role != UserRole.admin:
+            raise HTTPException(403, "Только администратор может удалять заявки")
+        ticket = await db.get(Ticket, ticket_id)
+        if not ticket:
+            raise HTTPException(404, "Заявка не найдена")
+        num = ticket.number
+        await db.execute(text("DELETE FROM checklist_fields WHERE checklist_id IN (SELECT id FROM checklists WHERE ticket_id = :tid)"), {"tid": ticket_id})
+        await db.execute(text("DELETE FROM checklists WHERE ticket_id = :tid"), {"tid": ticket_id})
+        await db.execute(text("DELETE FROM comments WHERE ticket_id = :tid"), {"tid": ticket_id})
+        await db.execute(text("DELETE FROM attachments WHERE ticket_id = :tid"), {"tid": ticket_id})
+        await db.execute(text("DELETE FROM ticket_transitions WHERE ticket_id = :tid"), {"tid": ticket_id})
+        await db.execute(text("DELETE FROM personal_tasks WHERE ticket_id = :tid"), {"tid": ticket_id})
+        await db.execute(text("DELETE FROM tickets WHERE id = :tid"), {"tid": ticket_id})
+        await db.commit()
+        log_history("Удалена заявка", f"#{num}", user.name)
 
     return router

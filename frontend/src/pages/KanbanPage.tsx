@@ -32,8 +32,8 @@ export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[] }> = ({ ro
   const ticketToColumn = (status: string) => {
     if (status === 'ASSIGNED') return 'project';
     if (status === 'ACCEPTED') return 'todo';
-    if (status === 'ON_THE_WAY' || status === 'ARRIVED' || status === 'IN_PROGRESS') return 'in_progress';
-    if (status === 'REVIEW' || status === 'COMPLETED') return 'done';
+    if (status === 'IN_PROGRESS') return 'in_progress';
+    if (status === 'COMPLETED') return 'done';
     return 'project';
   };
 

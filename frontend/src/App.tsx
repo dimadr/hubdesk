@@ -61,10 +61,7 @@ const TICKET_TYPES: Record<string, string> = {
 const TICKET_STATUS_LABELS: Record<string, string> = {
   ASSIGNED: 'Назначена',
   ACCEPTED: 'Принята',
-  ON_THE_WAY: 'В пути',
-  ARRIVED: 'На месте',
   IN_PROGRESS: 'В работе',
-  REVIEW: 'Проверка',
   COMPLETED: 'Завершена',
 };
 
@@ -684,6 +681,7 @@ const App: React.FC = () => {
   const [editTicket, setEditTicket] = useState<TicketResponse | null>(null);
   const [detailTicket, setDetailTicket] = useState<TicketResponse | null>(null);
   const [confirmStatusTicket, setConfirmStatusTicket] = useState<{ ticket: TicketResponse; target: string } | null>(null);
+  const [deleteTicketConfirm, setDeleteTicketConfirm] = useState<TicketResponse | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [stats, setStats] = useState<{ total: number; open: number; urgent: number }>({ total: 0, open: 0, urgent: 0 });
@@ -752,6 +750,22 @@ const App: React.FC = () => {
       setRefreshKey(k => k + 1);
     } catch (e: any) {
       alert(e.response?.data?.detail || 'Ошибка');
+    }
+  };
+
+  const handleDeleteTicket = async (ticket: TicketResponse) => {
+    setDeleteTicketConfirm(ticket);
+  };
+
+  const executeDeleteTicket = async () => {
+    if (!deleteTicketConfirm) return;
+    try {
+      await api.delete(`/tickets/${deleteTicketConfirm.id}`);
+      setDeleteTicketConfirm(null);
+      setRefreshKey(k => k + 1);
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Ошибка удаления');
+      setDeleteTicketConfirm(null);
     }
   };
 
@@ -855,7 +869,9 @@ const App: React.FC = () => {
               onEdit={setEditTicket}
               onDetail={setDetailTicket}
               onStatusChange={handleStatusChange}
+              onDelete={handleDeleteTicket}
               currentUserId={user.user_id || user.id}
+              role={user.role}
             />
           </>
         )}
@@ -901,6 +917,19 @@ const App: React.FC = () => {
             onConfirm={confirmComplete}
             onClose={() => setConfirmStatusTicket(null)}
           />
+        )}
+        {deleteTicketConfirm && (
+          <div className="modal-overlay" onClick={() => setDeleteTicketConfirm(null)}>
+            <div className="modal" onClick={e => e.stopPropagation()}>
+              <h3>Удаление заявки</h3>
+              <p>Удалить заявку <strong>#{deleteTicketConfirm.number}</strong>?</p>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Это действие нельзя отменить.</p>
+              <div className="modal-actions" style={{ marginTop: 16 }}>
+                <button className="btn btn-danger" onClick={executeDeleteTicket}>Удалить</button>
+                <button className="btn btn-secondary" onClick={() => setDeleteTicketConfirm(null)}>Отмена</button>
+              </div>
+            </div>
+          </div>
         )}
         {showAddEmployee && (
           <AddEmployeeModal

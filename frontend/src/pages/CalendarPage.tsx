@@ -16,8 +16,7 @@ const PRIORITY_LABELS: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  ASSIGNED: 'Назначена', ACCEPTED: 'Принята', ON_THE_WAY: 'В пути',
-  ARRIVED: 'На месте', IN_PROGRESS: 'В работе', REVIEW: 'Проверка', COMPLETED: 'Завершена',
+  ASSIGNED: 'Назначена', ACCEPTED: 'Принята', IN_PROGRESS: 'В работе', COMPLETED: 'Завершена',
 };
 
 export const CalendarPage: React.FC = () => {

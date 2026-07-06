@@ -74,6 +74,18 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE insert_products ADD COLUMN IF NOT EXISTS diameter_outer VARCHAR(50)",
             "ALTER TABLE insert_products ADD COLUMN IF NOT EXISTS notes VARCHAR(1000)",
             "ALTER TABLE insert_products ADD COLUMN IF NOT EXISTS cell VARCHAR(100)",
+            # Миграция статусов заявок: ON_THE_WAY→IN_PROGRESS, ARRIVED→IN_PROGRESS, REVIEW→COMPLETED
+            "UPDATE tickets SET status = 'IN_PROGRESS' WHERE status = 'ON_THE_WAY'",
+            "UPDATE tickets SET status = 'IN_PROGRESS' WHERE status = 'ARRIVED'",
+            "UPDATE tickets SET status = 'COMPLETED' WHERE status = 'REVIEW'",
+            "UPDATE ticket_transitions SET from_status = 'IN_PROGRESS' WHERE from_status = 'ON_THE_WAY'",
+            "UPDATE ticket_transitions SET from_status = 'IN_PROGRESS' WHERE from_status = 'ARRIVED'",
+            "UPDATE ticket_transitions SET from_status = 'COMPLETED' WHERE from_status = 'REVIEW'",
+            "UPDATE ticket_transitions SET to_status = 'IN_PROGRESS' WHERE to_status = 'ON_THE_WAY'",
+            "UPDATE ticket_transitions SET to_status = 'IN_PROGRESS' WHERE to_status = 'ARRIVED'",
+            "UPDATE ticket_transitions SET to_status = 'COMPLETED' WHERE to_status = 'REVIEW'",
+            # Пересоздание enum ticketstatus с новыми значениями
+            "DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid=e.enumtypid WHERE t.typname='ticketstatus' AND e.enumlabel IN ('ON_THE_WAY','ARRIVED','REVIEW')) THEN ALTER TABLE tickets ALTER COLUMN status TYPE VARCHAR(50); DROP TYPE ticketstatus; CREATE TYPE ticketstatus AS ENUM ('ASSIGNED','ACCEPTED','IN_PROGRESS','COMPLETED'); ALTER TABLE tickets ALTER COLUMN status TYPE ticketstatus USING status::ticketstatus; ALTER TABLE ticket_transitions ALTER COLUMN from_status TYPE ticketstatus USING from_status::ticketstatus; ALTER TABLE ticket_transitions ALTER COLUMN to_status TYPE ticketstatus USING to_status::ticketstatus; END IF; END $$",
         ]
         for sql in migrations:
             try:

@@ -8,18 +8,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 class TicketFSM(BaseFSM, AuditMixin):
     transitions = {
         "ASSIGNED":    ["ACCEPTED"],
-        "ACCEPTED":    ["ON_THE_WAY"],
-        "ON_THE_WAY":  ["ARRIVED"],
-        "ARRIVED":     ["IN_PROGRESS"],
-        "IN_PROGRESS": ["REVIEW"],
-        "REVIEW":      ["COMPLETED"],
+        "ACCEPTED":    ["IN_PROGRESS"],
+        "IN_PROGRESS": ["COMPLETED"],
         "COMPLETED":   [],
     }
 
     def __init__(self, session: AsyncSession):
         self.session = session
         self.guards = {
-            "REVIEW->COMPLETED": [
+            "IN_PROGRESS->COMPLETED": [
                 ("checklist_complete", self._guard_checklist_complete),
                 ("mandatory_photos", self._guard_mandatory_photos),
             ],
