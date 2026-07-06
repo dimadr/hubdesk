@@ -474,7 +474,6 @@ const ReplacementTab: React.FC = () => {
       <div className="page-header" style={{ marginTop: 0 }}>
         {tab === 'catalog' && <button className="btn btn-primary" onClick={() => openDeviceForm(undefined)}>+ Прибор</button>}
         {tab === 'journal' && <button className="btn btn-primary" onClick={() => openTxForm()}>+ Операция</button>}
-        {tab === 'balance' && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Баланс рассчитывается из транзакций</span>}
       </div>
 
       {tab === 'catalog' && (
@@ -609,18 +608,18 @@ const ReplacementTab: React.FC = () => {
 
       {tab === 'balance' && (
         <div className="table-wrapper">
-          <table><thead><tr><th>Прибор</th><th>Выдано</th><th>Остаток</th></tr></thead>
+          <table><thead><tr><th>Наименование прибора</th><th>Остаток</th></tr></thead>
             <tbody>
-              {devices.map(d => {
-                const out = transactions.filter(t => t.device_id === d.id && t.type === 'outgoing').reduce((s, t) => s + t.quantity, 0);
-                return (
-                  <tr key={d.id}>
-                    <td style={{ fontWeight: 600 }}>{d.name}</td>
-                    <td className="mono" style={{ color: out > 0 ? 'var(--warning)' : 'var(--text-muted)' }}>{out || 0}</td>
-                    <td className="mono" style={{ fontWeight: 700, color: d.balance > 0 ? 'var(--success)' : d.balance < 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{d.balance}</td>
+              {(() => {
+                const grouped: Record<string, number> = {};
+                devices.forEach(d => { grouped[d.name] = (grouped[d.name] || 0) + d.balance; });
+                return Object.entries(grouped).map(([name, balance]) => (
+                  <tr key={name}>
+                    <td style={{ fontWeight: 600 }}>{name}</td>
+                    <td className="mono" style={{ fontWeight: 700, color: balance > 0 ? 'var(--success)' : balance < 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{balance}</td>
                   </tr>
-                );
-              })}
+                ));
+              })()}
             </tbody>
           </table>
         </div>
