@@ -45,8 +45,8 @@ export const CalendarPage: React.FC = () => {
 
   const ticketsByDate: Record<string, TicketResponse[]> = {};
   for (const t of tickets) {
-    if (t.resolution_deadline) {
-      const d = t.resolution_deadline.substring(0, 10);
+    const d = (t.resolution_deadline || t.scheduled_end || t.created_at)?.substring(0, 10);
+    if (d) {
       if (!ticketsByDate[d]) ticketsByDate[d] = [];
       ticketsByDate[d].push(t);
     }

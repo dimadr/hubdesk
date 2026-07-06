@@ -249,7 +249,7 @@ export const TableView: React.FC<Props> = ({ tickets, users, onEdit, onDetail, o
             </thead>
         <tbody>
           {tickets.map(ticket => (
-            <RowStyle key={ticket.id} ticket={ticket}>
+            <RowStyle key={ticket.id} ticket={ticket} onClick={() => onDetail?.(ticket)}>
               {visibleColumns.map(col => (
                   <Cell
                     key={col.key}

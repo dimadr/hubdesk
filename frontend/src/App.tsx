@@ -476,26 +476,181 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
   );
 };
 
-const TicketDetailModal: React.FC<{ ticket: TicketResponse; onClose: () => void }> = ({ ticket, onClose }) => {
+const TicketDetailModal: React.FC<{
+  ticket: TicketResponse; onClose: () => void;
+  onStatusChange?: (ticket: TicketResponse, target: string) => void;
+  onRefresh?: () => void; role?: string; currentUserId?: number;
+}> = ({ ticket, onClose, onStatusChange, onRefresh, role, currentUserId }) => {
+  const [comments, setComments] = useState<any[]>([]);
+  const [attachments, setAttachments] = useState<any[]>([]);
+  const [newComment, setNewComment] = useState('');
+  const [isInternal, setIsInternal] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkTitle, setLinkTitle] = useState('');
+  const [editingDeadline, setEditingDeadline] = useState(false);
+  const [deadlineValue, setDeadlineValue] = useState(ticket.resolution_deadline ? ticket.resolution_deadline.substring(0, 10) : '');
+
+  const NS: Record<string, string> = { ASSIGNED: 'ACCEPTED', ACCEPTED: 'IN_PROGRESS', IN_PROGRESS: 'COMPLETED' };
+  const SL: Record<string, string> = { ASSIGNED: 'Назначена', ACCEPTED: 'Принята', IN_PROGRESS: 'В работе', COMPLETED: 'Завершена' };
+  const PL: Record<string, string> = { low: 'Низкий', medium: 'Средний', high: 'Высокий', critical: 'Критичный' };
+  const TL: Record<string, string> = { repair: 'Ремонт', installation: 'Монтаж', maintenance: 'ТО', inspection: 'Инспекция', emergency: 'Авария', verification: 'Поверка' };
+
+  const canStatus = role === 'admin' || role === 'director' || (role === 'engineer' && ticket.assignee_id === currentUserId);
+  const next = NS[ticket.status];
+
+  const load = async () => {
+    try {
+      const [cRes, aRes] = await Promise.all([
+        api.get(`/tickets/${ticket.id}/comments`),
+        api.get('/attachments', { params: { ticket_id: ticket.id } }).catch(() => ({ data: [] })),
+      ]);
+      setComments(cRes.data);
+      setAttachments(aRes.data);
+    } catch {}
+  };
+
+  useEffect(() => { load(); }, [ticket.id]);
+
+  const handleStatus = async (target: string) => {
+    if (!onStatusChange) return;
+    onStatusChange(ticket, target);
+    setTimeout(onClose, 300);
+  };
+
+  const handleSendComment = async () => {
+    if (!newComment.trim() && !linkUrl.trim()) return;
+    setSending(true);
+    try {
+      let body = newComment.trim();
+      if (linkUrl.trim()) {
+        const link = linkTitle.trim() ? `[${linkTitle.trim()}](${linkUrl.trim()})` : linkUrl.trim();
+        body = body ? `${body}\n${link}` : link;
+      }
+      await api.post(`/tickets/${ticket.id}/comments`, { body, is_internal: isInternal });
+      setNewComment('');
+      setLinkUrl('');
+      setLinkTitle('');
+      load();
+      if (onRefresh) onRefresh();
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Ошибка отправки');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('ticket_id', String(ticket.id));
+      await api.post('/attachments', form);
+      load();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Ошибка загрузки файла');
+    }
+    e.target.value = '';
+  };
+
+  const saveDeadline = async () => {
+    try {
+      await api.patch(`/tickets/${ticket.id}`, { resolution_deadline: deadlineValue || null });
+      setEditingDeadline(false);
+      if (onRefresh) onRefresh();
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Ошибка сохранения');
+    }
+  };
+
+  const renderMarkdown = (text: string) => {
+    return text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card modal-card-wide" onClick={e => e.stopPropagation()} style={{ maxHeight: '85vh', overflow: 'auto' }}>
-        <h3>#{ticket.number} {ticket.subject}</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 13, marginTop: 12 }}>
-          <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Статус</span><div>{TICKET_STATUS_LABELS[ticket.status] || ticket.status}</div></div>
-          <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Приоритет</span><div>{TICKET_PRIORITY_LABELS[ticket.priority] || ticket.priority}</div></div>
-          {ticket.type && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Тип заявки</span><div>{TICKET_TYPES[ticket.type] || ticket.type}</div></div>}
-          <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Создана</span><div>{new Date(ticket.created_at).toLocaleString('ru-RU')}</div></div>
-          {ticket.resolution_deadline && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Срок исполнения</span><div>{new Date(ticket.resolution_deadline).toLocaleString('ru-RU')}</div></div>}
-          {ticket.scheduled_end && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Плановый выезд по</span><div>{new Date(ticket.scheduled_end).toLocaleString('ru-RU')}</div></div>}
-          {ticket.site_contact_name && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Контакты на объекте</span><div>{ticket.site_contact_name}{ticket.site_contact_phone ? `, ${ticket.site_contact_phone}` : ''}</div></div>}
-          {ticket.source_description && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Источник обращения</span><div>{ticket.source_description}</div></div>}
+      <div className="modal-card modal-card-wide" onClick={e => e.stopPropagation()} style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ overflow: 'auto', flex: 1 }}>
+          <h3 style={{ margin: '0 0 12px' }}>#{ticket.number} {ticket.subject}</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 13, marginBottom: 14 }}>
+            <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Статус</span><div><span className={`status-pill st-${ticket.status?.toLowerCase()}`}>{SL[ticket.status] || ticket.status}</span></div></div>
+            <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Приоритет</span><div>{PL[ticket.priority] || ticket.priority}</div></div>
+            {ticket.type && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Тип</span><div>{TL[ticket.type] || ticket.type}</div></div>}
+            <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Создана</span><div>{new Date(ticket.created_at).toLocaleString('ru-RU')}</div></div>
+            {ticket.resolution_deadline && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Срок</span><div>{new Date(ticket.resolution_deadline).toLocaleString('ru-RU')}</div></div>}
+            {!ticket.resolution_deadline && !editingDeadline && canStatus && (
+              <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Срок</span><div>
+                <button onClick={() => setEditingDeadline(true)} style={{ background: 'none', border: '1px dashed var(--border)', borderRadius: 6, padding: '2px 8px', fontSize: 12, color: 'var(--text-muted)', cursor: 'pointer' }}>+ Указать срок</button>
+              </div></div>
+            )}
+            {editingDeadline && (
+              <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Срок исполнения</span><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input type="date" value={deadlineValue} onChange={e => setDeadlineValue(e.target.value)} style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, background: 'var(--bg-surface)', color: 'var(--text)' }} />
+                <button className="btn btn-primary" onClick={saveDeadline} style={{ padding: '4px 8px', fontSize: 11 }}>OK</button>
+                <button className="btn btn-secondary" onClick={() => setEditingDeadline(false)} style={{ padding: '4px 8px', fontSize: 11 }}>✕</button>
+              </div></div>
+            )}
+            {ticket.site_contact_name && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Контакт</span><div>{ticket.site_contact_name}{ticket.site_contact_phone ? `, ${ticket.site_contact_phone}` : ''}</div></div>}
+            {ticket.scheduled_end && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Выезд по</span><div>{new Date(ticket.scheduled_end).toLocaleString('ru-RU')}</div></div>}
+            {ticket.source_description && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Источник</span><div>{ticket.source_description}</div></div>}
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Описание</span>
+            <div style={{ marginTop: 4, padding: 10, background: 'var(--bg-surface)', borderRadius: 7, whiteSpace: 'pre-wrap', fontSize: 13 }}>{ticket.body || '—'}</div>
+          </div>
+          {canStatus && next && (
+            <div style={{ marginBottom: 14 }}>
+              <button className="btn btn-success" onClick={() => handleStatus(next)} style={{ fontSize: 13 }}>
+                → {SL[next]}{next === 'COMPLETED' ? ' (Завершить)' : ''}
+              </button>
+            </div>
+          )}
+          {attachments.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Файлы ({attachments.length})</span>
+              <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {attachments.map((a: any) => (
+                  <a key={a.id} href={`/api/attachments/${a.id}`} target="_blank" rel="noopener" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: 'var(--bg-surface)', borderRadius: 6, fontSize: 12, color: 'var(--primary)', textDecoration: 'none', border: '1px solid var(--border)' }}>
+                    {a.filename}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+          <div style={{ marginBottom: 14 }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Комментарии ({comments.length})</span>
+            {comments.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Нет комментариев</div>}
+            {comments.map((c: any) => (
+              <div key={c.id} style={{ marginTop: 6, padding: 8, background: 'var(--bg-surface)', borderRadius: 7, fontSize: 13 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontSize: 11, fontWeight: 600 }}>Пользователь #{c.user_id} {c.is_internal ? '(внутр.)' : ''}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(c.created_at).toLocaleString('ru-RU')}</span>
+                </div>
+                <div style={{ whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: renderMarkdown(c.body) }} />
+              </div>
+            ))}
+          </div>
         </div>
-        <div style={{ marginTop: 12 }}>
-          <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Описание</span>
-          <div style={{ marginTop: 4, padding: 10, background: 'var(--bg-surface)', borderRadius: 7, whiteSpace: 'pre-wrap', fontSize: 13 }}>{ticket.body || '—'}</div>
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 8 }}>
+          <textarea value={newComment} onChange={e => setNewComment(e.target.value)} placeholder="Комментарий..." rows={2}
+            style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 7, fontSize: 13, background: 'var(--bg-surface)', color: 'var(--text)', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+          <div style={{ display: 'flex', gap: 8, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={isInternal} onChange={e => setIsInternal(e.target.checked)} /> Внутренний
+            </label>
+            <input type="text" placeholder="Ссылка URL" value={linkUrl} onChange={e => setLinkUrl(e.target.value)} style={{ flex: 1, minWidth: 120, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, background: 'var(--bg-surface)', color: 'var(--text)' }} />
+            <input type="text" placeholder="Название ссылки" value={linkTitle} onChange={e => setLinkTitle(e.target.value)} style={{ width: 140, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, background: 'var(--bg-surface)', color: 'var(--text)' }} />
+            <label className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 12, cursor: 'pointer' }}>
+              Файл<input type="file" onChange={handleFileUpload} style={{ display: 'none' }} />
+            </label>
+            <button className="btn btn-primary" onClick={handleSendComment} disabled={sending || (!newComment.trim() && !linkUrl.trim())} style={{ padding: '4px 12px', fontSize: 12 }}>
+              {sending ? '...' : 'Отправить'}
+            </button>
+          </div>
         </div>
-        <div className="modal-actions">
+        <div className="modal-actions" style={{ marginTop: 12 }}>
           <button className="btn btn-secondary" onClick={onClose}>Закрыть</button>
         </div>
       </div>
@@ -909,6 +1064,10 @@ const App: React.FC = () => {
           <TicketDetailModal
             ticket={detailTicket}
             onClose={() => setDetailTicket(null)}
+            onStatusChange={handleStatusChange}
+            onRefresh={() => setRefreshKey(k => k + 1)}
+            role={user.role}
+            currentUserId={user.user_id || user.id}
           />
         )}
         {confirmStatusTicket && (

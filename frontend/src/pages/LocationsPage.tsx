@@ -33,6 +33,7 @@ export const LocationsPage: React.FC = () => {
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
   const refreshLocations = async () => {
     try {
@@ -83,12 +84,25 @@ export const LocationsPage: React.FC = () => {
   if (loading) return <div style={{ padding: 24, textAlign: 'center' }}>Загрузка...</div>;
   if (pageError) return <div style={{ padding: 24, color: 'var(--danger)' }}>{pageError}</div>;
 
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? locations.filter(l => l.name.toLowerCase().includes(q) || l.address.toLowerCase().includes(q) || (l.customer_name && l.customer_name.toLowerCase().includes(q)))
+    : locations;
+
   return (
     <div>
       <div className="page-header" style={{ marginBottom: 14 }}>
         <h2>Объекты обслуживания</h2>
         <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Добавить объект</button>
       </div>
+      <input
+        type="text"
+        className="search-bar"
+        placeholder="Поиск по названию, адресу или клиенту..."
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        style={{ marginBottom: 14 }}
+      />
       <div className="table-wrapper">
         <table>
           <thead>
@@ -98,7 +112,7 @@ export const LocationsPage: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {locations.map(l => {
+            {filtered.map(l => {
               const contactStr = [l.contact_name, l.contact_phone, l.contact_email].filter(Boolean).join(' / ') || l.contacts;
               return (
                 <tr key={l.id}>
@@ -130,8 +144,10 @@ export const LocationsPage: React.FC = () => {
                 </tr>
               );
             })}
-            {locations.length === 0 && (
-              <tr><td colSpan={10} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)' }}>Нет объектов</td></tr>
+            {filtered.length === 0 && (
+              <tr><td colSpan={10} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)' }}>
+                {q ? 'Ничего не найдено' : 'Нет объектов'}
+              </td></tr>
             )}
           </tbody>
         </table>
