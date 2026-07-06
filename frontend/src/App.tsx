@@ -1030,7 +1030,7 @@ const App: React.FC = () => {
             />
           </>
         )}
-        {page === 'calendar' && <CalendarPage />}
+        {page === 'calendar' && <CalendarPage onOpenTicket={setDetailTicket} />}
         {page === 'kanban' && <KanbanPage role={user.role} users={users} />}
         {page === 'reports' && <ReportsPage />}
         {page === 'warehouse' && <WarehousePage />}

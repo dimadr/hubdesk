@@ -19,7 +19,7 @@ const STATUS_LABELS: Record<string, string> = {
   ASSIGNED: 'Назначена', ACCEPTED: 'Принята', IN_PROGRESS: 'В работе', COMPLETED: 'Завершена',
 };
 
-export const CalendarPage: React.FC = () => {
+export const CalendarPage: React.FC<{ onOpenTicket?: (ticket: TicketResponse) => void }> = ({ onOpenTicket }) => {
   const [tickets, setTickets] = useState<TicketResponse[]>([]);
   const [current, setCurrent] = useState(() => new Date());
   const [loading, setLoading] = useState(true);
@@ -114,7 +114,7 @@ export const CalendarPage: React.FC = () => {
                 <thead><tr><th>#</th><th>Тема</th><th>Статус</th><th>Приоритет</th></tr></thead>
                 <tbody>
                   {selectedTickets.map(t => (
-                    <tr key={t.id}>
+                    <tr key={t.id} onClick={() => { setSelectedDate(null); onOpenTicket?.(t); }} style={{ cursor: 'pointer' }}>
                       <td className="mono" style={{ color: 'var(--text-muted)' }}>#{t.number}</td>
                       <td style={{ fontWeight: 600 }}>{t.subject}</td>
                       <td>
