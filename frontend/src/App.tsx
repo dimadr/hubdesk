@@ -167,20 +167,16 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
   const [sourceDesc, setSourceDesc] = useState('');
   const [body, setBody] = useState('');
   const [locationId, setLocationId] = useState<number | ''>('');
-  const [equipmentId, setEquipmentId] = useState<number | ''>('');
   const [priority, setPriority] = useState('medium');
   const [resolutionDeadline, setResolutionDeadline] = useState('');
   const [assigneeId, setAssigneeId] = useState<number | ''>('');
   const [siteContactName, setSiteContactName] = useState('');
   const [siteContactPhone, setSiteContactPhone] = useState('');
-  const [isInternal, setIsInternal] = useState(false);
   const [locations, setLocations] = useState<Location[]>([]);
-  const [equipment, setEquipment] = useState<any[]>([]);
   const [error, setError] = useState('');
 
   useEffect(() => {
     api.get('/locations').then(r => setLocations(r.data)).catch(() => {});
-    api.get('/equipment').then(r => setEquipment(r.data)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -208,13 +204,11 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
         source_description: sourceDesc || undefined,
         customer_id: selected.customer_id,
         location_id: Number(locationId),
-        equipment_id: equipmentId ? Number(equipmentId) : undefined,
         priority,
         resolution_deadline: resolutionDeadline ? new Date(resolutionDeadline).toISOString() : undefined,
         assignee_id: assigneeId ? Number(assigneeId) : undefined,
         site_contact_name: siteContactName || undefined,
         site_contact_phone: siteContactPhone || undefined,
-        is_internal: isInternal,
       });
       onCreated();
       onClose();
@@ -224,7 +218,6 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
   };
 
   const assignables = users.filter(u => u.role === 'engineer');
-  const eqForLocation = equipment.filter(e => !locationId || e.location_id === Number(locationId));
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -246,8 +239,8 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
             </select>
           </div>
           <div className="span-2">
-            <label>Источник обращения</label>
-            <textarea placeholder="Текст обращения клиента (как сообщили)" value={sourceDesc} onChange={e => setSourceDesc(e.target.value)} rows={2} />
+            <label>Примечание</label>
+            <textarea placeholder="Дополнительная информация" value={sourceDesc} onChange={e => setSourceDesc(e.target.value)} rows={2} />
           </div>
           <div>
             <label>Объект <span className="required">*</span></label>
@@ -255,15 +248,6 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
               <option value="">— Выберите объект —</option>
               {locations.map(l => (
                 <option key={l.id} value={l.id}>{l.name} ({l.customer_name})</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label>Оборудование</label>
-            <select value={equipmentId} onChange={e => setEquipmentId(Number(e.target.value) || '')}>
-              <option value="">— Не выбрано —</option>
-              {(locationId ? eqForLocation : equipment).map(e => (
-                <option key={e.id} value={e.id}>{e.model} ({e.serial_number})</option>
               ))}
             </select>
           </div>
@@ -302,12 +286,6 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
             <label>Телефон на объекте</label>
             <input placeholder="+7 (___) ___-__-__" value={siteContactPhone} onChange={e => setSiteContactPhone(e.target.value)} />
           </div>
-          <div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-              <input type="checkbox" checked={isInternal} onChange={e => setIsInternal(e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--primary)' }} />
-              Внутренняя заявка
-            </label>
-          </div>
         </div>
         <div className="modal-actions">
           <button className="btn btn-primary" onClick={submit}>Создать</button>
@@ -324,21 +302,17 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
   const [sourceDesc, setSourceDesc] = useState(ticket.source_description || '');
   const [body, setBody] = useState(ticket.body);
   const [locationId, setLocationId] = useState<number | ''>(ticket.location_id);
-  const [equipmentId, setEquipmentId] = useState<number | ''>(ticket.equipment_id ?? '');
   const [priority, setPriority] = useState(ticket.priority);
   const [resolutionDeadline, setResolutionDeadline] = useState(ticket.resolution_deadline ? ticket.resolution_deadline.substring(0, 16) : '');
   const [assigneeId, setAssigneeId] = useState<number | ''>(ticket.assignee_id ?? '');
   const [siteContactName, setSiteContactName] = useState(ticket.site_contact_name || '');
   const [siteContactPhone, setSiteContactPhone] = useState(ticket.site_contact_phone || '');
-  const [isInternal, setIsInternal] = useState(ticket.is_internal);
   const [locations, setLocations] = useState<Location[]>([]);
-  const [equipment, setEquipment] = useState<any[]>([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     api.get('/locations').then(r => setLocations(r.data)).catch(() => {});
-    api.get('/equipment').then(r => setEquipment(r.data)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -364,13 +338,11 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
         source_description: sourceDesc || undefined,
         customer_id: selected?.customer_id ?? ticket.customer_id,
         location_id: Number(locationId),
-        equipment_id: equipmentId ? Number(equipmentId) : undefined,
         priority,
         resolution_deadline: resolutionDeadline ? new Date(resolutionDeadline).toISOString() : undefined,
         assignee_id: assigneeId ? Number(assigneeId) : undefined,
         site_contact_name: siteContactName || undefined,
         site_contact_phone: siteContactPhone || undefined,
-        is_internal: isInternal,
       });
       onSaved();
     } catch (e: any) {
@@ -380,7 +352,6 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
   };
 
   const assignables = users.filter(u => u.role === 'engineer');
-  const eqForLocation = equipment.filter(e => !locationId || e.location_id === Number(locationId));
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -402,7 +373,7 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
             </select>
           </div>
           <div className="span-2">
-            <label>Источник обращения</label>
+            <label>Примечание</label>
             <textarea value={sourceDesc} onChange={e => setSourceDesc(e.target.value)} rows={2} />
           </div>
           <div>
@@ -411,15 +382,6 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
               <option value="">— Выберите объект —</option>
               {locations.map(l => (
                 <option key={l.id} value={l.id}>{l.name} ({l.customer_name})</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label>Оборудование</label>
-            <select value={equipmentId} onChange={e => setEquipmentId(Number(e.target.value) || '')}>
-              <option value="">— Не выбрано —</option>
-              {(locationId ? eqForLocation : equipment).map(e => (
-                <option key={e.id} value={e.id}>{e.model} ({e.serial_number})</option>
               ))}
             </select>
           </div>
@@ -457,12 +419,6 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
           <div>
             <label>Телефон на объекте</label>
             <input value={siteContactPhone} onChange={e => setSiteContactPhone(e.target.value)} />
-          </div>
-          <div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-              <input type="checkbox" checked={isInternal} onChange={e => setIsInternal(e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--primary)' }} />
-              Внутренняя заявка
-            </label>
           </div>
         </div>
         <div className="modal-actions">
