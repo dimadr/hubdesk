@@ -75,11 +75,29 @@ export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[]; onDetail?
     e.dataTransfer.setData('taskId', String(taskId));
   };
 
+  const columnToStatus: Record<string, string> = {
+    project: 'ASSIGNED', todo: 'ACCEPTED', in_progress: 'IN_PROGRESS', done: 'COMPLETED',
+  };
+
   const handleDrop = async (e: React.DragEvent, column: string) => {
     e.preventDefault();
     setDragOverCol(null);
     const taskId = Number(e.dataTransfer.getData('taskId'));
-    if (taskId) await moveTask(taskId, column);
+    const ticketId = Number(e.dataTransfer.getData('ticketId'));
+    if (taskId) {
+      await moveTask(taskId, column);
+    } else if (ticketId) {
+      const targetStatus = columnToStatus[column];
+      const ticket = tickets.find(t => t.id === ticketId);
+      if (targetStatus && ticket && ticket.status !== targetStatus) {
+        try {
+          await api.patch(`/tickets/${ticketId}/status`, { status: targetStatus });
+          setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, status: targetStatus } : t));
+        } catch (e: any) {
+          alert(e.response?.data?.detail || 'Ошибка смены статуса');
+        }
+      }
+    }
   };
 
   if (loading) return <div className="loading">Загрузка...</div>;

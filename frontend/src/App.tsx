@@ -1079,7 +1079,7 @@ const App: React.FC = () => {
         )}
         {deleteTicketConfirm && (
           <div className="modal-overlay" onClick={() => setDeleteTicketConfirm(null)}>
-            <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-card" onClick={e => e.stopPropagation()}>
               <h3>Удаление заявки</h3>
               <p>Удалить заявку <strong>#{deleteTicketConfirm.number}</strong>?</p>
               <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Это действие нельзя отменить.</p>
