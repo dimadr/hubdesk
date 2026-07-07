@@ -17,7 +17,7 @@ const COLUMNS = [
   { key: 'done', label: 'Завершённые', color: '#60a5fa', bg: 'rgba(96,165,250,.08)' },
 ];
 
-export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[] }> = ({ role, users = [] }) => {
+export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[]; onDetail?: (ticket: TicketResponse) => void; onStatusChange?: (ticket: TicketResponse, target: string) => void; currentUserId?: number }> = ({ role, users = [], onDetail, onStatusChange, currentUserId }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tickets, setTickets] = useState<TicketResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,7 +25,7 @@ export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[] }> = ({ ro
   const [addingCol, setAddingCol] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<number | ''>('');
-  const currentUserId = Number(localStorage.getItem('currentUserId') || 0);
+  const selfUserId = Number(localStorage.getItem('currentUserId') || 0);
 
   useEffect(() => { loadTasks(); }, [selectedUser]);
 
@@ -38,7 +38,7 @@ export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[] }> = ({ ro
   };
 
   const loadTasks = () => {
-    const tgtUserId = (role === 'admin' && selectedUser) ? selectedUser : currentUserId;
+    const tgtUserId = (role === 'admin' && selectedUser) ? selectedUser : (currentUserId || selfUserId);
     const params: any = {};
     if (role === 'admin' && selectedUser) params.user_id = selectedUser;
     Promise.all([
@@ -118,9 +118,12 @@ export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[] }> = ({ ro
             {tickets.filter(t => ticketToColumn(t.status) === col.key).map(t => (
               <div
                 key={`ticket-${t.id}`}
+                draggable
+                onDragStart={e => e.dataTransfer.setData('ticketId', String(t.id))}
+                onClick={() => onDetail?.(t)}
                 style={{
                   background: 'var(--bg-card)', borderRadius: 7, padding: 10, marginBottom: 8,
-                  border: '1px solid var(--border)', fontSize: 13,
+                  border: '1px solid var(--border)', fontSize: 13, cursor: 'pointer',
                   borderLeft: `3px solid ${t.priority === 'critical' ? '#f87171' : t.priority === 'high' ? '#fbbf24' : 'var(--border)'}`,
                 }}
               >
