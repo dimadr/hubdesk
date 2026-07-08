@@ -58,12 +58,13 @@ async def download_attachment(
     att = await db.get(Attachment, attachment_id)
     if not att:
         raise HTTPException(404, "Файл не найден")
-    if att.ticket_id:
-        ticket = await db.get(Ticket, att.ticket_id)
-        if ticket and not await RoleChecker.can_view_ticket_async(user, ticket, db):
-            raise HTTPException(403, "Нет доступа к заявке")
-        if att.is_internal and user.role in (UserRole.customer, UserRole.engineer):
-            raise HTTPException(403, "Нет доступа к внутреннему файлу")
+    if not att.ticket_id:
+        raise HTTPException(403, "Файл не привязан к заявке")
+    ticket = await db.get(Ticket, att.ticket_id)
+    if ticket and not await RoleChecker.can_view_ticket_async(user, ticket, db):
+        raise HTTPException(403, "Нет доступа к заявке")
+    if att.is_internal and user.role in (UserRole.customer, UserRole.engineer):
+        raise HTTPException(403, "Нет доступа к внутреннему файлу")
     real_path = os.path.realpath(att.path)
     uploads_path = os.path.realpath(UPLOAD_DIR)
     if not real_path.startswith(uploads_path + os.sep) and real_path != uploads_path:
