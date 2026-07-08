@@ -33,8 +33,16 @@ class AttachmentService:
         is_internal = False
         if comment_id:
             comment = await self.session.get(Comment, comment_id)
-            if comment and comment.is_internal:
+            if not comment:
+                raise HTTPException(404, "Комментарий не найден")
+            if comment.is_internal:
                 is_internal = True
+            if comment.ticket_id:
+                ticket = await self.session.get(Ticket, comment.ticket_id)
+                if not ticket:
+                    raise HTTPException(404, "Заявка не найдена")
+                if not await RoleChecker.can_view_ticket_async(user, ticket, self.session):
+                    raise HTTPException(403, "Нет доступа к заявке")
 
         filename = f"{uuid.uuid4()}_{file.filename}"
         path = os.path.join(UPLOAD_DIR, filename)

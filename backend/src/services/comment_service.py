@@ -13,6 +13,11 @@ class CommentService:
     async def add(self, ticket_id: int, body: str, is_internal: bool, user: User) -> Comment:
         if user.role == UserRole.customer and is_internal:
             raise PermissionError("Customer cannot create internal comments")
+        ticket = await self.session.get(Ticket, ticket_id)
+        if not ticket:
+            raise ValueError("Заявка не найдена")
+        if not await RoleChecker.can_view_ticket_async(user, ticket, self.session):
+            raise PermissionError("Нет доступа к заявке")
         comment = Comment(
             ticket_id=ticket_id,
             user_id=user.id,

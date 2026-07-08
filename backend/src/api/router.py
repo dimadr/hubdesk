@@ -343,12 +343,12 @@ async def update_location(
             raise HTTPException(400, "Назначенный сотрудник должен иметь роль engineer")
 
     if "customer_id" in update_data:
-        cust = await db.get(Customer, update_data["customer_id"]) if update_data["customer_id"] else None
-        if not cust:
-            cust = Customer(name=loc.name, type="company")
-            db.add(cust)
-            await db.flush()
-            update_data["customer_id"] = cust.id
+        if update_data["customer_id"]:
+            cust = await db.get(Customer, update_data["customer_id"])
+            if not cust:
+                raise HTTPException(400, "Клиент не найден")
+        else:
+            update_data["customer_id"] = None
 
     for field, value in update_data.items():
         setattr(loc, field, value)

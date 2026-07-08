@@ -177,6 +177,8 @@ def create_ticket_router() -> APIRouter:
             comment = await svc.add(ticket_id, data.body, data.is_internal, user)
         except PermissionError as e:
             raise HTTPException(403, str(e))
+        except ValueError as e:
+            raise HTTPException(404, str(e))
         await db.commit()
         log_history("Добавлен комментарий", f"к заявке #{ticket_id}", user.name)
         return CommentResponse.model_validate(comment)
@@ -216,6 +218,11 @@ def create_ticket_router() -> APIRouter:
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
+        ticket = await db.get(Ticket, ticket_id)
+        if not ticket:
+            raise HTTPException(404)
+        if not await RoleChecker.can_view_ticket_async(user, ticket, db):
+            raise HTTPException(403, "Нет доступа к заявке")
         result = await db.execute(select(Checklist).where(Checklist.ticket_id == ticket_id))
         checklists = result.scalars().all()
         out = []
@@ -244,6 +251,9 @@ def create_ticket_router() -> APIRouter:
             raise HTTPException(404)
         if not await RoleChecker.can_view_ticket_async(user, ticket, db):
             raise HTTPException(403, "Нет доступа к заявке")
+        checklist = await db.get(Checklist, checklist_id)
+        if not checklist or checklist.ticket_id != ticket_id:
+            raise HTTPException(404, "Чек-лист не найден")
         ftype = FieldType[data.field_type] if data.field_type in FieldType._member_names_ else FieldType.checkbox
         field = ChecklistField(checklist_id=checklist_id, label=data.label, field_type=ftype, is_mandatory=data.is_mandatory)
         db.add(field)
@@ -268,9 +278,12 @@ def create_ticket_router() -> APIRouter:
             raise HTTPException(404)
         if not await RoleChecker.can_view_ticket_async(user, ticket, db):
             raise HTTPException(403, "Нет доступа к заявке")
+        checklist = await db.get(Checklist, checklist_id)
+        if not checklist or checklist.ticket_id != ticket_id:
+            raise HTTPException(404, "Чек-лист не найден")
         field = await db.get(ChecklistField, field_id)
-        if not field:
-            raise HTTPException(404)
+        if not field or field.checklist_id != checklist_id:
+            raise HTTPException(404, "Поле не найдено")
         field.value = data.value
         await db.commit()
         return {"id": field.id, "value": field.value}
