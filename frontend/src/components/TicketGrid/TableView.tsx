@@ -178,7 +178,7 @@ function renderCellContent(ticket: TicketResponse, col: ColumnDef, userMap: Map<
         onClick={e => { e.stopPropagation(); onEdit?.(ticket); }}
         title="Редактировать"
       >✎</button>
-      {role === 'admin' && onDelete && (
+      {(role === 'admin' || role === 'director') && onDelete && (
         <button
           className="btn btn-danger"
           style={{ padding: '2px 6px', fontSize: 11, lineHeight: 1 }}

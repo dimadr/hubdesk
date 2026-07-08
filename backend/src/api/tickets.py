@@ -311,8 +311,8 @@ def create_ticket_router() -> APIRouter:
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
-        if user.role != UserRole.admin:
-            raise HTTPException(403, "Только администратор может удалять заявки")
+        if user.role not in (UserRole.admin, UserRole.director):
+            raise HTTPException(403, "Только администратор или директор может удалять заявки")
         ticket = await db.get(Ticket, ticket_id)
         if not ticket:
             raise HTTPException(404, "Заявка не найдена")
