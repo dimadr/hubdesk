@@ -527,7 +527,13 @@ const TicketDetailModal: React.FC<{
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
-    return escaped.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    return escaped.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, label, url) => {
+      const safeUrl = url.trim();
+      if (/^(https?|mailto|tel):/i.test(safeUrl)) {
+        return `<a href="${safeUrl}" target="_blank" rel="noopener">${label}</a>`;
+      }
+      return `[${label}](${safeUrl})`;
+    });
   };
 
   return (
@@ -888,10 +894,10 @@ const App: React.FC = () => {
   const confirmComplete = async (comment: string) => {
     if (!confirmStatusTicket) return;
     try {
-      await api.patch(`/tickets/${confirmStatusTicket.ticket.id}/status`, { status: 'COMPLETED' });
       if (comment) {
         await api.post(`/tickets/${confirmStatusTicket.ticket.id}/comments`, { body: comment, is_internal: true });
       }
+      await api.patch(`/tickets/${confirmStatusTicket.ticket.id}/status`, { status: 'COMPLETED' });
       setConfirmStatusTicket(null);
       setRefreshKey(k => k + 1);
     } catch (e: any) {

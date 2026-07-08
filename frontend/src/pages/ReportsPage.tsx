@@ -75,6 +75,7 @@ export const ReportsPage: React.FC = () => {
         )}
         <button className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: 12, marginLeft: 'auto' }} onClick={loadAll}>Обновить</button>
       </div>
+      {error && <p style={{ color: 'var(--danger)', fontSize: 13, background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 6, marginBottom: 14 }}>{error}</p>}
 
       <div className="tabs" style={{ marginTop: 14, marginBottom: 14, display: 'inline-flex' }}>
         {([

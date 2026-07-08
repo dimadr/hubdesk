@@ -556,7 +556,7 @@ const ApiKeysTab: React.FC = () => {
             {keys.map(k => (
               <tr key={k.id}>
                 <td style={{ fontWeight: 600 }}>{k.name}</td>
-                <td><code style={{ fontSize: 11, background: 'var(--bg-surface)', padding: '2px 6px', borderRadius: 4 }}>{k.key}</code></td>
+                <td><code style={{ fontSize: 11, background: 'var(--bg-surface)', padding: '2px 6px', borderRadius: 4 }}>{k.key.length > 8 ? k.key.slice(0, 4) + '****' + k.key.slice(-4) : '****'}</code></td>
                 <td><span className="status-pill" style={{ background: k.is_active ? 'var(--success-bg)' : 'var(--danger-bg)', color: k.is_active ? 'var(--success)' : 'var(--danger)' }}>{k.is_active ? 'Активен' : 'Отключён'}</span></td>
                 <td style={{ color: 'var(--text-muted)', fontSize: 11 }}>{new Date(k.created_at).toLocaleString('ru-RU')}</td>
                 <td>
