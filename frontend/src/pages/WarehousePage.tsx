@@ -21,6 +21,8 @@ const HTML_ENTITIES: Record<string, string> = {
 const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (ch) => HTML_ENTITIES[ch] || ch);
 
 export const WarehousePage: React.FC = () => {
+  const role = (() => { try { return JSON.parse(localStorage.getItem('user') || '{}').role || ''; } catch { return ''; } })();
+  const isAdmin = role === 'admin';
   const [tab, setTab] = useState<'warehouses' | 'nomenclature' | 'docs' | 'balances' | 'replacement' | 'insert'>('docs');
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [nomenclature, setNomenclature] = useState<NomenclatureItem[]>([]);
@@ -253,8 +255,8 @@ export const WarehousePage: React.FC = () => {
           </div>
         )}
 
-        {tab === 'replacement' && <ReplacementTab />}
-        {tab === 'insert' && <InsertTab />}
+        {tab === 'replacement' && <ReplacementTab isAdmin={isAdmin} />}
+        {tab === 'insert' && <InsertTab isAdmin={isAdmin} />}
       </div>
 
       {showWhModal && (
@@ -368,7 +370,7 @@ export const WarehousePage: React.FC = () => {
   );
 };
 
-const ReplacementTab: React.FC = () => {
+const ReplacementTab: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
   const [tab, setTab] = useState<'catalog' | 'journal' | 'documents' | 'balance'>('catalog');
   const [devices, setDevices] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -495,7 +497,7 @@ const ReplacementTab: React.FC = () => {
                       <button className="btn btn-success" onClick={() => setQuick({ devId: d.id, action: 'incoming', qty: '1', taken_by_id: '', location_id: '' })} style={{ padding: '2px 6px', fontSize: 11, marginRight: 2 }} title="Приход">+</button>
                       <button className="btn btn-secondary" onClick={() => setQuick({ devId: d.id, action: 'outgoing', qty: '1', taken_by_id: '', location_id: '' })} style={{ padding: '2px 6px', fontSize: 11, marginRight: 2 }} title="Выдача">−</button>
                       <button className="btn btn-secondary" onClick={() => openDeviceForm(d)} style={{ padding: '2px 6px', fontSize: 11 }}>✎</button>
-                      <button className="btn btn-danger" onClick={() => delDevice(d.id)} style={{ padding: '2px 6px', fontSize: 11, marginLeft: 2 }}>✕</button>
+                      {isAdmin && <button className="btn btn-danger" onClick={() => delDevice(d.id)} style={{ padding: '2px 6px', fontSize: 11, marginLeft: 2 }}>✕</button>}
                     </td>
                   </tr>
                 ))}
@@ -561,7 +563,7 @@ const ReplacementTab: React.FC = () => {
                   <td>{t.taken_by_name || '—'}</td>
                   <td>{t.location_name || '—'}</td>
                   <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t.document || '—'}</td>
-                  <td><button className="btn btn-danger" onClick={() => delTx(t.id)} style={{ padding: '3px 8px', fontSize: 10 }}>✕</button></td>
+                  {isAdmin && <td><button className="btn btn-danger" onClick={() => delTx(t.id)} style={{ padding: '3px 8px', fontSize: 10 }}>✕</button></td>}
                 </tr>
                 );
               })}
@@ -742,7 +744,7 @@ const ReplacementTab: React.FC = () => {
   );
 };
 
-const InsertTab: React.FC = () => {
+const InsertTab: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
   const [products, setProducts] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
@@ -871,7 +873,7 @@ const InsertTab: React.FC = () => {
                       <button className="btn btn-success" onClick={() => setQuick({ prodId: p.id, action: 'incoming', qty: '1', taken_by_id: '', location_id: '' })} style={{ padding: '2px 6px', fontSize: 11, marginRight: 2 }} title="Приход">+</button>
                       <button className="btn btn-secondary" onClick={() => setQuick({ prodId: p.id, action: 'outgoing', qty: '1', taken_by_id: '', location_id: '' })} style={{ padding: '2px 6px', fontSize: 11, marginRight: 2 }} title="Выдача">−</button>
                       <button className="btn btn-secondary" onClick={() => openProductForm(p)} style={{ padding: '2px 6px', fontSize: 11 }}>✎</button>
-                      <button className="btn btn-danger" onClick={() => delProduct(p.id)} style={{ padding: '2px 6px', fontSize: 11, marginLeft: 2 }}>✕</button>
+                      {isAdmin && <button className="btn btn-danger" onClick={() => delProduct(p.id)} style={{ padding: '2px 6px', fontSize: 11, marginLeft: 2 }}>✕</button>}
                     </td>
                   </tr>
                 ))}
@@ -937,7 +939,7 @@ const InsertTab: React.FC = () => {
                   <td className="mono" style={{ fontWeight: 600 }}>{t.quantity}</td>
                   <td>{t.taken_by_name || '—'}</td>
                   <td>{t.location_name || '—'}</td>
-                  <td><button className="btn btn-danger" onClick={() => delTx(t.id)} style={{ padding: '3px 8px', fontSize: 10 }}>✕</button></td>
+                  {isAdmin && <td><button className="btn btn-danger" onClick={() => delTx(t.id)} style={{ padding: '3px 8px', fontSize: 10 }}>✕</button></td>}
                 </tr>
               ))}
             </tbody>

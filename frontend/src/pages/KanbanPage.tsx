@@ -90,11 +90,15 @@ export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[]; onDetail?
       const targetStatus = columnToStatus[column];
       const ticket = tickets.find(t => t.id === ticketId);
       if (targetStatus && ticket && ticket.status !== targetStatus) {
-        try {
-          await api.patch(`/tickets/${ticketId}/status`, { status: targetStatus });
-          setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, status: targetStatus } : t));
-        } catch (e: any) {
-          alert(e.response?.data?.detail || 'Ошибка смены статуса');
+        if (targetStatus === 'COMPLETED' && onStatusChange) {
+          onStatusChange(ticket, 'COMPLETED');
+        } else {
+          try {
+            await api.patch(`/tickets/${ticketId}/status`, { status: targetStatus });
+            setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, status: targetStatus } : t));
+          } catch (e: any) {
+            alert(e.response?.data?.detail || 'Ошибка смены статуса');
+          }
         }
       }
     }
