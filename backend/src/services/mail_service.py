@@ -112,19 +112,12 @@ class MailService:
                 customer = await MailService._find_customer(db, sender)
                 customer_id = customer.id if customer else None
                 if not customer_id:
-                    cust_result = await db.execute(select(Customer).limit(1))
-                    first_cust = cust_result.scalar_one_or_none()
-                    if first_cust:
-                        customer_id = first_cust.id
-                    else:
-                        customer = Customer(name=sender or "Email", type="company")
-                        db.add(customer)
-                        await db.flush()
-                        customer_id = customer.id
+                    customer = Customer(name=sender or "Email", type="company")
+                    db.add(customer)
+                    await db.flush()
+                    customer_id = customer.id
 
-                loc_result = await db.execute(select(AssetLocation).limit(1))
-                first_loc = loc_result.scalar_one_or_none()
-                location_id = first_loc.id if first_loc else None
+                location_id = None
 
                 last_num_result = await db.execute(
                     select(Ticket.number).order_by(Ticket.number.desc()).limit(1).with_for_update()

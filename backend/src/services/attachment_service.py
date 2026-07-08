@@ -43,8 +43,9 @@ class AttachmentService:
                     raise HTTPException(404, "Заявка не найдена")
                 if not await RoleChecker.can_view_ticket_async(user, ticket, self.session):
                     raise HTTPException(403, "Нет доступа к заявке")
-                if not ticket_id:
-                    ticket_id = comment.ticket_id
+                if ticket_id and ticket_id != comment.ticket_id:
+                    raise HTTPException(400, "ticket_id не совпадает с comment_id")
+                ticket_id = comment.ticket_id
 
         filename = f"{uuid.uuid4()}_{file.filename}"
         path = os.path.join(UPLOAD_DIR, filename)
