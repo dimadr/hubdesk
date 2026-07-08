@@ -61,7 +61,9 @@ async def download_attachment(
     if not att.ticket_id:
         raise HTTPException(403, "Файл не привязан к заявке")
     ticket = await db.get(Ticket, att.ticket_id)
-    if ticket and not await RoleChecker.can_view_ticket_async(user, ticket, db):
+    if not ticket:
+        raise HTTPException(403, "Заявка не найдена")
+    if not await RoleChecker.can_view_ticket_async(user, ticket, db):
         raise HTTPException(403, "Нет доступа к заявке")
     if att.is_internal and user.role in (UserRole.customer, UserRole.engineer):
         raise HTTPException(403, "Нет доступа к внутреннему файлу")
