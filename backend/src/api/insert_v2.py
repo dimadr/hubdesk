@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from src.database import get_db
 from src.models.insert_stock import InsertProduct, InsertTransaction
-from src.models.user import User
+from src.models.user import User, UserRole
 from src.core.deps import get_current_user
 from src.services.audit_service import log_audit
 
@@ -145,6 +145,8 @@ async def list_products(user: User = Depends(get_current_user), db: AsyncSession
 
 @insert_v2_router.post("/products", status_code=201, response_model=ProductResponse)
 async def create_product(data: ProductCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper, UserRole.metrologist):
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
     existing = await db.execute(
         select(InsertProduct).where(sa_func.lower(InsertProduct.name) == data.name.strip().lower())
     )
@@ -175,6 +177,8 @@ async def create_product(data: ProductCreate, user: User = Depends(get_current_u
 
 @insert_v2_router.patch("/products/{product_id}", response_model=ProductResponse)
 async def update_product(product_id: int, data: ProductUpdate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper, UserRole.metrologist):
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
     p = await db.get(InsertProduct, product_id)
     if not p:
         raise HTTPException(status_code=404, detail="Продукт не найден")
@@ -238,6 +242,8 @@ async def list_transactions(user: User = Depends(get_current_user), db: AsyncSes
 
 @insert_v2_router.post("/transactions", status_code=201, response_model=TransactionResponse)
 async def create_transaction(data: TransactionCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper, UserRole.metrologist):
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
     if data.type not in ("incoming", "outgoing", "return"):
         raise HTTPException(status_code=400, detail="Неверный тип транзакции")
 

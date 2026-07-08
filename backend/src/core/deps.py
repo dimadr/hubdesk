@@ -50,8 +50,9 @@ async def get_api_key(request: Request):
     key = request.headers.get("X-Api-Key") or request.headers.get("Authorization", "").removeprefix("Bearer ")
     if not key:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key required")
+    key_hash = ApiKey.hash_key(key)
     async with async_session() as db:
-        result = await db.execute(select(ApiKey).where(ApiKey.key == key, ApiKey.is_active == True))
+        result = await db.execute(select(ApiKey).where(ApiKey.key_hash == key_hash, ApiKey.is_active == True))
         api_key = result.scalar_one_or_none()
         if not api_key:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")

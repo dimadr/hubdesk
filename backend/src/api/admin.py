@@ -370,17 +370,18 @@ async def list_api_keys(admin: User = Depends(require_admin), db: AsyncSession =
     from src.models.api_key import ApiKey
     result = await db.execute(select(ApiKey).order_by(ApiKey.id.desc()))
     keys = result.scalars().all()
-    return keys
+    return [ApiKeyResponse(id=k.id, key="****", name=k.name, is_active=k.is_active, created_at=k.created_at) for k in keys]
 
 
 @admin_router.post("/api-keys", response_model=ApiKeyResponse, status_code=201)
 async def create_api_key(data: CreateApiKeyRequest, admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     from src.models.api_key import ApiKey
-    k = ApiKey(name=data.name, key=secrets.token_hex(24))
+    raw_key = secrets.token_hex(24)
+    k = ApiKey(name=data.name, key_hash=ApiKey.hash_key(raw_key))
     db.add(k)
     await db.commit()
     await db.refresh(k)
-    return k
+    return ApiKeyResponse(id=k.id, key=raw_key, name=k.name, is_active=k.is_active, created_at=k.created_at)
 
 
 @admin_router.patch("/api-keys/{key_id}")

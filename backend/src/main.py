@@ -86,6 +86,8 @@ async def lifespan(app: FastAPI):
             "UPDATE ticket_transitions SET to_status = 'COMPLETED' WHERE to_status = 'REVIEW'",
             # Пересоздание enum ticketstatus с новыми значениями
             "DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid=e.enumtypid WHERE t.typname='ticketstatus' AND e.enumlabel IN ('ON_THE_WAY','ARRIVED','REVIEW')) THEN ALTER TABLE tickets ALTER COLUMN status TYPE VARCHAR(50); DROP TYPE ticketstatus; CREATE TYPE ticketstatus AS ENUM ('ASSIGNED','ACCEPTED','IN_PROGRESS','COMPLETED'); ALTER TABLE tickets ALTER COLUMN status TYPE ticketstatus USING status::ticketstatus; ALTER TABLE ticket_transitions ALTER COLUMN from_status TYPE ticketstatus USING from_status::ticketstatus; ALTER TABLE ticket_transitions ALTER COLUMN to_status TYPE ticketstatus USING to_status::ticketstatus; END IF; END $$",
+            # Миграция api_keys: key → key_hash
+            "DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='api_keys' AND column_name='key') THEN ALTER TABLE api_keys RENAME COLUMN key TO key_hash; ALTER INDEX api_keys_key_key RENAME TO api_keys_key_hash_key; UPDATE api_keys SET key_hash = encode(sha256(key_hash::bytea), 'hex'); END IF; END $$",
         ]
         for sql in migrations:
             try:
