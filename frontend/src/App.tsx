@@ -205,7 +205,7 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
         customer_id: selected.customer_id,
         location_id: Number(locationId),
         priority,
-        resolution_deadline: resolutionDeadline ? new Date(resolutionDeadline).toISOString() : undefined,
+        resolution_deadline: resolutionDeadline ? new Date(resolutionDeadline + 'T23:59:59').toISOString() : undefined,
         assignee_id: assigneeId ? Number(assigneeId) : undefined,
         site_contact_name: siteContactName || undefined,
         site_contact_phone: siteContactPhone || undefined,
@@ -266,7 +266,7 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
           </div>
           <div>
             <label>Срок исполнения</label>
-            <input type="datetime-local" value={resolutionDeadline} onChange={e => setResolutionDeadline(e.target.value)} />
+            <input type="date" value={resolutionDeadline} onChange={e => setResolutionDeadline(e.target.value)} />
           </div>
           <div></div>
           <div>
@@ -303,7 +303,7 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
   const [body, setBody] = useState(ticket.body);
   const [locationId, setLocationId] = useState<number | ''>(ticket.location_id);
   const [priority, setPriority] = useState(ticket.priority);
-  const [resolutionDeadline, setResolutionDeadline] = useState(ticket.resolution_deadline ? ticket.resolution_deadline.substring(0, 16) : '');
+  const [resolutionDeadline, setResolutionDeadline] = useState(ticket.resolution_deadline ? ticket.resolution_deadline.substring(0, 10) : '');
   const [assigneeId, setAssigneeId] = useState<number | ''>(ticket.assignee_id ?? '');
   const [siteContactName, setSiteContactName] = useState(ticket.site_contact_name || '');
   const [siteContactPhone, setSiteContactPhone] = useState(ticket.site_contact_phone || '');
@@ -339,7 +339,7 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
         customer_id: selected?.customer_id ?? ticket.customer_id,
         location_id: Number(locationId),
         priority,
-        resolution_deadline: resolutionDeadline ? new Date(resolutionDeadline).toISOString() : undefined,
+        resolution_deadline: resolutionDeadline ? new Date(resolutionDeadline + 'T23:59:59').toISOString() : undefined,
         assignee_id: assigneeId ? Number(assigneeId) : undefined,
         site_contact_name: siteContactName || undefined,
         site_contact_phone: siteContactPhone || undefined,
@@ -400,7 +400,7 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
           </div>
           <div>
             <label>Срок исполнения</label>
-            <input type="datetime-local" value={resolutionDeadline} onChange={e => setResolutionDeadline(e.target.value)} />
+            <input type="date" value={resolutionDeadline} onChange={e => setResolutionDeadline(e.target.value)} />
           </div>
           <div></div>
           <div>
@@ -513,7 +513,7 @@ const TicketDetailModal: React.FC<{
 
   const saveDeadline = async () => {
     try {
-      await api.patch(`/tickets/${ticket.id}`, { resolution_deadline: deadlineValue || null });
+      await api.patch(`/tickets/${ticket.id}`, { resolution_deadline: deadlineValue ? deadlineValue + 'T23:59:59' : null });
       setEditingDeadline(false);
       if (onRefresh) onRefresh();
     } catch (e: any) {
@@ -546,7 +546,7 @@ const TicketDetailModal: React.FC<{
             <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Приоритет</span><div>{PL[ticket.priority] || ticket.priority}</div></div>
             {ticket.type && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Тип</span><div>{TL[ticket.type] || ticket.type}</div></div>}
             <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Создана</span><div>{new Date(ticket.created_at).toLocaleString('ru-RU')}</div></div>
-            {ticket.resolution_deadline && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Срок</span><div>{new Date(ticket.resolution_deadline).toLocaleString('ru-RU')}</div></div>}
+            {ticket.resolution_deadline && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Срок</span><div>{new Date(ticket.resolution_deadline).toLocaleDateString('ru-RU')}</div></div>}
             {!ticket.resolution_deadline && !editingDeadline && canStatus && (
               <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Срок</span><div>
                 <button onClick={() => setEditingDeadline(true)} style={{ background: 'none', border: '1px dashed var(--border)', borderRadius: 6, padding: '2px 8px', fontSize: 12, color: 'var(--text-muted)', cursor: 'pointer' }}>+ Указать срок</button>
