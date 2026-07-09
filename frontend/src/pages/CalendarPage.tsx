@@ -19,6 +19,16 @@ const STATUS_LABELS: Record<string, string> = {
   ASSIGNED: 'Назначена', ACCEPTED: 'Принята', IN_PROGRESS: 'В работе', COMPLETED: 'Завершена',
 };
 
+const getTicketColor = (t: TicketResponse): string => {
+  const now = new Date();
+  const deadline = t.resolution_deadline || t.scheduled_end;
+  if (deadline) {
+    const dl = new Date(deadline);
+    if (dl < now) return 'var(--danger)';
+  }
+  return 'var(--success)';
+};
+
 export const CalendarPage: React.FC<{ onOpenTicket?: (ticket: TicketResponse) => void }> = ({ onOpenTicket }) => {
   const [tickets, setTickets] = useState<TicketResponse[]>([]);
   const [current, setCurrent] = useState(() => new Date());
@@ -27,7 +37,7 @@ export const CalendarPage: React.FC<{ onOpenTicket?: (ticket: TicketResponse) =>
   const [selectedTickets, setSelectedTickets] = useState<TicketResponse[]>([]);
 
   useEffect(() => {
-    api.get('/tickets', { params: { limit: 200 } })
+    api.get('/tickets', { params: { limit: 200, archived: false } })
       .then(r => {
         const open = r.data.filter((t: TicketResponse) => t.status !== 'COMPLETED');
         setTickets(open);
@@ -84,7 +94,7 @@ export const CalendarPage: React.FC<{ onOpenTicket?: (ticket: TicketResponse) =>
         <span className="text-muted" style={{ marginLeft: 'auto', fontSize: 13 }}>{tickets.length} заявок</span>
       </div>
       <div className="cal-grid">
-        {DAYS.map(d => <div key={d} className="cal-weekday">{d}</div>)}
+        {DAYS.map((d, i) => <div key={d} className="cal-weekday" style={i >= 5 ? { color: 'var(--danger)' } : undefined}>{d}</div>)}
         {cells.map((d, i) => {
           const dateKey = d ? `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}` : '';
           const dayTickets = dateKey ? (ticketsByDate[dateKey] || []) : [];
@@ -97,7 +107,7 @@ export const CalendarPage: React.FC<{ onOpenTicket?: (ticket: TicketResponse) =>
               {d && <div className="cal-day-num">{d}</div>}
               {dayTickets.map(t => (
                 <div key={t.id} className="cal-ticket">
-                  <span className="cal-dot" style={{ background: PRIORITY_COLORS[t.priority] || 'var(--text-muted)' }} />
+                  <span className="cal-dot" style={{ background: getTicketColor(t) }} />
                   <span className="cal-ticket-text">#{t.number} {t.subject}</span>
                 </div>
               ))}

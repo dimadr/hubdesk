@@ -67,6 +67,7 @@ def create_ticket_router() -> APIRouter:
             stmt = stmt.where(Ticket.archived_at != None)
         elif filters.archived is False:
             stmt = stmt.where(Ticket.archived_at == None)
+        stmt = stmt.order_by(Ticket.created_at.desc())
         stmt = stmt.offset(filters.offset).limit(filters.limit)
         result = await db.execute(stmt)
         tickets = result.scalars().all()

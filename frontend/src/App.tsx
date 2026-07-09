@@ -808,6 +808,7 @@ const App: React.FC = () => {
   const [deleteTicketConfirm, setDeleteTicketConfirm] = useState<TicketResponse | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [users, setUsers] = useState<UserInfo[]>([]);
+  const [viewingEngineerId, setViewingEngineerId] = useState<number | null>(null);
   const [stats, setStats] = useState<{ total: number; open: number; urgent: number }>({ total: 0, open: 0, urgent: 0 });
 
   const getInitialTheme = () => localStorage.getItem('theme') || 'dark';
@@ -935,6 +936,26 @@ const App: React.FC = () => {
               </button>
             ))}
         </nav>
+        {(user.role === 'admin' || user.role === 'director') && (
+          <div className="sidebar-engineers">
+            <div className="nav-section">Доски инженеров</div>
+            {viewingEngineerId !== null && (
+              <button className="nav-item" onClick={() => { setViewingEngineerId(null); setPage('kanban'); }}>
+                <span className="nav-icon">←</span> Моя доска
+              </button>
+            )}
+            {users.filter(u => u.role === 'engineer').sort((a, b) => a.name.localeCompare(b.name, 'ru')).map(eng => (
+              <button
+                key={eng.id}
+                className={`nav-item ${viewingEngineerId === eng.id ? 'active' : ''}`}
+                onClick={() => { setViewingEngineerId(eng.id); setPage('kanban'); }}
+              >
+                <span className="nav-icon">👤</span>
+                {eng.name}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="sidebar-user">
           <div className="user-name">{user.name}</div>
           <div className="user-email">{user.email}</div>
@@ -951,7 +972,7 @@ const App: React.FC = () => {
           <h1>
             {page === 'tickets' ? 'Заявки' :
              page === 'calendar' ? 'Календарь' :
-             page === 'kanban' ? 'Моя доска' :
+             page === 'kanban' ? (viewingEngineerId ? `Доска: ${users.find(u => u.id === viewingEngineerId)?.name || ''}` : 'Моя доска') :
              page === 'reports' ? 'Отчёты' :
              page === 'locations' ? 'Объекты' :
              page === 'employees' ? 'Сотрудники' :
@@ -1000,7 +1021,7 @@ const App: React.FC = () => {
           </>
         )}
         {page === 'calendar' && <CalendarPage onOpenTicket={setDetailTicket} />}
-        {page === 'kanban' && <KanbanPage role={user.role} users={users} onDetail={setDetailTicket} onStatusChange={handleStatusChange} currentUserId={user.user_id || user.id} />}
+        {page === 'kanban' && <KanbanPage role={user.role} users={users} onDetail={setDetailTicket} onStatusChange={handleStatusChange} currentUserId={viewingEngineerId || user.user_id || user.id} />}
         {page === 'reports' && <ReportsPage />}
         {page === 'warehouse' && <WarehousePage />}
         {page === 'locations' && <LocationsPage />}
