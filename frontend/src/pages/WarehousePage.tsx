@@ -684,8 +684,9 @@ const ReplacementTab: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
                   fd.append('file', file);
                   try {
                     const resp = await api.post('/attachments', fd);
-                    const url = resp.data?.file_url || resp.data?.url || '';
-                    setForm(prev => ({ ...prev, passport_scan: url || file.name }));
+                    const path = resp.data?.path || '';
+                    const url = path ? `/files/${path.replace('uploads/', '')}` : file.name;
+                    setForm(prev => ({ ...prev, passport_scan: url }));
                   } catch { alert('Ошибка загрузки фото'); }
                   setUploadingPhoto(false);
                 }} style={{ fontSize: 12, color: 'var(--text-secondary)' }} disabled={uploadingPhoto} />

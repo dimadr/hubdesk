@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { api, TicketResponse } from '../api/client';
 
 interface Task {
@@ -17,7 +17,7 @@ const COLUMNS = [
   { key: 'done', label: 'Завершённые', color: '#60a5fa', bg: 'rgba(96,165,250,.08)' },
 ];
 
-export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[]; onDetail?: (ticket: TicketResponse) => void; onStatusChange?: (ticket: TicketResponse, target: string) => void; currentUserId?: number }> = ({ role, users = [], onDetail, onStatusChange, currentUserId }) => {
+export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[]; onDetail?: (ticket: TicketResponse) => void; onStatusChange?: (ticket: TicketResponse, target: string) => void; currentUserId?: number; viewingEngineerId?: number | null }> = ({ role, users = [], onDetail, onStatusChange, currentUserId, viewingEngineerId }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tickets, setTickets] = useState<TicketResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,20 +27,9 @@ export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[]; onDetail?
   const [selectedUser, setSelectedUser] = useState<number | ''>('');
   const selfUserId = Number(localStorage.getItem('currentUserId') || 0);
 
-  useEffect(() => { loadTasks(); }, [selectedUser]);
-
-  const ticketToColumn = (status: string) => {
-    if (status === 'ASSIGNED') return 'project';
-    if (status === 'ACCEPTED') return 'todo';
-    if (status === 'IN_PROGRESS') return 'in_progress';
-    if (status === 'COMPLETED') return 'done';
-    return 'project';
-  };
-
-  const loadTasks = () => {
-    const tgtUserId = (role === 'admin' && selectedUser) ? selectedUser : (currentUserId || selfUserId);
+  const loadTasks = useCallback(() => {
+    const tgtUserId = currentUserId || selfUserId;
     const params: any = {};
-    if (role === 'admin' && selectedUser) params.user_id = selectedUser;
     Promise.all([
       api.get('/personal-tasks', { params }),
       api.get('/tickets', { params: { assignee_id: tgtUserId, limit: 200 } }),
@@ -49,6 +38,21 @@ export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[]; onDetail?
       setTickets(t.data);
       setLoading(false);
     }).catch(() => setLoading(false));
+  }, [currentUserId, selfUserId]);
+
+  useEffect(() => {
+    setLoading(true);
+    setTasks([]);
+    setTickets([]);
+    loadTasks();
+  }, [loadTasks]);
+
+  const ticketToColumn = (status: string) => {
+    if (status === 'ASSIGNED') return 'project';
+    if (status === 'ACCEPTED') return 'todo';
+    if (status === 'IN_PROGRESS') return 'in_progress';
+    if (status === 'COMPLETED') return 'done';
+    return 'project';
   };
 
   const addTask = async (column: string) => {

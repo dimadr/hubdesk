@@ -24,7 +24,7 @@ async def upload_attachment(
     db: AsyncSession = Depends(get_db),
 ):
     if not ticket_id and not comment_id:
-        raise HTTPException(400, "Необходимо указать ticket_id или comment_id")
+        pass  # Allow orphan files (warehouse photos, etc.)
     svc = AttachmentService(db)
     att = await svc.upload(file, ticket_id, comment_id, user)
     await db.commit()

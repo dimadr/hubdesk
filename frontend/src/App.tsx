@@ -653,7 +653,8 @@ const CompleteTicketModal: React.FC<{ ticket: TicketResponse; onConfirm: (commen
           form.append('file', photoFile);
           form.append('ticket_id', String(ticket.id));
           const resp = await api.post('/attachments', form);
-          photoUrl = resp.data?.file_url || `(файл: ${photoFile.name})`;
+          const path = resp.data?.path || '';
+          photoUrl = path ? `/files/${path.replace('uploads/', '')}` : `(файл: ${photoFile.name})`;
         } catch {
           photoUrl = `(файл: ${photoFile.name})`;
         }
@@ -924,12 +925,13 @@ const App: React.FC = () => {
           {NAV_ITEMS.filter(item => !('adminOnly' in item) || user.role === 'admin')
             .filter(item => item.key !== 'reports' || ['admin', 'director', 'dispatcher', 'accountant'].includes(user.role))
             .filter(item => item.key !== 'audit' || ['admin', 'director'].includes(user.role))
+            .filter(item => item.key !== 'employees' || ['admin', 'director', 'dispatcher', 'accountant'].includes(user.role))
             .filter(item => item.key !== 'kanban' || ['admin', 'director', 'dispatcher', 'engineer'].includes(user.role))
             .map(item => (
               <button
                 key={item.key}
                 className={`nav-item ${page === item.key ? 'active' : ''}`}
-                onClick={() => setPage(item.key)}
+                onClick={() => { setViewingEngineerId(null); setPage(item.key); }}
               >
                 <span className="nav-icon">{item.icon}</span>
                 {item.label}
@@ -1021,7 +1023,7 @@ const App: React.FC = () => {
           </>
         )}
         {page === 'calendar' && <CalendarPage onOpenTicket={setDetailTicket} />}
-        {page === 'kanban' && <KanbanPage role={user.role} users={users} onDetail={setDetailTicket} onStatusChange={handleStatusChange} currentUserId={viewingEngineerId || user.user_id || user.id} />}
+        {page === 'kanban' && <KanbanPage role={user.role} users={users} onDetail={setDetailTicket} onStatusChange={handleStatusChange} currentUserId={viewingEngineerId || user.user_id || user.id} viewingEngineerId={viewingEngineerId} />}
         {page === 'reports' && <ReportsPage />}
         {page === 'warehouse' && <WarehousePage />}
         {page === 'locations' && <LocationsPage />}

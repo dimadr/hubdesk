@@ -515,6 +515,7 @@ const ApiKeysTab: React.FC = () => {
   const [keys, setKeys] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState('');
+  const [createdKey, setCreatedKey] = useState<string | null>(null);
 
   const load = () => {
     api.get('/admin/api-keys').then(r => { setKeys(r.data); setLoading(false); }).catch(() => setLoading(false));
@@ -524,7 +525,12 @@ const ApiKeysTab: React.FC = () => {
 
   const create = async () => {
     if (!newName.trim()) return;
-    try { await api.post('/admin/api-keys', { name: newName.trim() }); setNewName(''); load(); } catch {}
+    try {
+      const resp = await api.post('/admin/api-keys', { name: newName.trim() });
+      setCreatedKey(resp.data.key || resp.data.api_key || null);
+      setNewName('');
+      load();
+    } catch {}
   };
 
   const toggle = async (id: number) => {
@@ -549,6 +555,13 @@ const ApiKeysTab: React.FC = () => {
           style={{ flex: 1, padding: '6px 10px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-surface)', color: 'var(--text)' }} />
         <button className="btn btn-primary" onClick={create} style={{ padding: '6px 14px', fontSize: 12 }}>Создать</button>
       </div>
+      {createdKey && (
+        <div style={{ padding: 10, background: 'var(--success-bg)', border: '1px solid var(--success)', borderRadius: 7, marginBottom: 14, fontSize: 12 }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>Ключ создан (покажите один раз):</div>
+          <code style={{ fontSize: 13, userSelect: 'all', wordBreak: 'break-all' }}>{createdKey}</code>
+          <button className="btn btn-secondary" onClick={() => setCreatedKey(null)} style={{ marginLeft: 12, padding: '3px 8px', fontSize: 11 }}>Закрыть</button>
+        </div>
+      )}
       <div className="table-wrapper">
         <table>
           <thead><tr><th>Название</th><th>Ключ</th><th>Статус</th><th>Создан</th><th></th></tr></thead>
