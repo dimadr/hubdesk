@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from src.models.comment import Comment
 from src.models.ticket import Ticket
 from src.models.user import User, UserRole
@@ -34,7 +35,7 @@ class CommentService:
             return []
         if not await RoleChecker.can_view_ticket_async(user, ticket, self.session):
             return []
-        stmt = select(Comment).where(Comment.ticket_id == ticket_id)
+        stmt = select(Comment).where(Comment.ticket_id == ticket_id).options(selectinload(Comment.user))
         result = await self.session.execute(stmt)
         comments = result.scalars().all()
         if user.role in (UserRole.customer, UserRole.engineer):

@@ -29,4 +29,8 @@ async def create_ticket_v1(
     svc = TicketService(db)
     ticket = await svc.create(data.model_dump())
     await db.commit()
-    return TicketResponse.model_validate(ticket)
+    d = TicketResponse.model_validate(ticket)
+    d.customer_name = ticket.customer.name if ticket.customer else None
+    d.location_name = ticket.location.name if ticket.location else None
+    d.location_address = ticket.location.address if ticket.location else None
+    return d

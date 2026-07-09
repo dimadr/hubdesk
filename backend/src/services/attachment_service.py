@@ -48,8 +48,12 @@ class AttachmentService:
                 ticket_id = comment.ticket_id
 
         filename = f"{uuid.uuid4()}_{file.filename}"
-        path = os.path.join(UPLOAD_DIR, filename)
-        os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+        loc_id = ""
+        if ticket and ticket.location_id:
+            loc_id = str(ticket.location_id)
+        path = os.path.join(UPLOAD_DIR, loc_id, filename)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
 
         if file.size is not None and file.size > MAX_UPLOAD_SIZE:
             raise HTTPException(413, f"Файл превышает лимит {MAX_UPLOAD_SIZE // (1024*1024)} МБ")

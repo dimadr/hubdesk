@@ -105,6 +105,8 @@ class TicketResponse(BaseModel):
     customer_id: int
     customer_name: Optional[str] = None
     location_id: Optional[int] = None
+    location_name: Optional[str] = None
+    location_address: Optional[str] = None
     equipment_id: Optional[int]
     assignee_id: Optional[int]
     group_id: Optional[int]
@@ -134,6 +136,7 @@ class CommentResponse(BaseModel):
     id: int
     ticket_id: int
     user_id: int
+    user_name: Optional[str] = None
     body: str
     is_internal: bool
     created_at: datetime
@@ -146,6 +149,7 @@ class AttachmentResponse(BaseModel):
     ticket_id: Optional[int]
     comment_id: Optional[int]
     filename: str
+    path: Optional[str] = None
     content_type: str
     size: int
     is_internal: bool

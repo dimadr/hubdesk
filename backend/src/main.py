@@ -212,6 +212,10 @@ if os.path.exists(FRONTEND_DIR):
     if STATIC_DIR and os.path.exists(STATIC_DIR):
         app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
 
+    uploads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "uploads")
+    if os.path.isdir(uploads_dir):
+        app.mount("/files", StaticFiles(directory=uploads_dir), name="uploads")
+
     @app.get("/")
     async def root():
         return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))

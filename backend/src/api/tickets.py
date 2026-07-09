@@ -27,6 +27,13 @@ def log_history(action: str, details: str, user: str):
         f.write(f"[{ts}] {user} — {action}: {details}\n")
 
 
+def _enrich_ticket(d: TicketResponse, ticket: Ticket) -> TicketResponse:
+    d.customer_name = ticket.customer.name if ticket.customer else None
+    d.location_name = ticket.location.name if ticket.location else None
+    d.location_address = ticket.location.address if ticket.location else None
+    return d
+
+
 def create_ticket_router() -> APIRouter:
     router = APIRouter(prefix="/tickets", tags=["Tickets"])
 
@@ -36,7 +43,7 @@ def create_ticket_router() -> APIRouter:
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
-        stmt = select(Ticket).options(selectinload(Ticket.customer))
+        stmt = select(Ticket).options(selectinload(Ticket.customer), selectinload(Ticket.location))
         if filters.status:
             stmt = stmt.where(Ticket.status == filters.status)
         if filters.priority:
@@ -65,8 +72,7 @@ def create_ticket_router() -> APIRouter:
         tickets = result.scalars().all()
         output = []
         for t in tickets:
-            d = TicketResponse.model_validate(t)
-            d.customer_name = t.customer.name if t.customer else None
+            d = _enrich_ticket(TicketResponse.model_validate(t), t)
             d.response_overdue = SLAService.is_response_overdue(t)
             d.resolution_overdue = SLAService.is_resolution_overdue(t)
             d.is_archived = t.archived_at is not None
@@ -82,8 +88,9 @@ def create_ticket_router() -> APIRouter:
         ticket = await db.get(Ticket, ticket_id)
         if not ticket or not await RoleChecker.can_view_ticket_async(user, ticket, db):
             raise HTTPException(404)
-        d = TicketResponse.model_validate(ticket)
-        d.customer_name = ticket.customer.name if ticket.customer else None
+        if ticket.location_id:
+            await db.refresh(ticket, ['location'])
+        d = _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
         d.response_overdue = SLAService.is_response_overdue(ticket)
         d.resolution_overdue = SLAService.is_resolution_overdue(ticket)
         d.is_archived = ticket.archived_at is not None
@@ -109,7 +116,7 @@ def create_ticket_router() -> APIRouter:
             if eng:
                 await db.refresh(ticket, ['customer', 'location'])
                 await MailService.notify_engineer_assigned(ticket, eng, db)
-        return TicketResponse.model_validate(ticket)
+        return _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
 
     @router.patch("/{ticket_id}", response_model=TicketResponse)
     async def update_ticket(
@@ -145,7 +152,7 @@ def create_ticket_router() -> APIRouter:
             if eng:
                 await db.refresh(ticket, ['customer', 'location'])
                 await MailService.notify_engineer_assigned(ticket, eng, db)
-        return TicketResponse.model_validate(ticket)
+        return _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
 
     @router.patch("/{ticket_id}/status", response_model=TicketResponse)
     async def change_status(
@@ -161,7 +168,7 @@ def create_ticket_router() -> APIRouter:
             raise HTTPException(400, str(e))
         await db.commit()
         log_history("Изменён статус", f"#{ticket.number} → {data.status}", user.name)
-        return TicketResponse.model_validate(ticket)
+        return _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
 
     @router.post("/{ticket_id}/comments", status_code=201, response_model=CommentResponse)
     async def add_comment(
@@ -181,7 +188,9 @@ def create_ticket_router() -> APIRouter:
             raise HTTPException(404, str(e))
         await db.commit()
         log_history("Добавлен комментарий", f"к заявке #{ticket_id}", user.name)
-        return CommentResponse.model_validate(comment)
+        cr = CommentResponse.model_validate(comment)
+        cr.user_name = user.name
+        return cr
 
     @router.get("/{ticket_id}/comments", response_model=list[CommentResponse])
     async def get_comments(
@@ -191,7 +200,12 @@ def create_ticket_router() -> APIRouter:
     ):
         svc = CommentService(db)
         comments = await svc.get_for_ticket(ticket_id, user)
-        return [CommentResponse.model_validate(c) for c in comments]
+        result = []
+        for c in comments:
+            cr = CommentResponse.model_validate(c)
+            cr.user_name = c.user.name if c.user else None
+            result.append(cr)
+        return result
 
     @router.post("/{ticket_id}/checklist", status_code=201)
     async def add_checklist(
@@ -316,7 +330,7 @@ def create_ticket_router() -> APIRouter:
             log_history("Снят исполнитель", f"#{ticket.number}", user.name)
         ticket.assignee_id = data.assignee_id
         await db.commit()
-        return TicketResponse.model_validate(ticket)
+        return _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
 
     @router.delete("/{ticket_id}", status_code=204)
     async def delete_ticket(

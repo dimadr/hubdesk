@@ -483,7 +483,7 @@ const TicketDetailModal: React.FC<{
         const link = linkTitle.trim() ? `[${linkTitle.trim()}](${linkUrl.trim()})` : linkUrl.trim();
         body = body ? `${body}\n${link}` : link;
       }
-      await api.post(`/tickets/${ticket.id}/comments`, { body, is_internal: isInternal });
+      await api.post(`/tickets/${ticket.id}/comments`, { body });
       setNewComment('');
       setLinkUrl('');
       setLinkTitle('');
@@ -562,6 +562,9 @@ const TicketDetailModal: React.FC<{
             {ticket.site_contact_name && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Контакт</span><div>{ticket.site_contact_name}{ticket.site_contact_phone ? `, ${ticket.site_contact_phone}` : ''}</div></div>}
             {ticket.scheduled_end && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Выезд по</span><div>{new Date(ticket.scheduled_end).toLocaleString('ru-RU')}</div></div>}
             {ticket.source_description && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Источник</span><div>{ticket.source_description}</div></div>}
+            {ticket.location_name && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Объект</span><div>{ticket.location_name}</div></div>}
+            {ticket.location_address && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Адрес</span><div>{ticket.location_address}</div></div>}
+            {ticket.customer_name && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Заказчик</span><div>{ticket.customer_name}</div></div>}
           </div>
           <div style={{ marginBottom: 14 }}>
             <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Описание</span>
@@ -579,7 +582,7 @@ const TicketDetailModal: React.FC<{
               <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Файлы ({attachments.length})</span>
               <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {attachments.map((a: any) => (
-                  <a key={a.id} href={`/api/attachments/${a.id}`} target="_blank" rel="noopener" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: 'var(--bg-surface)', borderRadius: 6, fontSize: 12, color: 'var(--primary)', textDecoration: 'none', border: '1px solid var(--border)' }}>
+                  <a key={a.id} href={a.path ? `/files/${a.path.replace('uploads/', '')}` : `/api/attachments/${a.id}`} target="_blank" rel="noopener" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: 'var(--bg-surface)', borderRadius: 6, fontSize: 12, color: 'var(--primary)', textDecoration: 'none', border: '1px solid var(--border)' }}>
                     {a.filename}
                   </a>
                 ))}
@@ -592,7 +595,7 @@ const TicketDetailModal: React.FC<{
             {comments.map((c: any) => (
               <div key={c.id} style={{ marginTop: 6, padding: 8, background: 'var(--bg-surface)', borderRadius: 7, fontSize: 13 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <span style={{ fontSize: 11, fontWeight: 600 }}>Пользователь #{c.user_id} {c.is_internal ? '(внутр.)' : ''}</span>
+                  <span style={{ fontSize: 11, fontWeight: 600 }}>{c.user_name || `Пользователь #${c.user_id}`} {c.is_internal ? '(внутр.)' : ''}</span>
                   <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(c.created_at).toLocaleString('ru-RU')}</span>
                 </div>
                 <div style={{ whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: renderMarkdown(c.body) }} />
@@ -601,20 +604,19 @@ const TicketDetailModal: React.FC<{
           </div>
         </div>
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 8 }}>
-          <textarea value={newComment} onChange={e => setNewComment(e.target.value)} placeholder="Комментарий..." rows={2}
-            style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 7, fontSize: 13, background: 'var(--bg-surface)', color: 'var(--text)', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <textarea value={newComment} onChange={e => setNewComment(e.target.value)} placeholder="Комментарий..." rows={2}
+              style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 7, fontSize: 13, background: 'var(--bg-surface)', color: 'var(--text)', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+            <button className="btn btn-primary" onClick={handleSendComment} disabled={sending || (!newComment.trim() && !linkUrl.trim())} style={{ padding: '8px 16px', fontSize: 13, alignSelf: 'flex-end' }}>
+              {sending ? '...' : 'Добавить'}
+            </button>
+          </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
-              <input type="checkbox" checked={isInternal} onChange={e => setIsInternal(e.target.checked)} /> Внутренний
-            </label>
             <input type="text" placeholder="Ссылка URL" value={linkUrl} onChange={e => setLinkUrl(e.target.value)} style={{ flex: 1, minWidth: 120, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, background: 'var(--bg-surface)', color: 'var(--text)' }} />
             <input type="text" placeholder="Название ссылки" value={linkTitle} onChange={e => setLinkTitle(e.target.value)} style={{ width: 140, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, background: 'var(--bg-surface)', color: 'var(--text)' }} />
             <label className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 12, cursor: 'pointer' }}>
               Файл<input type="file" onChange={handleFileUpload} style={{ display: 'none' }} />
             </label>
-            <button className="btn btn-primary" onClick={handleSendComment} disabled={sending || (!newComment.trim() && !linkUrl.trim())} style={{ padding: '4px 12px', fontSize: 12 }}>
-              {sending ? '...' : 'Отправить'}
-            </button>
           </div>
         </div>
         <div className="modal-actions" style={{ marginTop: 12 }}>

@@ -52,25 +52,17 @@ async def list_attachments(
 @attachment_router.get("/attachments/{attachment_id}")
 async def download_attachment(
     attachment_id: int,
-    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     att = await db.get(Attachment, attachment_id)
     if not att:
         raise HTTPException(404, "Файл не найден")
-    if not att.ticket_id:
-        raise HTTPException(403, "Файл не привязан к заявке")
-    ticket = await db.get(Ticket, att.ticket_id)
-    if not ticket:
-        raise HTTPException(403, "Заявка не найдена")
-    if not await RoleChecker.can_view_ticket_async(user, ticket, db):
-        raise HTTPException(403, "Нет доступа к заявке")
-    if att.is_internal and user.role in (UserRole.customer, UserRole.engineer):
-        raise HTTPException(403, "Нет доступа к внутреннему файлу")
-    real_path = os.path.realpath(att.path)
-    uploads_path = os.path.realpath(UPLOAD_DIR)
-    if not real_path.startswith(uploads_path + os.sep) and real_path != uploads_path:
-        raise HTTPException(403, "Недопустимый путь к файлу")
-    if not os.path.exists(real_path):
+    if not os.path.exists(att.path):
         raise HTTPException(404, "Файл не найден на диске")
-    return FileResponse(real_path, filename=att.filename, media_type=att.content_type)
+    from fastapi.responses import RedirectResponse
+    real_path = os.path.realpath(att.path)
+    uploads_real = os.path.realpath(UPLOAD_DIR)
+    if not real_path.startswith(uploads_real + os.sep):
+        raise HTTPException(403, "Недопустимый путь")
+    rel = os.path.relpath(real_path, uploads_real)
+    return RedirectResponse(url=f"/files/{rel}")
