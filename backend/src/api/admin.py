@@ -236,7 +236,7 @@ async def delete_user(user_id: int, admin: User = Depends(require_admin), db: As
 
 @admin_router.get("/customers", response_model=List[CustomerResponse])
 async def list_customers(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if user.role not in (UserRole.admin, UserRole.accountant):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.accountant):
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     stmt = (
         select(Customer, func.count(AssetLocation.id).label("loc_count"))
