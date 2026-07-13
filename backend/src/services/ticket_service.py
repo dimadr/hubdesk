@@ -121,7 +121,11 @@ class TicketService:
         stmt = (
             select(Ticket)
             .where(Ticket.id == ticket_id)
-            .options(selectinload(Ticket.checklists).selectinload(Checklist.fields))
+            .options(
+                selectinload(Ticket.checklists).selectinload(Checklist.fields),
+                selectinload(Ticket.customer),
+                selectinload(Ticket.location),
+            )
         )
         result = await self.session.execute(stmt)
         ticket = result.scalar_one_or_none()
