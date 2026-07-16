@@ -49,7 +49,7 @@ async def report_objects(
     for loc in locations:
         by_location[loc.id] = {
             "location_id": loc.id,
-            "location_name": loc.name,
+            "location_name": loc.address or loc.name,
             "customer_id": loc.customer_id,
             "total": 0, "open": 0, "closed": 0, "overdue": 0,
             "total_time": timedelta(), "resolved_count": 0,
