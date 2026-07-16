@@ -45,11 +45,15 @@ async def report_objects(
     locations_result = await db.execute(select(AssetLocation))
     locations = locations_result.scalars().all()
 
+    customers_result = await db.execute(select(Customer))
+    customers = {c.id: c.name for c in customers_result.scalars().all()}
+
     by_location: dict[int, dict] = {}
     for loc in locations:
+        cust_name = customers.get(loc.customer_id, "")
         by_location[loc.id] = {
             "location_id": loc.id,
-            "location_name": loc.address or loc.name,
+            "location_name": f"{cust_name} — {loc.address}" if loc.address else cust_name,
             "customer_id": loc.customer_id,
             "total": 0, "open": 0, "closed": 0, "overdue": 0,
             "total_time": timedelta(), "resolved_count": 0,
