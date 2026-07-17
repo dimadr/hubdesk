@@ -22,7 +22,7 @@ const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (
 
 export const WarehousePage: React.FC = () => {
   const role = (() => { try { return JSON.parse(localStorage.getItem('user') || '{}').role || ''; } catch { return ''; } })();
-  const isAdmin = role === 'admin';
+  const isAdmin = role === 'admin' || role === 'director' || role === 'storekeeper' || role === 'metrologist';
   const [tab, setTab] = useState<'warehouses' | 'nomenclature' | 'docs' | 'balances' | 'replacement' | 'insert'>('docs');
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [nomenclature, setNomenclature] = useState<NomenclatureItem[]>([]);
@@ -73,7 +73,7 @@ export const WarehousePage: React.FC = () => {
     if (!name) return;
     try {
       if (whForm.id) {
-        await api.put(`/warehouses/${whForm.id}`, { name, type: whForm.type });
+        await api.patch(`/warehouses/${whForm.id}`, { name, type: whForm.type });
       } else {
         await api.post('/warehouses', { name, type: whForm.type });
       }
@@ -88,7 +88,7 @@ export const WarehousePage: React.FC = () => {
     if (!name || !unit) return;
     try {
       if (nomForm.id) {
-        await api.put(`/nomenclature/${nomForm.id}`, { name, type: nomForm.type, unit });
+        await api.patch(`/nomenclature/${nomForm.id}`, { name, type: nomForm.type, unit });
       } else {
         await api.post('/nomenclature', { name, type: nomForm.type, unit });
       }
@@ -684,8 +684,8 @@ const ReplacementTab: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
                   fd.append('file', file);
                   try {
                     const resp = await api.post('/attachments', fd);
-                    const path = resp.data?.path || '';
-                    const url = path ? `/files/${path.replace('uploads/', '')}` : file.name;
+                    const downloadUrl = resp.data?.download_url || '';
+                    const url = downloadUrl || file.name;
                     setForm(prev => ({ ...prev, passport_scan: url }));
                   } catch { alert('Ошибка загрузки фото'); }
                   setUploadingPhoto(false);

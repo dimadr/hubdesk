@@ -161,7 +161,7 @@ const AuthPage: React.FC<{ onLogin: (token: string, user: any) => void }> = ({ o
   );
 };
 
-const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; users: UserInfo[] }> = ({ onClose, onCreated, users }) => {
+const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; users: UserInfo[]; currentUser?: UserInfo }> = ({ onClose, onCreated, users, currentUser }) => {
   const [subject, setSubject] = useState('');
   const [ticketType, setTicketType] = useState('');
   const [sourceDesc, setSourceDesc] = useState('');
@@ -169,11 +169,13 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
   const [locationId, setLocationId] = useState<number | ''>('');
   const [priority, setPriority] = useState('medium');
   const [resolutionDeadline, setResolutionDeadline] = useState('');
-  const [assigneeId, setAssigneeId] = useState<number | ''>('');
+  const [assigneeId, setAssigneeId] = useState<number | ''>(currentUser?.role === 'engineer' ? currentUser.id : '');
   const [siteContactName, setSiteContactName] = useState('');
   const [siteContactPhone, setSiteContactPhone] = useState('');
   const [locations, setLocations] = useState<Location[]>([]);
   const [error, setError] = useState('');
+  const [locQuery, setLocQuery] = useState('');
+  const [locOpen, setLocOpen] = useState(false);
 
   useEffect(() => {
     api.get('/locations').then(r => setLocations(r.data)).catch(() => {});
@@ -242,14 +244,40 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
             <label>Примечание</label>
             <textarea placeholder="Дополнительная информация" value={sourceDesc} onChange={e => setSourceDesc(e.target.value)} rows={2} />
           </div>
-          <div>
+          <div style={{ position: 'relative' }}>
             <label>Объект <span className="required">*</span></label>
-            <select value={locationId} onChange={e => setLocationId(Number(e.target.value) || '')}>
-              <option value="">— Выберите объект —</option>
-              {locations.map(l => (
-                <option key={l.id} value={l.id}>{l.name} ({l.customer_name})</option>
-              ))}
-            </select>
+            {locationId ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ flex: 1, padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-surface)', fontSize: 13 }}>
+                  {locations.find(l => l.id === Number(locationId))?.name || ''} — {locations.find(l => l.id === Number(locationId))?.address || ''}
+                </span>
+                <button type="button" className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => { setLocationId(''); setLocQuery(''); }}>✕</button>
+              </div>
+            ) : (
+              <>
+                <input placeholder="Введите название или адрес..." value={locQuery} onChange={e => { setLocQuery(e.target.value); setLocOpen(true); }} onFocus={() => setLocOpen(true)} onBlur={() => setTimeout(() => setLocOpen(false), 200)} style={{ width: '100%' }} />
+                {locOpen && locQuery.trim() && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, maxHeight: 200, overflowY: 'auto', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 6, zIndex: 100 }}>
+                    {locations.filter(l => {
+                      const q = locQuery.toLowerCase();
+                      return l.name.toLowerCase().includes(q) || (l.address || '').toLowerCase().includes(q) || (l.customer_name || '').toLowerCase().includes(q);
+                    }).slice(0, 20).map(l => (
+                      <div key={l.id} style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--border)' }}
+                        onMouseDown={() => { setLocationId(l.id); setLocQuery(''); setLocOpen(false); }}>
+                        <div style={{ fontWeight: 600 }}>{l.name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{l.address} — {l.customer_name}</div>
+                      </div>
+                    ))}
+                    {locations.filter(l => {
+                      const q = locQuery.toLowerCase();
+                      return l.name.toLowerCase().includes(q) || (l.address || '').toLowerCase().includes(q) || (l.customer_name || '').toLowerCase().includes(q);
+                    }).length === 0 && (
+                      <div style={{ padding: 8, fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>Ничего не найдено</div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
           </div>
           <div className="span-2">
             <label>Описание проблемы</label>
@@ -271,12 +299,16 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
           <div></div>
           <div>
             <label>Исполнитель</label>
-            <select value={assigneeId} onChange={e => setAssigneeId(Number(e.target.value) || '')}>
-              <option value="">— Назначить позже —</option>
-              {assignables.map(u => (
-                <option key={u.id} value={u.id}>{[u.name, u.patronymic].filter(Boolean).join(' ')}</option>
-              ))}
-            </select>
+            {currentUser?.role === 'engineer' ? (
+              <input value={[currentUser.name, currentUser.patronymic].filter(Boolean).join(' ')} disabled style={{ opacity: 0.7 }} />
+            ) : (
+              <select value={assigneeId} onChange={e => setAssigneeId(Number(e.target.value) || '')}>
+                <option value="">— Назначить позже —</option>
+                {assignables.map(u => (
+                  <option key={u.id} value={u.id}>{[u.name, u.patronymic].filter(Boolean).join(' ')}</option>
+                ))}
+              </select>
+            )}
           </div>
           <div>
             <label>Контактное лицо на объекте</label>
@@ -582,7 +614,7 @@ const TicketDetailModal: React.FC<{
               <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Файлы ({attachments.length})</span>
               <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {attachments.map((a: any) => (
-                  <a key={a.id} href={a.path ? `/files/${a.path.replace('uploads/', '')}` : `/api/attachments/${a.id}`} target="_blank" rel="noopener" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: 'var(--bg-surface)', borderRadius: 6, fontSize: 12, color: 'var(--primary)', textDecoration: 'none', border: '1px solid var(--border)' }}>
+                  <a key={a.id} href={a.download_url || `/api/attachments/${a.id}`} target="_blank" rel="noopener" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: 'var(--bg-surface)', borderRadius: 6, fontSize: 12, color: 'var(--primary)', textDecoration: 'none', border: '1px solid var(--border)' }}>
                     {a.filename}
                   </a>
                 ))}
@@ -653,8 +685,8 @@ const CompleteTicketModal: React.FC<{ ticket: TicketResponse; onConfirm: (commen
           form.append('file', photoFile);
           form.append('ticket_id', String(ticket.id));
           const resp = await api.post('/attachments', form);
-          const path = resp.data?.path || '';
-          photoUrl = path ? `/files/${path.replace('uploads/', '')}` : `(файл: ${photoFile.name})`;
+          const downloadUrl = resp.data?.download_url || '';
+          photoUrl = downloadUrl || `(файл: ${photoFile.name})`;
         } catch {
           photoUrl = `(файл: ${photoFile.name})`;
         }
@@ -1042,6 +1074,7 @@ const App: React.FC = () => {
             onClose={() => setShowCreate(false)}
             onCreated={() => setRefreshKey(k => k + 1)}
             users={users}
+            currentUser={user}
           />
         )}
         {editTicket && (

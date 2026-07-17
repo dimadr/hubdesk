@@ -194,7 +194,11 @@ async def update_user(
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
     if data.name is not None: target.name = data.name
-    if data.email is not None: target.email = data.email
+    if data.email is not None:
+        existing = await db.execute(select(User).where(User.email == data.email, User.id != user_id))
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Email уже используется")
+        target.email = data.email
     if data.phone is not None: target.phone = data.phone
     if data.patronymic is not None: target.patronymic = data.patronymic
     if data.position is not None: target.position = data.position

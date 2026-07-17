@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from src.config import settings
 from src.database import get_db, async_session
-from src.models.user import User
+from src.models.user import User, UserStatus
 
 security = HTTPBearer(auto_error=False)
 
@@ -33,6 +33,8 @@ async def get_current_user(
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"User {user_id} not found")
+    if user.status != UserStatus.active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Учётная запись не активна")
     return user
 
 

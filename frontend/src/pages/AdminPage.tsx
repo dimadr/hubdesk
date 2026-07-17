@@ -359,11 +359,11 @@ const ModerationTab: React.FC = () => {
   useEffect(() => { load(); }, []);
 
   const handleApprove = async (id: number) => {
-    try { await api.post(`/admin/pending-users/${id}/approve`); load(); } catch {}
+    try { await api.post(`/admin/pending-users/${id}/approve`); load(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка'); }
   };
 
   const handleReject = async (id: number) => {
-    try { await api.post(`/admin/pending-users/${id}/reject`); load(); } catch {}
+    try { await api.post(`/admin/pending-users/${id}/reject`); load(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка'); }
   };
 
   if (loading) return <div className="loading">Загрузка...</div>;
@@ -470,7 +470,7 @@ const MailboxTab: React.FC = () => {
 
   const save = async () => {
     setSaving(true);
-    try { await api.post('/admin/mailbox', form); setCfg(form); } catch {}
+    try { await api.post('/admin/mailbox', form); setCfg(form); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка сохранения'); }
     finally { setSaving(false); }
   };
 
@@ -530,16 +530,16 @@ const ApiKeysTab: React.FC = () => {
       setCreatedKey(resp.data.key || resp.data.api_key || null);
       setNewName('');
       load();
-    } catch {}
+    } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка создания ключа'); }
   };
 
   const toggle = async (id: number) => {
-    try { await api.patch(`/admin/api-keys/${id}`); load(); } catch {}
+    try { await api.patch(`/admin/api-keys/${id}`); load(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка'); }
   };
 
   const remove = async (id: number) => {
     if (!confirm('Удалить ключ?')) return;
-    try { await api.delete(`/admin/api-keys/${id}`); load(); } catch {}
+    try { await api.delete(`/admin/api-keys/${id}`); load(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка удаления'); }
   };
 
   if (loading) return <div className="loading">Загрузка...</div>;

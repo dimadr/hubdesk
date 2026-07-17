@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, and_
 from datetime import datetime, timedelta
 from src.database import get_db
 from src.models.ticket import Ticket, TicketStatus
@@ -25,17 +25,23 @@ def _parse_date(s: str) -> datetime:
 
 
 async def ticket_query(db: AsyncSession, date_from: str | None, date_to: str | None):
+    from sqlalchemy import or_
     stmt = select(Ticket)
+    conditions = []
     if date_from:
         try:
-            stmt = stmt.where(Ticket.created_at >= _parse_date(date_from))
+            dt_from = _parse_date(date_from)
+            conditions.append(or_(Ticket.created_at >= dt_from, and_(Ticket.status == TicketStatus.COMPLETED, Ticket.completed_at >= dt_from)))
         except ValueError:
             raise HTTPException(400, f"Некорректная дата: {date_from}")
     if date_to:
         try:
-            stmt = stmt.where(Ticket.created_at <= _parse_date(date_to))
+            dt_to = _parse_date(date_to)
+            conditions.append(or_(Ticket.created_at <= dt_to, and_(Ticket.status == TicketStatus.COMPLETED, Ticket.completed_at <= dt_to)))
         except ValueError:
             raise HTTPException(400, f"Некорректная дата: {date_to}")
+    for cond in conditions:
+        stmt = stmt.where(cond)
     result = await db.execute(stmt)
     return result.scalars().all()
 
@@ -60,10 +66,13 @@ async def report_objects(
         cust_name = customers.get(loc.customer_id, "")
         by_location[loc.id] = {
             "location_id": loc.id,
-            "location_name": f"{cust_name} — {loc.address}" if loc.address else cust_name,
+            "location_name": loc.name or "",
+            "customer_name": cust_name,
+            "location_address": loc.address or "",
             "customer_id": loc.customer_id,
             "total": 0, "open": 0, "closed": 0, "overdue": 0,
             "total_time": timedelta(), "resolved_count": 0,
+            "types": {},
         }
 
     for t in tickets:
@@ -71,6 +80,8 @@ async def report_objects(
             continue
         d = by_location[t.location_id]
         d["total"] += 1
+        tt = t.type.value if t.type else "не указан"
+        d["types"][tt] = d["types"].get(tt, 0) + 1
         if t.status == TicketStatus.COMPLETED:
             d["closed"] += 1
             if t.completed_at and t.created_at:
@@ -87,11 +98,14 @@ async def report_objects(
         out.append({
             "location_id": d["location_id"],
             "location_name": d["location_name"],
+            "customer_name": d["customer_name"],
+            "location_address": d["location_address"],
             "total": d["total"],
             "open": d["open"],
             "closed": d["closed"],
             "overdue": d["overdue"],
             "avg_resolution_hours": round(avg_h, 1),
+            "types": d["types"],
         })
     return sorted(out, key=lambda x: x["total"], reverse=True)
 

@@ -118,6 +118,14 @@ class MailService:
                     customer_id = customer.id
 
                 location_id = None
+                if customer_id:
+                    from src.models.equipment import AssetLocation
+                    loc_result = await db.execute(
+                        select(AssetLocation).where(AssetLocation.customer_id == customer_id).limit(1)
+                    )
+                    default_loc = loc_result.scalar_one_or_none()
+                    if default_loc:
+                        location_id = default_loc.id
 
                 last_num_result = await db.execute(
                     select(Ticket.number).order_by(Ticket.number.desc()).limit(1).with_for_update()

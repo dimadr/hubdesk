@@ -11,13 +11,14 @@ if not hasattr(bcrypt, '__about__'):
     bcrypt.__about__ = _About()
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from src.api.router import api_router
+from src.config import settings
 from src.database import async_session, engine
 from src.core.http_client import set_http_client
 
@@ -213,8 +214,69 @@ if os.path.exists(FRONTEND_DIR):
         app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
 
     uploads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "uploads")
-    if os.path.isdir(uploads_dir):
-        app.mount("/files", StaticFiles(directory=uploads_dir), name="uploads")
+
+    @app.get("/files/{file_path:path}")
+    async def serve_file(file_path: str, request: Request):
+        from fastapi.responses import FileResponse, JSONResponse
+        from jose import JWTError, jwt
+        from sqlalchemy import select as sa_select
+        from src.database import async_session
+        from src.models.attachment import Attachment
+        from src.models.ticket import Ticket
+        from src.models.comment import Comment
+        from src.models.user import User, UserRole
+        from src.services.acl_service import RoleChecker
+
+        token = request.query_params.get("token") or ""
+        if not token:
+            auth = request.headers.get("Authorization", "")
+            if auth.startswith("Bearer "):
+                token = auth[7:]
+        if not token:
+            return JSONResponse(status_code=401, content={"detail": "Missing token"})
+        try:
+            payload = jwt.decode(token, settings.secret_key, algorithms=["HS256"])
+            user_id = int(payload.get("sub"))
+        except (JWTError, ValueError):
+            return JSONResponse(status_code=401, content={"detail": "Invalid token"})
+
+        real_path = os.path.realpath(os.path.join(uploads_dir, file_path))
+        uploads_real = os.path.realpath(uploads_dir)
+        if not real_path.startswith(uploads_real + os.sep) and real_path != uploads_real:
+            return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+        if not os.path.isfile(real_path):
+            return JSONResponse(status_code=404, content={"detail": "File not found"})
+
+        async with async_session() as db:
+            result = await db.execute(sa_select(Attachment).where(Attachment.path == real_path))
+            att = result.scalar_one_or_none()
+            if att:
+                user_result = await db.execute(sa_select(User).where(User.id == user_id))
+                user = user_result.scalar_one_or_none()
+                if not user:
+                    return JSONResponse(status_code=401, content={"detail": "User not found"})
+                if att.ticket_id:
+                    ticket = await db.get(Ticket, att.ticket_id)
+                    if ticket and not await RoleChecker.can_view_ticket_async(user, ticket, db):
+                        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+                    if att.is_internal and user.role in (UserRole.customer, UserRole.engineer):
+                        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+                elif att.comment_id:
+                    comment = await db.get(Comment, att.comment_id)
+                    if comment and comment.ticket_id:
+                        ticket = await db.get(Ticket, comment.ticket_id)
+                        if ticket and not await RoleChecker.can_view_ticket_async(user, ticket, db):
+                            return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+                else:
+                    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
+                        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+            else:
+                user_result = await db.execute(sa_select(User).where(User.id == user_id))
+                user = user_result.scalar_one_or_none()
+                if not user or user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
+                    return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+
+        return FileResponse(real_path)
 
     @app.get("/")
     async def root():

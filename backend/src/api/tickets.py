@@ -21,16 +21,12 @@ from src.models.user import User, UserRole
 from src.models.checklist import Checklist, ChecklistField, FieldType
 
 
-def log_history(action: str, details: str, user: str):
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open("history.log", "a", encoding="utf-8") as f:
-        f.write(f"[{ts}] {user} — {action}: {details}\n")
-
-
 def _enrich_ticket(d: TicketResponse, ticket: Ticket) -> TicketResponse:
     d.customer_name = ticket.customer.name if ticket.customer else None
     d.location_name = ticket.location.name if ticket.location else None
     d.location_address = ticket.location.address if ticket.location else None
+    if hasattr(ticket, 'assignee') and ticket.assignee:
+        d.assignee_name = ticket.assignee.name
     return d
 
 
@@ -43,7 +39,7 @@ def create_ticket_router() -> APIRouter:
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
-        stmt = select(Ticket).options(selectinload(Ticket.customer), selectinload(Ticket.location))
+        stmt = select(Ticket).options(selectinload(Ticket.customer), selectinload(Ticket.location), selectinload(Ticket.assignee))
         if filters.status:
             stmt = stmt.where(Ticket.status == filters.status)
         if filters.priority:
@@ -110,7 +106,6 @@ def create_ticket_router() -> APIRouter:
         svc = TicketService(db)
         ticket = await svc.create(data.model_dump(), user)
         await db.commit()
-        log_history("Создана заявка", f"#{ticket.number} {ticket.subject}", user.name)
         # Отправка email инженеру при назначении
         if ticket.assignee_id:
             eng = await db.get(User, ticket.assignee_id)
@@ -146,7 +141,6 @@ def create_ticket_router() -> APIRouter:
                 value = value.replace(tzinfo=None)
             setattr(ticket, field, value)
         await db.commit()
-        log_history("Обновлена заявка", f"#{ticket.number} {ticket.subject}", user.name)
         # Отправка email инженеру при смене исполнителя
         if 'assignee_id' in data.model_dump(exclude_unset=True) and ticket.assignee_id:
             eng = await db.get(User, ticket.assignee_id)
@@ -168,7 +162,6 @@ def create_ticket_router() -> APIRouter:
         except Exception as e:
             raise HTTPException(400, str(e))
         await db.commit()
-        log_history("Изменён статус", f"#{ticket.number} → {data.status}", user.name)
         return _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
 
     @router.post("/{ticket_id}/comments", status_code=201, response_model=CommentResponse)
@@ -188,7 +181,6 @@ def create_ticket_router() -> APIRouter:
         except ValueError as e:
             raise HTTPException(404, str(e))
         await db.commit()
-        log_history("Добавлен комментарий", f"к заявке #{ticket_id}", user.name)
         cr = CommentResponse.model_validate(comment)
         cr.user_name = user.name
         return cr
@@ -325,10 +317,6 @@ def create_ticket_router() -> APIRouter:
                 raise HTTPException(404, "Исполнитель не найден")
             if eng.role != UserRole.engineer:
                 raise HTTPException(400, "Назначать можно только пользователя с ролью engineer")
-            eng_name = eng.name if eng else str(data.assignee_id)
-            log_history("Назначен инженер", f"#{ticket.number} → {eng_name}", user.name)
-        else:
-            log_history("Снят исполнитель", f"#{ticket.number}", user.name)
         ticket.assignee_id = data.assignee_id
         await db.commit()
         return _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
@@ -353,6 +341,5 @@ def create_ticket_router() -> APIRouter:
         await db.execute(text("DELETE FROM personal_tasks WHERE ticket_id = :tid"), {"tid": ticket_id})
         await db.execute(text("DELETE FROM tickets WHERE id = :tid"), {"tid": ticket_id})
         await db.commit()
-        log_history("Удалена заявка", f"#{num}", user.name)
 
     return router

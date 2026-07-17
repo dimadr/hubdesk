@@ -46,7 +46,7 @@ async def list_tasks(
     db: AsyncSession = Depends(get_db),
 ):
     target_id = user.id
-    if user_id and user.role == UserRole.admin:
+    if user_id and user.role in (UserRole.admin, UserRole.director):
         target_id = user_id
     from src.models.ticket import Ticket
     result = await db.execute(
@@ -72,7 +72,7 @@ async def list_tasks(
 @personal_tasks_router.post("", status_code=201, response_model=TaskResponse)
 async def create_task(data: TaskCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     target_user_id = user.id
-    if data.user_id and user.role == UserRole.admin:
+    if data.user_id and user.role in (UserRole.admin, UserRole.director):
         target_user_id = data.user_id
     pos_result = await db.execute(
         select(PersonalTask).where(PersonalTask.user_id == target_user_id, PersonalTask.column == data.column)
@@ -95,7 +95,7 @@ async def create_task(data: TaskCreate, user: User = Depends(get_current_user), 
 @personal_tasks_router.patch("/{task_id}", response_model=TaskResponse)
 async def update_task(task_id: int, data: TaskUpdate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     task = await db.get(PersonalTask, task_id)
-    if not task or (task.user_id != user.id and user.role != UserRole.admin):
+    if not task or (task.user_id != user.id and user.role not in (UserRole.admin, UserRole.director)):
         raise HTTPException(404)
     if data.title is not None:
         task.title = data.title
@@ -116,7 +116,7 @@ async def update_task(task_id: int, data: TaskUpdate, user: User = Depends(get_c
 @personal_tasks_router.delete("/{task_id}")
 async def delete_task(task_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     task = await db.get(PersonalTask, task_id)
-    if not task or (task.user_id != user.id and user.role != UserRole.admin):
+    if not task or (task.user_id != user.id and user.role not in (UserRole.admin, UserRole.director)):
         raise HTTPException(404)
     await db.delete(task)
     await db.commit()

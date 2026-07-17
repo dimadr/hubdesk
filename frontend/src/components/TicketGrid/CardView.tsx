@@ -8,6 +8,7 @@ interface UserInfo {
 interface Props {
   tickets: TicketResponse[];
   users: UserInfo[];
+  onDetail?: (ticket: TicketResponse) => void;
 }
 
 const STATUS_MAP: Record<string, string> = {
@@ -23,7 +24,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 
 const PRIORITY_MAP: Record<string, string> = { low: 'Низкий', medium: 'Средний', high: 'Высокий', critical: 'Критичный' };
 
-export const CardView: React.FC<Props> = ({ tickets, users }) => {
+export const CardView: React.FC<Props> = ({ tickets, users, onDetail }) => {
   const getUserName = (id: number | null) => {
     if (!id) return '—';
     const u = users.find(u => u.id === id);
@@ -36,7 +37,8 @@ export const CardView: React.FC<Props> = ({ tickets, users }) => {
     <div className="card-grid">
       {tickets.map((ticket) => (
         <div key={ticket.id} className="ticket-card"
-          style={{ borderLeft: `3px solid ${PRIORITY_COLORS[ticket.priority] || 'var(--border)'}` }}>
+          style={{ borderLeft: `3px solid ${PRIORITY_COLORS[ticket.priority] || 'var(--border)'}`, cursor: onDetail ? 'pointer' : undefined }}
+          onClick={onDetail ? () => onDetail(ticket) : undefined}>
           <div className="card-header">
             {ticket.is_internal && '🔒 '}
             <span className="mono" style={{ color: 'var(--text-muted)', fontSize: 11 }}>#{ticket.number}</span>

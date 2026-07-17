@@ -98,8 +98,8 @@ export const TicketGrid: React.FC<{ users: UserInfo[]; onEdit?: (ticket: any) =>
       )}
       {loading ? <div className="loading">Загрузка...</div> : (
         viewType === 'table' ? <TableView tickets={filteredTickets} users={users} onEdit={onEdit} onDetail={onDetail} onStatusChange={onStatusChange} onDelete={onDelete} currentUserId={currentUserId} role={role} colFilter={colFilter} onFilter={toggleFilter} /> :
-        viewType === 'card' ? <CardView tickets={filteredTickets} users={users} /> :
-        <TreeView tickets={filteredTickets} />
+        viewType === 'card' ? <CardView tickets={filteredTickets} users={users} onDetail={onDetail} /> :
+        <TreeView tickets={filteredTickets} onDetail={onDetail} />
       )}
     </div>
   );

@@ -109,6 +109,7 @@ class TicketResponse(BaseModel):
     location_address: Optional[str] = None
     equipment_id: Optional[int]
     assignee_id: Optional[int]
+    assignee_name: Optional[str] = None
     group_id: Optional[int]
     site_contact_name: Optional[str] = None
     site_contact_phone: Optional[str] = None
@@ -149,7 +150,7 @@ class AttachmentResponse(BaseModel):
     ticket_id: Optional[int]
     comment_id: Optional[int]
     filename: str
-    path: Optional[str] = None
+    download_url: Optional[str] = None
     content_type: str
     size: int
     is_internal: bool

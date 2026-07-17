@@ -134,7 +134,10 @@ function renderCellContent(ticket: TicketResponse, col: ColumnDef, userMap: Map<
     catch { return ticket.created_at?.substring(0, 10) || '—'; }
   }
   if (col.key === 'customer') return ticket.customer_name || ticket.customer_id;
-  if (col.key === 'assignee') return (
+  if (col.key === 'assignee') {
+    const canAssign = role === 'admin' || role === 'director' || role === 'dispatcher';
+    if (!canAssign) return <span>{userMap.get(ticket.assignee_id!) || ticket.assignee_id || '—'}</span>;
+    return (
     <select
       className="assignee-select"
       value={ticket.assignee_id ?? ''}
@@ -156,6 +159,7 @@ function renderCellContent(ticket: TicketResponse, col: ColumnDef, userMap: Map<
       ))}
     </select>
   );
+  }
   if (col.key === 'deadline') {
     try { return ticket.resolution_deadline ? new Date(ticket.resolution_deadline).toLocaleDateString('ru-RU') : '—'; }
     catch { return ticket.resolution_deadline?.substring(0, 10) || '—'; }

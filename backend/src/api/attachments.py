@@ -24,11 +24,14 @@ async def upload_attachment(
     db: AsyncSession = Depends(get_db),
 ):
     if not ticket_id and not comment_id:
-        pass  # Allow orphan files (warehouse photos, etc.)
+        if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
+            raise HTTPException(403, "Только админ/директор/кладовщик могут загружать файлы без привязки к заявке")
     svc = AttachmentService(db)
     att = await svc.upload(file, ticket_id, comment_id, user)
     await db.commit()
-    return AttachmentResponse.model_validate(att)
+    resp = AttachmentResponse.model_validate(att)
+    resp.download_url = f"/api/attachments/{att.id}"
+    return resp
 
 
 @attachment_router.get("/attachments", response_model=list[AttachmentResponse])
@@ -46,23 +49,45 @@ async def list_attachments(
     if user.role in (UserRole.customer, UserRole.engineer):
         stmt = stmt.where(Attachment.is_internal == False)
     result = await db.execute(stmt.order_by(Attachment.created_at.desc()))
-    return [AttachmentResponse.model_validate(a) for a in result.scalars().all()]
+    items = []
+    for a in result.scalars().all():
+        r = AttachmentResponse.model_validate(a)
+        r.download_url = f"/api/attachments/{a.id}"
+        items.append(r)
+    return items
 
 
 @attachment_router.get("/attachments/{attachment_id}")
 async def download_attachment(
     attachment_id: int,
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     att = await db.get(Attachment, attachment_id)
     if not att:
         raise HTTPException(404, "Файл не найден")
+
+    if att.ticket_id:
+        ticket = await db.get(Ticket, att.ticket_id)
+        if ticket and not await RoleChecker.can_view_ticket_async(user, ticket, db):
+            raise HTTPException(403, "Нет доступа к заявке")
+        if att.is_internal and user.role in (UserRole.customer, UserRole.engineer):
+            raise HTTPException(403, "Нет доступа к внутреннему файлу")
+    elif att.comment_id:
+        from src.models.comment import Comment
+        comment = await db.get(Comment, att.comment_id)
+        if comment and comment.ticket_id:
+            ticket = await db.get(Ticket, comment.ticket_id)
+            if ticket and not await RoleChecker.can_view_ticket_async(user, ticket, db):
+                raise HTTPException(403, "Нет доступа к заявке")
+    else:
+        if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
+            raise HTTPException(403, "Нет доступа к файлу")
+
     if not os.path.exists(att.path):
         raise HTTPException(404, "Файл не найден на диске")
-    from fastapi.responses import RedirectResponse
     real_path = os.path.realpath(att.path)
     uploads_real = os.path.realpath(UPLOAD_DIR)
     if not real_path.startswith(uploads_real + os.sep):
         raise HTTPException(403, "Недопустимый путь")
-    rel = os.path.relpath(real_path, uploads_real)
-    return RedirectResponse(url=f"/files/{rel}")
+    return FileResponse(real_path, filename=att.filename)

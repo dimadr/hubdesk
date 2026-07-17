@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
 
-interface ObjectRow { location_id: number; location_name: string; total: number; open: number; closed: number; overdue: number; avg_resolution_hours: number; }
+interface ObjectRow { location_id: number; location_name: string; customer_name: string; location_address: string; total: number; open: number; closed: number; overdue: number; avg_resolution_hours: number; types: Record<string, number>; }
 interface TicketStats { total: number; by_status: { label: string; count: number }[]; by_priority: { label: string; count: number }[]; by_type: { label: string; count: number }[]; avg_resolution_hours: number; sla_percent: number; }
 interface EngineerRow { engineer_id: number; engineer_name: string; total: number; completed: number; in_progress: number; overdue: number; avg_resolution_hours: number; }
 
@@ -36,6 +36,9 @@ export const ReportsPage: React.FC<{ onOpenTicket?: (t: any) => void }> = ({ onO
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
   const [statusTickets, setStatusTickets] = useState<any[]>([]);
   const [engStatusFilter, setEngStatusFilter] = useState('');
+  const [selectedLoc, setSelectedLoc] = useState<ObjectRow | null>(null);
+  const [locTickets, setLocTickets] = useState<any[]>([]);
+  const [userMap, setUserMap] = useState<Record<number, string>>({});
 
   const getParams = () => {
     const p: any = {};
@@ -46,6 +49,7 @@ export const ReportsPage: React.FC<{ onOpenTicket?: (t: any) => void }> = ({ onO
 
   const loadAll = () => {
     setLoading(true);
+    setError('');
     const params = getParams();
     Promise.all([
       api.get('/reports/objects', { params }),
@@ -76,20 +80,33 @@ export const ReportsPage: React.FC<{ onOpenTicket?: (t: any) => void }> = ({ onO
     loadAll();
   }, [from, to]);
 
+  useEffect(() => {
+    api.get('/users/list').then(r => {
+      const m: Record<number, string> = {};
+      r.data.forEach((u: any) => { m[u.id] = u.name; });
+      setUserMap(m);
+    }).catch(() => {});
+  }, []);
+
   const loadEngTickets = (eng: EngineerRow) => {
     setSelectedEng(eng);
     setSelectedStatus(null);
-    const params = getParams();
-    params.assignee_id = eng.engineer_id;
-    api.get('/tickets', { params }).then(r => setEngTickets(r.data)).catch(() => setEngTickets([]));
+    setSelectedLoc(null);
+    api.get('/tickets', { params: { assignee_id: eng.engineer_id, limit: 200 } }).then(r => setEngTickets(r.data)).catch(() => setEngTickets([]));
   };
 
   const loadStatusTickets = (status: string) => {
     setSelectedStatus(status);
     setSelectedEng(null);
-    const params = getParams();
-    params.status = status;
-    api.get('/tickets', { params }).then(r => setStatusTickets(r.data)).catch(() => setStatusTickets([]));
+    setSelectedLoc(null);
+    api.get('/tickets', { params: { status, archived: false, limit: 200 } }).then(r => setStatusTickets(r.data)).catch(() => setStatusTickets([]));
+  };
+
+  const loadLocTickets = (loc: ObjectRow) => {
+    setSelectedLoc(loc);
+    setSelectedStatus(null);
+    setSelectedEng(null);
+    api.get('/tickets', { params: { location_id: loc.location_id, limit: 200 } }).then(r => setLocTickets(r.data)).catch(() => setLocTickets([]));
   };
 
   return (
@@ -125,23 +142,63 @@ export const ReportsPage: React.FC<{ onOpenTicket?: (t: any) => void }> = ({ onO
       {loading ? <div className="loading" style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>Загрузка...</div> : (
         <>
           {tab === 'objects' && (
-            <div className="table-wrapper">
-              <table>
-                <thead><tr><th>Объект</th><th>Всего</th><th>Открыто</th><th>Закрыто</th><th>Просрочено</th><th>Ср. время (ч)</th></tr></thead>
-                <tbody>
-                  {objects.map(o => (
-                    <tr key={o.location_id}>
-                      <td style={{ fontWeight: 600 }}>{o.location_name}</td>
-                      <td className="mono">{o.total}</td>
-                      <td className="mono" style={{ color: o.open > 0 ? 'var(--warning)' : 'var(--text-muted)' }}>{o.open}</td>
-                      <td className="mono" style={{ color: o.closed > 0 ? 'var(--success)' : 'var(--text-muted)' }}>{o.closed}</td>
-                      <td className="mono" style={{ color: o.overdue > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{o.overdue}</td>
-                      <td className="mono">{o.avg_resolution_hours}</td>
-                    </tr>
-                  ))}
-                  {objects.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)' }}>Нет данных</td></tr>}
-                </tbody>
-              </table>
+            <div>
+              <div className="table-wrapper">
+                <table>
+                  <thead><tr><th>Объект</th><th>Всего</th><th>Открыто</th><th>Закрыто</th><th>Просрочено</th><th>Работы</th><th>Ср. время (ч)</th></tr></thead>
+                  <tbody>
+                    {objects.map(o => (
+                      <React.Fragment key={o.location_id}>
+                        <tr onClick={() => loadLocTickets(o)} style={{ cursor: 'pointer' }}>
+                          <td style={{ fontWeight: 600 }}>
+                            <div>{o.location_name || o.customer_name || '—'}</div>
+                            {(o.customer_name || o.location_address) && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>{[o.customer_name, o.location_address].filter(Boolean).join(' — ')}</div>}
+                          </td>
+                          <td className="mono">{o.total}</td>
+                          <td className="mono" style={{ color: o.open > 0 ? 'var(--warning)' : 'var(--text-muted)' }}>{o.open}</td>
+                          <td className="mono" style={{ color: o.closed > 0 ? 'var(--success)' : 'var(--text-muted)' }}>{o.closed}</td>
+                          <td className="mono" style={{ color: o.overdue > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{o.overdue}</td>
+                          <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+                            {Object.entries(o.types || {}).map(([type, count]) => (
+                              <span key={type} style={{ display: 'inline-block', padding: '1px 5px', margin: '1px 2px', borderRadius: 4, background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+                                {TYPE_LABELS[type] || type}×{count}
+                              </span>
+                            ))}
+                          </td>
+                          <td className="mono">{o.avg_resolution_hours}</td>
+                        </tr>
+                        {selectedLoc?.location_id === o.location_id && (
+                          <tr>
+                            <td colSpan={7} style={{ padding: '8px 0 12px 0' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, paddingLeft: 8 }}>
+                                <span style={{ fontSize: 13, fontWeight: 600 }}>{o.location_name} ({locTickets.length})</span>
+                                <button className="btn btn-secondary" style={{ padding: '2px 8px', fontSize: 11 }} onClick={(e) => { e.stopPropagation(); setSelectedLoc(null); }}>Закрыть</button>
+                              </div>
+                              <table style={{ width: '100%' }}>
+                                <thead><tr><th>№</th><th>Работа</th><th>Исполнитель</th><th>Создана</th><th>Завершена</th><th>Статус</th></tr></thead>
+                                <tbody>
+                                  {locTickets.map(t => (
+                                    <tr key={t.id} onClick={() => onOpenTicket?.(t)} style={{ cursor: 'pointer' }}>
+                                      <td className="mono">{t.number}</td>
+                                      <td>{TYPE_LABELS[t.type] || t.subject}</td>
+                                      <td>{userMap[t.assignee_id] || '—'}</td>
+                                      <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(t.created_at).toLocaleDateString('ru-RU')}</td>
+                                      <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t.completed_at ? new Date(t.completed_at).toLocaleDateString('ru-RU') : '—'}</td>
+                                      <td><span className="status-pill">{STATUS_LABELS[t.status] || t.status}</span></td>
+                                    </tr>
+                                  ))}
+                                  {locTickets.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 12, color: 'var(--text-muted)' }}>Нет заявок</td></tr>}
+                                </tbody>
+                              </table>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    ))}
+                    {objects.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)' }}>Нет данных</td></tr>}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
@@ -256,18 +313,20 @@ export const ReportsPage: React.FC<{ onOpenTicket?: (t: any) => void }> = ({ onO
                   </div>
                   <div className="table-wrapper">
                     <table>
-                      <thead><tr><th>№</th><th>Тема</th><th>Статус</th><th>Приоритет</th><th>Создана</th></tr></thead>
+                      <thead><tr><th>№</th><th>Тема</th><th>Объект</th><th>Адрес</th><th>Статус</th><th>Приоритет</th><th>Создана</th></tr></thead>
                       <tbody>
                         {engTickets.map(t => (
-                          <tr key={t.id}>
+                          <tr key={t.id} onClick={() => onOpenTicket?.(t)} style={{ cursor: 'pointer' }}>
                             <td className="mono">{t.number}</td>
                             <td>{t.subject}</td>
+                            <td>{t.location_name || '—'}</td>
+                            <td style={{ fontSize: 11, maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.location_address || '—'}</td>
                             <td><span className="status-pill">{STATUS_LABELS[t.status] || t.status}</span></td>
                             <td>{PRIORITY_LABELS[t.priority] || t.priority}</td>
                             <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(t.created_at).toLocaleDateString('ru-RU')}</td>
                           </tr>
                         ))}
-                        {engTickets.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)' }}>Нет заявок</td></tr>}
+                        {engTickets.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)' }}>Нет заявок</td></tr>}
                       </tbody>
                     </table>
                   </div>

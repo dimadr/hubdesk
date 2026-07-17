@@ -28,17 +28,18 @@ export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[]; onDetail?
   const selfUserId = Number(localStorage.getItem('currentUserId') || 0);
 
   const loadTasks = useCallback(() => {
-    const tgtUserId = currentUserId || selfUserId;
-    const params: any = {};
+    const tgtUserId = viewingEngineerId || currentUserId || selfUserId;
+    const ptParams: any = {};
+    if (viewingEngineerId && (role === 'admin' || role === 'director')) ptParams.user_id = viewingEngineerId;
     Promise.all([
-      api.get('/personal-tasks', { params }),
+      api.get('/personal-tasks', { params: ptParams }),
       api.get('/tickets', { params: { assignee_id: tgtUserId, limit: 200 } }),
     ]).then(([pt, t]) => {
       setTasks(pt.data);
       setTickets(t.data);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, [currentUserId, selfUserId]);
+  }, [currentUserId, selfUserId, viewingEngineerId, role]);
 
   useEffect(() => {
     setLoading(true);
@@ -58,7 +59,7 @@ export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[]; onDetail?
   const addTask = async (column: string) => {
     if (!newTitle.trim()) return;
     const body: any = { title: newTitle, column };
-    if (role === 'admin' && selectedUser) body.user_id = Number(selectedUser);
+    if ((role === 'admin' || role === 'director') && viewingEngineerId) body.user_id = viewingEngineerId;
     await api.post('/personal-tasks', body);
     setNewTitle('');
     setAddingCol(null);

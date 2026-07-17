@@ -145,6 +145,20 @@ async def create_nomenclature(data: NomenclatureCreate, user=Depends(get_current
     return NomenclatureResponse.model_validate(n)
 
 
+@warehouse_router.patch("/nomenclature/{nomenclature_id}", response_model=NomenclatureResponse)
+async def update_nomenclature(nomenclature_id: int, data: NomenclatureCreate, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
+        raise HTTPException(403, "Недостаточно прав")
+    n = await db.get(Nomenclature, nomenclature_id)
+    if not n:
+        raise HTTPException(404, "Номенклатура не найдена")
+    n.name = data.name
+    n.type = NomenclatureType[data.type] if data.type in NomenclatureType._member_names_ else n.type
+    n.unit = data.unit
+    await db.commit()
+    return NomenclatureResponse.model_validate(n)
+
+
 @warehouse_router.get("/balances", response_model=list[BalanceResponse])
 async def list_balances(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(StockBalance))
@@ -171,8 +185,8 @@ async def get_warehouse_access(warehouse_id: int, user=Depends(get_current_user)
 @warehouse_router.post("/warehouses/{warehouse_id}/access")
 async def add_warehouse_access(warehouse_id: int, data: AccessRequest, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from fastapi import HTTPException
-    if user.role not in (UserRole.admin, UserRole.storekeeper):
-        raise HTTPException(403, "Only admin or storekeeper can manage warehouse access")
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
+        raise HTTPException(403, "Только админ, директор или кладовщик может управлять доступом")
     stmt = warehouse_access.insert().values(warehouse_id=warehouse_id, user_id=data.user_id)
     await db.execute(stmt)
     await db.commit()
@@ -182,7 +196,7 @@ async def add_warehouse_access(warehouse_id: int, data: AccessRequest, user=Depe
 @warehouse_router.delete("/warehouses/{warehouse_id}/access/{user_id}")
 async def remove_warehouse_access(warehouse_id: int, user_id: int, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from fastapi import HTTPException
-    if user.role not in (UserRole.admin, UserRole.storekeeper):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
         raise HTTPException(403)
     stmt = warehouse_access.delete().where(
         warehouse_access.c.warehouse_id == warehouse_id,
@@ -200,8 +214,8 @@ class WarehouseCreate(BaseModel):
 
 @warehouse_router.post("/warehouses", status_code=201, response_model=WarehouseResponse)
 async def create_warehouse(data: WarehouseCreate, user=Depends(get_current_user), db=Depends(get_db)):
-    if user.role not in (UserRole.admin, UserRole.storekeeper):
-        raise HTTPException(403, "Только админ или кладовщик может создавать склады")
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
+        raise HTTPException(403, "Только админ, директор или кладовщик может создавать склады")
     w = Warehouse(name=data.name, type=data.type if data.type in ("physical", "personal") else "physical")
     db.add(w)
     await db.flush()
@@ -211,8 +225,8 @@ async def create_warehouse(data: WarehouseCreate, user=Depends(get_current_user)
 
 @warehouse_router.patch("/warehouses/{warehouse_id}", response_model=WarehouseResponse)
 async def rename_warehouse(warehouse_id: int, data: WarehouseCreate, user=Depends(get_current_user), db=Depends(get_db)):
-    if user.role not in (UserRole.admin, UserRole.storekeeper):
-        raise HTTPException(403, "Только админ или кладовщик")
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
+        raise HTTPException(403, "Только админ, директор или кладовщик")
     w = await db.get(Warehouse, warehouse_id)
     if not w:
         raise HTTPException(404)

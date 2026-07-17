@@ -23,6 +23,7 @@ class AttachmentService:
         comment_id: int | None,
         user: User,
     ) -> Attachment:
+        ticket = None
         if ticket_id:
             ticket = await self.session.get(Ticket, ticket_id)
             if not ticket:
