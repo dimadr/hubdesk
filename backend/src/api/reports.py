@@ -17,16 +17,23 @@ def check_access(user: User):
         raise HTTPException(403, "Доступно администратору, директору, диспетчеру и бухгалтеру")
 
 
+def _parse_date(s: str) -> datetime:
+    dt = datetime.fromisoformat(s)
+    if dt.tzinfo is not None:
+        dt = dt.replace(tzinfo=None)
+    return dt
+
+
 async def ticket_query(db: AsyncSession, date_from: str | None, date_to: str | None):
     stmt = select(Ticket)
     if date_from:
         try:
-            stmt = stmt.where(Ticket.created_at >= datetime.fromisoformat(date_from))
+            stmt = stmt.where(Ticket.created_at >= _parse_date(date_from))
         except ValueError:
             raise HTTPException(400, f"Некорректная дата: {date_from}")
     if date_to:
         try:
-            stmt = stmt.where(Ticket.created_at <= datetime.fromisoformat(date_to.rstrip("Z")))
+            stmt = stmt.where(Ticket.created_at <= _parse_date(date_to))
         except ValueError:
             raise HTTPException(400, f"Некорректная дата: {date_to}")
     result = await db.execute(stmt)
@@ -137,11 +144,14 @@ async def report_tickets(
 async def report_engineers(
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
+    status: str | None = Query(None),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     check_access(user)
     tickets = await ticket_query(db, date_from, date_to)
+    if status:
+        tickets = [t for t in tickets if t.status.value == status]
     engineers_result = await db.execute(
         select(User).where(User.role.in_([UserRole.engineer]))
     )

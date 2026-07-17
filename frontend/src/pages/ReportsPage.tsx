@@ -35,6 +35,7 @@ export const ReportsPage: React.FC<{ onOpenTicket?: (t: any) => void }> = ({ onO
   const [engTickets, setEngTickets] = useState<any[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
   const [statusTickets, setStatusTickets] = useState<any[]>([]);
+  const [engStatusFilter, setEngStatusFilter] = useState('');
 
   const getParams = () => {
     const p: any = {};
@@ -49,7 +50,7 @@ export const ReportsPage: React.FC<{ onOpenTicket?: (t: any) => void }> = ({ onO
     Promise.all([
       api.get('/reports/objects', { params }),
       api.get('/reports/tickets', { params }),
-      api.get('/reports/engineers', { params }),
+      api.get('/reports/engineers', { params: { ...params, ...(engStatusFilter ? { status: engStatusFilter } : {}) } }),
     ]).then(([o, t, e]) => {
       setObjects(o.data);
       setTicketStats(t.data);
@@ -60,6 +61,16 @@ export const ReportsPage: React.FC<{ onOpenTicket?: (t: any) => void }> = ({ onO
       setLoading(false);
     });
   };
+
+  const loadEngineers = () => {
+    const params = getParams();
+    if (engStatusFilter) params.status = engStatusFilter;
+    api.get('/reports/engineers', { params }).then(r => setEngineers(r.data)).catch(() => {});
+  };
+
+  useEffect(() => {
+    loadEngineers();
+  }, [engStatusFilter]);
 
   useEffect(() => {
     loadAll();
@@ -208,6 +219,17 @@ export const ReportsPage: React.FC<{ onOpenTicket?: (t: any) => void }> = ({ onO
 
           {tab === 'engineers' && (
             <div>
+              <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Статус заявок:</span>
+                <select value={engStatusFilter} onChange={e => setEngStatusFilter(e.target.value)}
+                  style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-surface)', color: 'var(--text)', fontSize: 12 }}>
+                  <option value="">Все</option>
+                  <option value="ASSIGNED">Назначена</option>
+                  <option value="ACCEPTED">Принята</option>
+                  <option value="IN_PROGRESS">В работе</option>
+                  <option value="COMPLETED">Завершена</option>
+                </select>
+              </div>
               <div className="table-wrapper">
                 <table>
                   <thead><tr><th>Инженер</th><th>Всего</th><th>Выполнено</th><th>В работе</th><th>Просрочено</th><th>Ср. время (ч)</th></tr></thead>
