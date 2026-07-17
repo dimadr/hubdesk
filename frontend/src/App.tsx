@@ -899,6 +899,7 @@ const App: React.FC = () => {
   };
 
   const handleStatusChange = async (ticket: TicketResponse, target: string) => {
+    if (ticket.status === target) return;
     if (target === 'COMPLETED') {
       setConfirmStatusTicket({ ticket, target });
       return;
@@ -929,12 +930,17 @@ const App: React.FC = () => {
 
   const confirmComplete = async (comment: string) => {
     if (!confirmStatusTicket) return;
+    if (confirmStatusTicket.ticket.status === 'COMPLETED') {
+      setConfirmStatusTicket(null);
+      return;
+    }
     try {
       if (comment) {
         await api.post(`/tickets/${confirmStatusTicket.ticket.id}/comments`, { body: comment, is_internal: true });
       }
       await api.patch(`/tickets/${confirmStatusTicket.ticket.id}/status`, { status: 'COMPLETED' });
       setConfirmStatusTicket(null);
+      setDetailTicket(null);
       setRefreshKey(k => k + 1);
     } catch (e: any) {
       alert(e.response?.data?.detail || 'Ошибка');

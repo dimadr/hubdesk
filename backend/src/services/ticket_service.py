@@ -81,6 +81,9 @@ class TicketService:
         ticket = await self._get(ticket_id)
         from_status = ticket.status.value
 
+        if from_status == target:
+            return ticket
+
         if not await RoleChecker.can_view_ticket_async(user, ticket, self.session):
             raise HTTPException(403, "Доступ к данной заявке запрещен")
 
