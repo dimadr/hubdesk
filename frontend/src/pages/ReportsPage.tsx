@@ -21,7 +21,7 @@ function valColor(v: number, good: number, warn: number): string {
   return 'var(--danger)';
 }
 
-export const ReportsPage: React.FC = () => {
+export const ReportsPage: React.FC<{ onOpenTicket?: (t: any) => void }> = ({ onOpenTicket }) => {
   const [tab, setTab] = useState<'tickets' | 'objects' | 'engineers' | 'inserts' | 'devices'>('tickets');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -31,6 +31,10 @@ export const ReportsPage: React.FC = () => {
   const [engineers, setEngineers] = useState<EngineerRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [selectedEng, setSelectedEng] = useState<EngineerRow | null>(null);
+  const [engTickets, setEngTickets] = useState<any[]>([]);
+  const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
+  const [statusTickets, setStatusTickets] = useState<any[]>([]);
 
   const getParams = () => {
     const p: any = {};
@@ -60,6 +64,22 @@ export const ReportsPage: React.FC = () => {
   useEffect(() => {
     loadAll();
   }, [from, to]);
+
+  const loadEngTickets = (eng: EngineerRow) => {
+    setSelectedEng(eng);
+    setSelectedStatus(null);
+    const params = getParams();
+    params.assignee_id = eng.engineer_id;
+    api.get('/tickets', { params }).then(r => setEngTickets(r.data)).catch(() => setEngTickets([]));
+  };
+
+  const loadStatusTickets = (status: string) => {
+    setSelectedStatus(status);
+    setSelectedEng(null);
+    const params = getParams();
+    params.status = status;
+    api.get('/tickets', { params }).then(r => setStatusTickets(r.data)).catch(() => setStatusTickets([]));
+  };
 
   return (
     <div>
@@ -128,7 +148,10 @@ export const ReportsPage: React.FC = () => {
                     <thead><tr><th>Статус</th><th>Кол-во</th></tr></thead>
                     <tbody>
                       {ticketStats.by_status.map(s => (
-                        <tr key={s.label}><td>{STATUS_LABELS[s.label] || s.label}</td><td className="mono">{s.count}</td></tr>
+                        <tr key={s.label} onClick={() => loadStatusTickets(s.label)} style={{ cursor: 'pointer' }}>
+                          <td>{STATUS_LABELS[s.label] || s.label}</td>
+                          <td className="mono">{s.count}</td>
+                        </tr>
                       ))}
                     </tbody>
                   </table>
@@ -154,28 +177,80 @@ export const ReportsPage: React.FC = () => {
                   </table>
                 </div>
               </div>
+
+              {selectedStatus && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>{STATUS_LABELS[selectedStatus] || selectedStatus} ({statusTickets.length})</h3>
+                    <button className="btn btn-secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => setSelectedStatus(null)}>Закрыть</button>
+                  </div>
+                  <div className="table-wrapper">
+                    <table>
+                      <thead><tr><th>№</th><th>Тема</th><th>Приоритет</th><th>Создана</th></tr></thead>
+                      <tbody>
+                        {statusTickets.map(t => (
+                          <tr key={t.id} onClick={() => onOpenTicket?.(t)} style={{ cursor: 'pointer' }}>
+                            <td className="mono">{t.number}</td>
+                            <td>{t.subject}</td>
+                            <td>{PRIORITY_LABELS[t.priority] || t.priority}</td>
+                            <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(t.created_at).toLocaleDateString('ru-RU')}</td>
+                          </tr>
+                        ))}
+                        {statusTickets.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)' }}>Нет заявок</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           {tab === 'tickets' && !ticketStats && <div style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)' }}>Нет данных</div>}
 
           {tab === 'engineers' && (
-            <div className="table-wrapper">
-              <table>
-                <thead><tr><th>Инженер</th><th>Всего</th><th>Выполнено</th><th>В работе</th><th>Просрочено</th><th>Ср. время (ч)</th></tr></thead>
-                <tbody>
-                  {engineers.map(e => (
-                    <tr key={e.engineer_id}>
-                      <td style={{ fontWeight: 600 }}>{e.engineer_name}</td>
-                      <td className="mono">{e.total}</td>
-                      <td className="mono" style={{ color: 'var(--success)' }}>{e.completed}</td>
-                      <td className="mono" style={{ color: e.in_progress > 0 ? 'var(--warning)' : 'var(--text-muted)' }}>{e.in_progress}</td>
-                      <td className="mono" style={{ color: e.overdue > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{e.overdue}</td>
-                      <td className="mono">{e.avg_resolution_hours}</td>
-                    </tr>
-                  ))}
-                  {engineers.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)' }}>Нет данных</td></tr>}
-                </tbody>
-              </table>
+            <div>
+              <div className="table-wrapper">
+                <table>
+                  <thead><tr><th>Инженер</th><th>Всего</th><th>Выполнено</th><th>В работе</th><th>Просрочено</th><th>Ср. время (ч)</th></tr></thead>
+                  <tbody>
+                    {engineers.map(e => (
+                      <tr key={e.engineer_id} onClick={() => loadEngTickets(e)} style={{ cursor: 'pointer' }}>
+                        <td style={{ fontWeight: 600 }}>{e.engineer_name}</td>
+                        <td className="mono">{e.total}</td>
+                        <td className="mono" style={{ color: 'var(--success)' }}>{e.completed}</td>
+                        <td className="mono" style={{ color: e.in_progress > 0 ? 'var(--warning)' : 'var(--text-muted)' }}>{e.in_progress}</td>
+                        <td className="mono" style={{ color: e.overdue > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{e.overdue}</td>
+                        <td className="mono">{e.avg_resolution_hours}</td>
+                      </tr>
+                    ))}
+                    {engineers.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)' }}>Нет данных</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+              {selectedEng && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>Заявки: {selectedEng.engineer_name}</h3>
+                    <button className="btn btn-secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => setSelectedEng(null)}>Закрыть</button>
+                  </div>
+                  <div className="table-wrapper">
+                    <table>
+                      <thead><tr><th>№</th><th>Тема</th><th>Статус</th><th>Приоритет</th><th>Создана</th></tr></thead>
+                      <tbody>
+                        {engTickets.map(t => (
+                          <tr key={t.id}>
+                            <td className="mono">{t.number}</td>
+                            <td>{t.subject}</td>
+                            <td><span className="status-pill">{STATUS_LABELS[t.status] || t.status}</span></td>
+                            <td>{PRIORITY_LABELS[t.priority] || t.priority}</td>
+                            <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(t.created_at).toLocaleDateString('ru-RU')}</td>
+                          </tr>
+                        ))}
+                        {engTickets.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)' }}>Нет заявок</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
