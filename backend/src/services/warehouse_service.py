@@ -64,7 +64,9 @@ class WarehouseService:
     async def account(self, doc_id: int, user: User) -> AccountingDocument:
         if not RoleChecker.can_manage_warehouse(user):
             raise PermissionError("Access denied")
-        doc = await self._get(doc_id)
+        doc = await self._get(doc_id, for_update=True)
+        if doc.status == DocStatus.ACCOUNTED:
+            return doc
         await self.fsm.transition(doc, "ACCOUNTED", user.id)
         await self.fsm.post_account(doc)
         await self.session.flush()
@@ -80,8 +82,10 @@ class WarehouseService:
         balance = result.scalar_one_or_none()
         return balance.quantity if balance else 0.0
 
-    async def _get(self, doc_id: int) -> AccountingDocument:
+    async def _get(self, doc_id: int, for_update: bool = False) -> AccountingDocument:
         stmt = select(AccountingDocument).where(AccountingDocument.id == doc_id).options(selectinload(AccountingDocument.lines))
+        if for_update:
+            stmt = stmt.with_for_update()
         result = await self.session.execute(stmt)
         doc = result.scalar_one_or_none()
         if not doc:

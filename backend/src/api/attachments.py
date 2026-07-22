@@ -69,16 +69,22 @@ async def download_attachment(
 
     if att.ticket_id:
         ticket = await db.get(Ticket, att.ticket_id)
-        if ticket and not await RoleChecker.can_view_ticket_async(user, ticket, db):
+        if not ticket:
+            raise HTTPException(404, "Связанная заявка не найдена")
+        if not await RoleChecker.can_view_ticket_async(user, ticket, db):
             raise HTTPException(403, "Нет доступа к заявке")
         if att.is_internal and user.role in (UserRole.customer, UserRole.engineer):
             raise HTTPException(403, "Нет доступа к внутреннему файлу")
     elif att.comment_id:
         from src.models.comment import Comment
         comment = await db.get(Comment, att.comment_id)
-        if comment and comment.ticket_id:
+        if not comment:
+            raise HTTPException(404, "Связанный комментарий не найден")
+        if comment.ticket_id:
             ticket = await db.get(Ticket, comment.ticket_id)
-            if ticket and not await RoleChecker.can_view_ticket_async(user, ticket, db):
+            if not ticket:
+                raise HTTPException(404, "Связанная заявка не найдена")
+            if not await RoleChecker.can_view_ticket_async(user, ticket, db):
                 raise HTTPException(403, "Нет доступа к заявке")
     else:
         if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):

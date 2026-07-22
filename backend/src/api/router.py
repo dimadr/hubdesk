@@ -387,7 +387,7 @@ async def update_location(
             if not cust:
                 raise HTTPException(400, "Клиент не найден")
         else:
-            update_data["customer_id"] = None
+            raise HTTPException(400, "customer_id не может быть пустым")
 
     for field, value in update_data.items():
         setattr(loc, field, value)

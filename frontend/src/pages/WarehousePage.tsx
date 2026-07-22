@@ -22,7 +22,10 @@ const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (
 
 export const WarehousePage: React.FC = () => {
   const role = (() => { try { return JSON.parse(localStorage.getItem('user') || '{}').role || ''; } catch { return ''; } })();
-  const isAdmin = role === 'admin' || role === 'director' || role === 'storekeeper' || role === 'metrologist';
+  const canRead = role === 'admin' || role === 'director' || role === 'storekeeper' || role === 'metrologist' || role === 'accountant';
+  const canWrite = role === 'admin' || role === 'director' || role === 'storekeeper';
+  const canManageReplacement = role === 'admin' || role === 'director' || role === 'storekeeper';
+  const canManageInsert = role === 'admin' || role === 'director' || role === 'storekeeper' || role === 'metrologist';
   const [tab, setTab] = useState<'warehouses' | 'nomenclature' | 'docs' | 'balances' | 'replacement' | 'insert'>('docs');
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [nomenclature, setNomenclature] = useState<NomenclatureItem[]>([]);
@@ -149,7 +152,8 @@ export const WarehousePage: React.FC = () => {
 
   const handleAdvanceDoc = async (id: number, action: 'approve' | 'deliver' | 'account') => {
     try {
-      await api.post(`/warehouse-documents/${id}/${action}`);
+      const method = action === 'account' ? api.post : api.patch;
+      await method(`/warehouse-documents/${id}/${action}`);
       loadData();
     } catch (e: any) {
       alert(e.response?.data?.detail || 'Ошибка операции');
@@ -166,28 +170,28 @@ export const WarehousePage: React.FC = () => {
         <button className={`tab ${tab === 'balances' ? 'active' : ''}`} onClick={() => setTab('balances')}>Остатки</button>
         <button className={`tab ${tab === 'warehouses' ? 'active' : ''}`} onClick={() => setTab('warehouses')}>Склады</button>
         <button className={`tab ${tab === 'nomenclature' ? 'active' : ''}`} onClick={() => setTab('nomenclature')}>Номенклатура</button>
-        <button className={`tab ${tab === 'replacement' ? 'active' : ''}`} onClick={() => setTab('replacement')}>Подменный фонд</button>
-        <button className={`tab ${tab === 'insert' ? 'active' : ''}`} onClick={() => setTab('insert')}>Вставки</button>
+        {canManageReplacement && <button className={`tab ${tab === 'replacement' ? 'active' : ''}`} onClick={() => setTab('replacement')}>Подменный фонд</button>}
+        {canManageInsert && <button className={`tab ${tab === 'insert' ? 'active' : ''}`} onClick={() => setTab('insert')}>Вставки</button>}
       </div>
 
       <div style={{ marginTop: 16 }}>
         {tab === 'warehouses' && (
           <div>
             <div className="page-header" style={{ marginTop: 0 }}>
-              <button className="btn btn-primary" onClick={() => { setWhForm({ id: null, name: '', type: 'physical' }); setShowWhModal(true); }}>+ Склад</button>
+              {canWrite && <button className="btn btn-primary" onClick={() => { setWhForm({ id: null, name: '', type: 'physical' }); setShowWhModal(true); }}>+ Склад</button>}
             </div>
             <div className="table-wrapper">
               <table>
-                <thead><tr><th>ID</th><th>Название</th><th>Тип</th><th>Действия</th></tr></thead>
+                <thead><tr><th>ID</th><th>Название</th><th>Тип</th>{canWrite && <th>Действия</th>}</tr></thead>
                 <tbody>
                   {warehouses.map(w => (
                     <tr key={w.id}>
                       <td>{w.id}</td>
                       <td>{w.name}</td>
                       <td>{WAREHOUSE_TYPES[w.type] || w.type}</td>
-                      <td>
+                      {canWrite && <td>
                         <button className="btn btn-secondary" onClick={() => { setWhForm({ id: w.id, name: w.name, type: w.type }); setShowWhModal(true); }} style={{ padding: '2px 6px', fontSize: 11 }}>✎</button>
-                      </td>
+                      </td>}
                     </tr>
                   ))}
                 </tbody>
@@ -199,11 +203,11 @@ export const WarehousePage: React.FC = () => {
         {tab === 'nomenclature' && (
           <div>
             <div className="page-header" style={{ marginTop: 0 }}>
-              <button className="btn btn-primary" onClick={() => { setNomForm({ id: null, name: '', type: 'material', unit: 'шт' }); setShowNomModal(true); }}>+ Номенклатура</button>
+              {canWrite && <button className="btn btn-primary" onClick={() => { setNomForm({ id: null, name: '', type: 'material', unit: 'шт' }); setShowNomModal(true); }}>+ Номенклатура</button>}
             </div>
             <div className="table-wrapper">
               <table>
-                <thead><tr><th>ID</th><th>Название</th><th>Тип</th><th>Ед. изм.</th><th>Действия</th></tr></thead>
+                <thead><tr><th>ID</th><th>Название</th><th>Тип</th><th>Ед. изм.</th>{canWrite && <th>Действия</th>}</tr></thead>
                 <tbody>
                   {nomenclature.map(n => (
                     <tr key={n.id}>
@@ -211,9 +215,9 @@ export const WarehousePage: React.FC = () => {
                       <td>{n.name}</td>
                       <td>{NOM_TYPES[n.type] || n.type}</td>
                       <td>{n.unit}</td>
-                      <td>
+                      {canWrite && <td>
                         <button className="btn btn-secondary" onClick={() => { setNomForm({ id: n.id, name: n.name, type: n.type, unit: n.unit }); setShowNomModal(true); }} style={{ padding: '2px 6px', fontSize: 11 }}>✎</button>
-                      </td>
+                      </td>}
                     </tr>
                   ))}
                 </tbody>
@@ -225,14 +229,14 @@ export const WarehousePage: React.FC = () => {
         {tab === 'docs' && (
           <div>
             <div className="page-header" style={{ marginTop: 0 }}>
-              <button className="btn btn-primary" onClick={() => {
+              {canWrite && <button className="btn btn-primary" onClick={() => {
                 setDocForm({ doc_type: 'INFLOW', source_warehouse_id: '', target_warehouse_id: '', lines: [{ nomenclature_id: '', quantity: 1 }] });
                 setShowDocModal(true);
-              }}>+ Создать документ</button>
+              }}>+ Создать документ</button>}
             </div>
             <div className="table-wrapper">
               <table>
-                <thead><tr><th>ID</th><th>Тип</th><th>Статус</th><th>Откуда</th><th>Куда</th><th>Позиций</th><th>Дата</th><th>Действия</th></tr></thead>
+                <thead><tr><th>ID</th><th>Тип</th><th>Статус</th><th>Откуда</th><th>Куда</th><th>Позиций</th><th>Дата</th>{canWrite && <th>Действия</th>}</tr></thead>
                 <tbody>
                   {docs.map(d => (
                     <tr key={d.id}>
@@ -243,7 +247,7 @@ export const WarehousePage: React.FC = () => {
                       <td>{d.target_warehouse_id ? whMap[d.target_warehouse_id]?.name || '—' : '—'}</td>
                       <td>{d.lines?.length || 0}</td>
                       <td>{new Date(d.created_at).toLocaleString()}</td>
-                      <td>
+                      {canWrite && <td>
                         {d.status === 'DRAFT' && (
                           <button className="btn btn-success" onClick={() => handleAdvanceDoc(d.id, 'approve')} style={{ padding: '2px 6px', fontSize: 11 }}>Согласовать</button>
                         )}
@@ -253,7 +257,7 @@ export const WarehousePage: React.FC = () => {
                         {d.status === 'DELIVERY' && (
                           <button className="btn btn-success" onClick={() => handleAdvanceDoc(d.id, 'account')} style={{ padding: '2px 6px', fontSize: 11 }}>Провести</button>
                         )}
-                      </td>
+                      </td>}
                     </tr>
                   ))}
                 </tbody>
@@ -280,8 +284,8 @@ export const WarehousePage: React.FC = () => {
           </div>
         )}
 
-        {tab === 'replacement' && <ReplacementTab isAdmin={isAdmin} />}
-        {tab === 'insert' && <InsertTab isAdmin={isAdmin} />}
+        {tab === 'replacement' && <ReplacementTab canWrite={canManageReplacement} />}
+        {tab === 'insert' && <InsertTab canWrite={canManageInsert} />}
       </div>
 
       {showWhModal && (
@@ -395,13 +399,14 @@ export const WarehousePage: React.FC = () => {
   );
 };
 
-const ReplacementTab: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
+const ReplacementTab: React.FC<{ canWrite: boolean }> = ({ canWrite }) => {
   const [tab, setTab] = useState<'catalog' | 'journal' | 'documents' | 'balance'>('catalog');
   const [devices, setDevices] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState({
@@ -416,11 +421,16 @@ const ReplacementTab: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
 
   const load = () => {
     setLoading(true);
+    setLoadError('');
     Promise.all([
-      api.get('/replacement/devices').catch(() => ({ data: [] })),
-      api.get('/replacement/transactions').catch(() => ({ data: [] })),
+      api.get('/replacement/devices'),
+      api.get('/replacement/transactions'),
     ]).then(([d, t]) => { setDevices(d.data); setTransactions(t.data); setLoading(false); })
-      .catch(() => setLoading(false));
+      .catch((e: any) => {
+        setLoadError(e.response?.data?.detail || 'Ошибка загрузки подменного фонда');
+        if (e.response?.status === 403) setLoadError('Недостаточно прав для просмотра подменного фонда');
+        setLoading(false);
+      });
   };
 
   useEffect(() => { load(); }, []);
@@ -485,9 +495,15 @@ const ReplacementTab: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
   const delTx = async (id: number) => { if (!confirm('Удалить транзакцию?')) return; if (prompt('Введите УДАЛИТЬ для подтверждения:') !== 'УДАЛИТЬ') return; try { await api.delete(`/replacement/transactions/${id}`); load(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка удаления'); } };
 
   if (loading) return <div className="loading">Загрузка...</div>;
+  if (loadError) return <div style={{ padding: 16, color: 'var(--danger)' }}>{loadError}</div>;
 
   const txLabels: Record<string, string> = { incoming: 'Приход', outgoing: 'Выдача', return: 'Возврат' };
   const txColors: Record<string, string> = { incoming: 'var(--success)', outgoing: 'var(--warning)', return: 'var(--info)' };
+  const deviceMap = useMemo(() => {
+    const m: Record<number, any> = {};
+    devices.forEach(d => { m[d.id] = d; });
+    return m;
+  }, [devices]);
 
   return (
     <div>
@@ -499,15 +515,15 @@ const ReplacementTab: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
         ))}
       </div>
       <div className="page-header" style={{ marginTop: 0 }}>
-        {tab === 'catalog' && <button className="btn btn-primary" onClick={() => openDeviceForm(undefined)}>+ Прибор</button>}
-        {tab === 'journal' && <button className="btn btn-primary" onClick={() => openTxForm()}>+ Операция</button>}
+        {tab === 'catalog' && canWrite && <button className="btn btn-primary" onClick={() => openDeviceForm(undefined)}>+ Прибор</button>}
+        {tab === 'journal' && canWrite && <button className="btn btn-primary" onClick={() => openTxForm()}>+ Операция</button>}
       </div>
 
       {tab === 'catalog' && (
         <div>
           <div className="table-wrapper">
             <table>
-              <thead><tr><th>Наименование</th><th>Серийный №</th><th>Класс</th><th>Исполнение</th><th>Поверка до</th><th>Интервал</th><th>Остаток</th><th></th></tr></thead>
+              <thead><tr><th>Наименование</th><th>Серийный №</th><th>Класс</th><th>Исполнение</th><th>Поверка до</th><th>Интервал</th><th>Остаток</th>{canWrite && <th></th>}</tr></thead>
               <tbody>
                 {devices.map(d => (
                   <tr key={d.id}>
@@ -518,12 +534,12 @@ const ReplacementTab: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
                     <td style={{ fontSize: 12, color: d.verification_expiry && new Date(d.verification_expiry) < new Date() ? 'var(--danger)' : 'var(--text-secondary)' }}>{d.verification_expiry ? d.verification_expiry.substring(0, 10) : '—'}</td>
                     <td className="mono" style={{ fontSize: 12 }}>{d.verification_interval_months ? `${d.verification_interval_months / 12} год` : '—'}</td>
                     <td className="mono" style={{ fontWeight: 700, color: d.balance > 0 ? 'var(--success)' : d.balance < 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{d.balance}</td>
-                    <td>
+                    {canWrite && <td>
                       <button className="btn btn-success" onClick={() => setQuick({ devId: d.id, action: 'incoming', qty: '1', taken_by_id: '', location_id: '' })} style={{ padding: '2px 6px', fontSize: 11, marginRight: 2 }} title="Приход">+</button>
                       <button className="btn btn-secondary" onClick={() => setQuick({ devId: d.id, action: 'outgoing', qty: '1', taken_by_id: '', location_id: '' })} style={{ padding: '2px 6px', fontSize: 11, marginRight: 2 }} title="Выдача">−</button>
                       <button className="btn btn-secondary" onClick={() => openDeviceForm(d)} style={{ padding: '2px 6px', fontSize: 11 }}>✎</button>
-                      {isAdmin && <button className="btn btn-danger" onClick={() => delDevice(d.id)} style={{ padding: '2px 6px', fontSize: 11, marginLeft: 2 }}>✕</button>}
-                    </td>
+                      <button className="btn btn-danger" onClick={() => delDevice(d.id)} style={{ padding: '2px 6px', fontSize: 11, marginLeft: 2 }}>✕</button>
+                    </td>}
                   </tr>
                 ))}
               </tbody>
@@ -577,7 +593,7 @@ const ReplacementTab: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
           <table><thead><tr><th>Дата</th><th>Тип</th><th>Прибор</th><th>Сер.№</th><th>Кол-во</th><th>Кто</th><th>Куда</th><th>Документ</th><th></th></tr></thead>
             <tbody>
               {transactions.map(t => {
-                const dev = devices.find(d => d.id === t.device_id);
+                const dev = deviceMap[t.device_id];
                 return (
                 <tr key={t.id}>
                   <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(t.created_at).toLocaleString('ru-RU')}</td>
@@ -588,7 +604,7 @@ const ReplacementTab: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
                   <td>{t.taken_by_name || '—'}</td>
                   <td>{t.location_name || '—'}</td>
                   <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t.document || '—'}</td>
-                  {isAdmin && <td><button className="btn btn-danger" onClick={() => delTx(t.id)} style={{ padding: '3px 8px', fontSize: 10 }}>✕</button></td>}
+                  {canWrite && <td><button className="btn btn-danger" onClick={() => delTx(t.id)} style={{ padding: '3px 8px', fontSize: 10 }}>✕</button></td>}
                 </tr>
                 );
               })}
@@ -663,7 +679,7 @@ const ReplacementTab: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
                   <thead><tr><th>Дата</th><th>Тип</th><th>Прибор</th><th>Сер.№</th><th>Кол-во</th><th>Кто</th><th>Куда</th></tr></thead>
                   <tbody>
                     {docTx.map(t => {
-                      const dev = devices.find(d => d.id === t.device_id);
+                      const dev = deviceMap[t.device_id];
                       return (
                         <tr key={t.id}>
                           <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(t.created_at).toLocaleString('ru-RU')}</td>
@@ -770,12 +786,13 @@ const ReplacementTab: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
   );
 };
 
-const InsertTab: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
+const InsertTab: React.FC<{ canWrite: boolean }> = ({ canWrite }) => {
   const [products, setProducts] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState({ name: '', diameter_inner: '', diameter_outer: '', length: '', flange_type: '', cell: '', notes: '', quantity: '1', type: 'incoming', product_id: '', taken_by_id: '', location_id: '', comment: '', document: '' });
@@ -787,11 +804,16 @@ const InsertTab: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
 
   const load = () => {
     setLoading(true);
+    setLoadError('');
     Promise.all([
-      api.get('/insert/products').catch(() => ({ data: [] })),
-      api.get('/insert/transactions').catch(() => ({ data: [] })),
+      api.get('/insert/products'),
+      api.get('/insert/transactions'),
     ]).then(([p, t]) => { setProducts(p.data); setTransactions(t.data); setLoading(false); })
-      .catch(() => setLoading(false));
+      .catch((e: any) => {
+        setLoadError(e.response?.data?.detail || 'Ошибка загрузки');
+        if (e.response?.status === 403) setLoadError('Недостаточно прав для просмотра вставок');
+        setLoading(false);
+      });
   };
 
   useEffect(() => { load(); }, []);
@@ -860,9 +882,15 @@ const InsertTab: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
   const delTx = async (id: number) => { if (!confirm('Удалить транзакцию?')) return; if (prompt('Введите УДАЛИТЬ для подтверждения:') !== 'УДАЛИТЬ') return; try { await api.delete(`/insert/transactions/${id}`); load(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка удаления'); } };
 
   if (loading) return <div className="loading">Загрузка...</div>;
+  if (loadError) return <div style={{ padding: 16, color: 'var(--danger)' }}>{loadError}</div>;
 
   const txLabels: Record<string, string> = { incoming: 'Приход', outgoing: 'Выдача', return: 'Возврат' };
   const txColors: Record<string, string> = { incoming: 'var(--success)', outgoing: 'var(--warning)', return: 'var(--info)' };
+  const productMap = useMemo(() => {
+    const m: Record<number, any> = {};
+    products.forEach(p => { m[p.id] = p; });
+    return m;
+  }, [products]);
 
   return (
     <div>
@@ -874,8 +902,8 @@ const InsertTab: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
         ))}
       </div>
       <div className="page-header" style={{ marginTop: 0 }}>
-        {tab === 'catalog' && <button className="btn btn-primary" onClick={() => openProductForm(undefined)}>+ Продукт</button>}
-        {tab === 'journal' && <button className="btn btn-primary" onClick={() => openTxForm()}>+ Операция</button>}
+        {tab === 'catalog' && canWrite && <button className="btn btn-primary" onClick={() => openProductForm(undefined)}>+ Продукт</button>}
+        {tab === 'journal' && canWrite && <button className="btn btn-primary" onClick={() => openTxForm()}>+ Операция</button>}
         {tab === 'balance' && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Баланс рассчитывается из транзакций</span>}
       </div>
 
@@ -883,7 +911,7 @@ const InsertTab: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
         <div>
           <div className="table-wrapper">
             <table>
-              <thead><tr><th>Название</th><th>Диаметр внутр.</th><th>Диаметр наруж.</th><th>Длина</th><th>Фланец</th><th>Ячейка</th><th>Примечание</th><th>Остаток</th><th></th></tr></thead>
+              <thead><tr><th>Название</th><th>Диаметр внутр.</th><th>Диаметр наруж.</th><th>Длина</th><th>Фланец</th><th>Ячейка</th><th>Примечание</th><th>Остаток</th>{canWrite && <th></th>}</tr></thead>
               <tbody>
                 {products.map(p => (
                   <tr key={p.id}>
@@ -895,12 +923,12 @@ const InsertTab: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
                     <td>{p.cell || '—'}</td>
                     <td style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.notes || '—'}</td>
                     <td className="mono" style={{ fontWeight: 700, color: p.balance > 0 ? 'var(--success)' : p.balance < 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{p.balance}</td>
-                    <td>
+                    {canWrite && <td>
                       <button className="btn btn-success" onClick={() => setQuick({ prodId: p.id, action: 'incoming', qty: '1', taken_by_id: '', location_id: '' })} style={{ padding: '2px 6px', fontSize: 11, marginRight: 2 }} title="Приход">+</button>
                       <button className="btn btn-secondary" onClick={() => setQuick({ prodId: p.id, action: 'outgoing', qty: '1', taken_by_id: '', location_id: '' })} style={{ padding: '2px 6px', fontSize: 11, marginRight: 2 }} title="Выдача">−</button>
                       <button className="btn btn-secondary" onClick={() => openProductForm(p)} style={{ padding: '2px 6px', fontSize: 11 }}>✎</button>
-                      {isAdmin && <button className="btn btn-danger" onClick={() => delProduct(p.id)} style={{ padding: '2px 6px', fontSize: 11, marginLeft: 2 }}>✕</button>}
-                    </td>
+                      <button className="btn btn-danger" onClick={() => delProduct(p.id)} style={{ padding: '2px 6px', fontSize: 11, marginLeft: 2 }}>✕</button>
+                    </td>}
                   </tr>
                 ))}
               </tbody>
@@ -965,7 +993,7 @@ const InsertTab: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
                   <td className="mono" style={{ fontWeight: 600 }}>{t.quantity}</td>
                   <td>{t.taken_by_name || '—'}</td>
                   <td>{t.location_name || '—'}</td>
-                  {isAdmin && <td><button className="btn btn-danger" onClick={() => delTx(t.id)} style={{ padding: '3px 8px', fontSize: 10 }}>✕</button></td>}
+                  {canWrite && <td><button className="btn btn-danger" onClick={() => delTx(t.id)} style={{ padding: '3px 8px', fontSize: 10 }}>✕</button></td>}
                 </tr>
               ))}
             </tbody>
@@ -1123,7 +1151,7 @@ const InsertTab: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
                   <thead><tr><th>Дата</th><th>Тип</th><th>Продукт</th><th>Диам.вн/нар</th><th>Кол-во</th><th>Кто</th><th>Куда</th></tr></thead>
                   <tbody>
                     {docTx.map(t => {
-                      const prod = products.find(p => p.id === t.product_id);
+                      const prod = productMap[t.product_id];
                       return (
                         <tr key={t.id}>
                           <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(t.created_at).toLocaleString('ru-RU')}</td>

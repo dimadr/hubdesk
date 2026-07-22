@@ -21,29 +21,47 @@ const ViewSwitcher: React.FC = () => {
   );
 };
 
-export const TicketGrid: React.FC<{ users: UserInfo[]; onEdit?: (ticket: any) => void; onDetail?: (ticket: any) => void; onStatusChange?: (ticket: any, status: string) => void; onDelete?: (ticket: any) => void; currentUserId?: number; role?: string }> = ({ users, onEdit, onDetail, onStatusChange, onDelete, currentUserId, role }) => {
-  const { tickets, activeTab, viewType, fetchTickets, loading } = useTicketStore();
-  const [search, setSearch] = useState('');
-  const [colFilter, setColFilter] = useState<ColFilter>({});
+export const TicketGrid: React.FC<{ users: UserInfo[]; onEdit?: (ticket: any) => void; onDetail?: (ticket: any) => void; onStatusChange?: (ticket: any, status: string) => Promise<void>; onDelete?: (ticket: any) => void; currentUserId?: number; role?: string }> = ({ users, onEdit, onDetail, onStatusChange, onDelete, currentUserId, role }) => {
+  const { tickets, activeTab, viewType, hasMore, lastFilters, error, fetchTickets, appendTickets, loading, setLastFilters, search: storeSearch, setSearch, colFilter, setColFilter } = useTicketStore();
+  const [loadingMore, setLoadingMore] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const appendAbortRef = useRef<AbortController | null>(null);
+
+  const buildFilters = useCallback(() => {
+    const filters: Record<string, any> = {};
+    if (activeTab === 'overdue') filters.overdue = true;
+    else if (activeTab === 'archive') { filters.archived = true; }
+    else if (activeTab !== 'all') filters.status = activeTab;
+    if (activeTab === 'all') filters.archived = false;
+    if (storeSearch.trim()) filters.q = storeSearch.trim();
+    if (colFilter.status) filters.status = colFilter.status;
+    if (colFilter.priority) filters.priority = colFilter.priority;
+    if (colFilter.created) {
+      filters.date_from = colFilter.created + 'T00:00:00';
+      filters.date_to = colFilter.created + 'T23:59:59';
+    }
+    if (colFilter.deadline) {
+      filters.deadline_from = colFilter.deadline + 'T00:00:00';
+      filters.deadline_to = colFilter.deadline + 'T23:59:59';
+    }
+    return filters;
+  }, [activeTab, storeSearch, colFilter]);
 
   useEffect(() => {
     abortRef.current?.abort();
+    appendAbortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
 
     const timer = setTimeout(async () => {
-      if (search.length > 0 && search.length < 2) return;
-
-      const filters: Record<string, any> = {};
-      if (activeTab === 'overdue') filters.overdue = true;
-      else if (activeTab === 'archive') { filters.archived = true; }
-      else if (activeTab !== 'all') filters.status = activeTab;
-      if (activeTab === 'all') filters.archived = false;
-      if (search.trim()) filters.q = search.trim();
-      const { created, deadline, ...apiFilters } = colFilter;
-      Object.assign(filters, apiFilters);
-
+      let filters: Record<string, any>;
+      if (storeSearch.length > 0 && storeSearch.length < 2) {
+        filters = buildFilters();
+        delete filters.q;
+      } else {
+        filters = buildFilters();
+      }
+      setLastFilters(filters);
       await fetchTickets(filters, controller.signal);
     }, 300);
 
@@ -51,13 +69,23 @@ export const TicketGrid: React.FC<{ users: UserInfo[]; onEdit?: (ticket: any) =>
       clearTimeout(timer);
       controller.abort();
     };
-  }, [activeTab, search, colFilter, fetchTickets]);
+  }, [activeTab, storeSearch, colFilter, fetchTickets, buildFilters, setLastFilters]);
 
   const toggleFilter = useCallback((key: string, value: string) => {
     setColFilter(prev => prev[key as keyof ColFilter] === value ? { ...prev, [key]: undefined } : { ...prev, [key]: value });
-  }, []);
+  }, [setColFilter]);
 
-  const clearFilter = useCallback(() => setColFilter({}), []);
+  const clearFilter = useCallback(() => setColFilter({}), [setColFilter]);
+
+  const handleLoadMore = async () => {
+    appendAbortRef.current?.abort();
+    const controller = new AbortController();
+    appendAbortRef.current = controller;
+    setLoadingMore(true);
+    const currentFilters = lastFilters;
+    await appendTickets(currentFilters, controller.signal);
+    if (!controller.signal.aborted) setLoadingMore(false);
+  };
 
   const filteredTickets = useMemo(() => {
     if (!colFilter.deadline && !colFilter.created) return tickets;
@@ -82,7 +110,7 @@ export const TicketGrid: React.FC<{ users: UserInfo[]; onEdit?: (ticket: any) =>
         <ViewSwitcher />
       </div>
       <div style={{ marginBottom: 14 }}>
-        <input type="text" className="search-bar" placeholder="Поиск по номеру или теме..." value={search} onChange={e => setSearch(e.target.value)} />
+        <input type="text" className="search-bar" placeholder="Поиск по номеру или теме..." value={storeSearch} onChange={e => setSearch(e.target.value)} />
       </div>
       {filterLabels.length > 0 && (
         <div style={{ marginBottom: 10, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -94,9 +122,25 @@ export const TicketGrid: React.FC<{ users: UserInfo[]; onEdit?: (ticket: any) =>
           <button className="btn btn-secondary" style={{ padding: '2px 8px', fontSize: 11 }} onClick={clearFilter}>Сбросить</button>
         </div>
       )}
-      {loading ? <div className="loading">Загрузка...</div> : (
-        viewType === 'table' ? <TableView tickets={filteredTickets} users={users} onEdit={onEdit} onDetail={onDetail} onStatusChange={onStatusChange} onDelete={onDelete} currentUserId={currentUserId} role={role} colFilter={colFilter} onFilter={toggleFilter} /> :
-        <CardView tickets={filteredTickets} users={users} onDetail={onDetail} />
+      {loading ? <div className="loading">Загрузка...</div> : error ? (
+        <div style={{ padding: 16, color: 'var(--danger)', textAlign: 'center' }}>{error}</div>
+      ) : (
+        <>
+          {viewType === 'table' ? <TableView tickets={filteredTickets} users={users} onEdit={onEdit} onDetail={onDetail} onStatusChange={onStatusChange} onDelete={onDelete} currentUserId={currentUserId} role={role} colFilter={colFilter} onFilter={toggleFilter} /> :
+          <CardView tickets={filteredTickets} users={users} onDetail={onDetail} />}
+          {hasMore && (
+            <div style={{ textAlign: 'center', marginTop: 16 }}>
+              <button
+                className="btn btn-secondary"
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                style={{ padding: '6px 24px', fontSize: 13 }}
+              >
+                {loadingMore ? 'Загрузка...' : 'Загрузить ещё'}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

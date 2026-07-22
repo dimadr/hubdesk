@@ -6,7 +6,9 @@ from pydantic import BaseModel
 from src.database import get_db
 from src.models.personal_task import PersonalTask
 from src.models.user import User, UserRole
+from src.models.ticket import Ticket
 from src.core.deps import get_current_user
+from src.services.acl_service import RoleChecker
 
 personal_tasks_router = APIRouter(prefix="/personal-tasks", tags=["Personal Tasks"])
 
@@ -82,6 +84,12 @@ async def create_task(data: TaskCreate, user: User = Depends(get_current_user), 
     target_user_id = user.id
     if data.user_id and user.role in (UserRole.admin, UserRole.director):
         target_user_id = data.user_id
+    if data.ticket_id:
+        ticket = await db.get(Ticket, data.ticket_id)
+        if not ticket:
+            raise HTTPException(404, "Заявка не найдена")
+        if not await RoleChecker.can_view_ticket_async(user, ticket, db):
+            raise HTTPException(403, "Нет доступа к заявке")
     pos_result = await db.execute(
         select(PersonalTask).where(PersonalTask.user_id == target_user_id, PersonalTask.column == data.column)
     )

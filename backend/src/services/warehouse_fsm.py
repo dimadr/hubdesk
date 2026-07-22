@@ -4,7 +4,7 @@ from src.models.warehouse import (
     AccountingDocument, DocStatus, DocType, StockBalance,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 import logging
 
 logger = logging.getLogger(__name__)
@@ -58,15 +58,20 @@ class WarehouseDocFSM(BaseFSM, AuditMixin):
             await self._delta(target_id, nom_id, +qty)
 
     async def _delta(self, warehouse_id: int, nom_id: int, delta: float, check_negative: bool = False):
+        await self.session.execute(
+            text("""
+                INSERT INTO stock_balances (warehouse_id, nomenclature_id, quantity)
+                VALUES (:wid, :nid, 0)
+                ON CONFLICT (warehouse_id, nomenclature_id) DO NOTHING
+            """),
+            {"wid": warehouse_id, "nid": nom_id}
+        )
         stmt = select(StockBalance).where(
             StockBalance.warehouse_id == warehouse_id,
             StockBalance.nomenclature_id == nom_id,
         ).with_for_update()
         result = await self.session.execute(stmt)
-        balance = result.scalar_one_or_none()
-        if not balance:
-            balance = StockBalance(warehouse_id=warehouse_id, nomenclature_id=nom_id, quantity=0)
-            self.session.add(balance)
+        balance = result.scalar_one()
         if check_negative and balance.quantity + delta < 0:
             raise ValueError(
                 f"Недостаточно остатка на складе {warehouse_id}: "

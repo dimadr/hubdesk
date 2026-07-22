@@ -258,8 +258,11 @@ if os.path.exists(FRONTEND_DIR):
             return JSONResponse(status_code=404, content={"detail": "File not found"})
 
         async with async_session() as db:
-            rel_path = os.path.relpath(real_path, uploads_dir)
-            result = await db.execute(sa_select(Attachment).where(Attachment.path == rel_path))
+            rel_to_cwd = os.path.relpath(real_path, os.path.dirname(uploads_dir))
+            rel_to_uploads = os.path.relpath(real_path, uploads_dir)
+            result = await db.execute(sa_select(Attachment).where(
+                (Attachment.path == rel_to_cwd) | (Attachment.path == rel_to_uploads)
+            ))
             att = result.scalar_one_or_none()
             if att:
                 user_result = await db.execute(sa_select(User).where(User.id == user_id))
@@ -270,15 +273,21 @@ if os.path.exists(FRONTEND_DIR):
                     return JSONResponse(status_code=403, content={"detail": "User account is not active"})
                 if att.ticket_id:
                     ticket = await db.get(Ticket, att.ticket_id)
-                    if ticket and not await RoleChecker.can_view_ticket_async(user, ticket, db):
+                    if not ticket:
+                        return JSONResponse(status_code=404, content={"detail": "Связанная заявка не найдена"})
+                    if not await RoleChecker.can_view_ticket_async(user, ticket, db):
                         return JSONResponse(status_code=403, content={"detail": "Forbidden"})
                     if att.is_internal and user.role in (UserRole.customer, UserRole.engineer):
                         return JSONResponse(status_code=403, content={"detail": "Forbidden"})
                 elif att.comment_id:
                     comment = await db.get(Comment, att.comment_id)
-                    if comment and comment.ticket_id:
+                    if not comment:
+                        return JSONResponse(status_code=404, content={"detail": "Связанный комментарий не найден"})
+                    if comment.ticket_id:
                         ticket = await db.get(Ticket, comment.ticket_id)
-                        if ticket and not await RoleChecker.can_view_ticket_async(user, ticket, db):
+                        if not ticket:
+                            return JSONResponse(status_code=404, content={"detail": "Связанная заявка не найдена"})
+                        if not await RoleChecker.can_view_ticket_async(user, ticket, db):
                             return JSONResponse(status_code=403, content={"detail": "Forbidden"})
                 else:
                     if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):

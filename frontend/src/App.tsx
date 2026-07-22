@@ -174,6 +174,7 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
   const [siteContactPhone, setSiteContactPhone] = useState('');
   const [locations, setLocations] = useState<Location[]>([]);
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
   const [locQuery, setLocQuery] = useState('');
   const [locOpen, setLocOpen] = useState(false);
 
@@ -193,10 +194,13 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
 
   const submit = async () => {
     if (!subject || !locationId) { setError('Заполните тему и выберите объект'); return; }
+    if (saving) return;
+    setSaving(true);
     try {
       const selected = locations.find(l => l.id === Number(locationId));
       if (!selected) {
         setError('Выбранный объект не найден. Обновите список объектов.');
+        setSaving(false);
         return;
       }
       await api.post('/tickets', {
@@ -216,7 +220,7 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
       onClose();
     } catch (e: any) {
       setError(e.response?.data?.detail || 'Ошибка создания');
-    }
+    } finally { setSaving(false); }
   };
 
   const assignables = users.filter(u => u.role === 'engineer');
@@ -366,15 +370,15 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
       await api.patch(`/tickets/${ticket.id}`, {
         subject,
         body,
-        type: ticketType || undefined,
-        source_description: sourceDesc || undefined,
+        type: ticketType || null,
+        source_description: sourceDesc || null,
         customer_id: selected?.customer_id ?? ticket.customer_id,
         location_id: Number(locationId),
         priority,
-        resolution_deadline: resolutionDeadline ? new Date(resolutionDeadline + 'T23:59:59').toISOString() : undefined,
-        assignee_id: assigneeId ? Number(assigneeId) : undefined,
-        site_contact_name: siteContactName || undefined,
-        site_contact_phone: siteContactPhone || undefined,
+        resolution_deadline: resolutionDeadline ? new Date(resolutionDeadline + 'T23:59:59').toISOString() : null,
+        assignee_id: assigneeId ? Number(assigneeId) : null,
+        site_contact_name: siteContactName || null,
+        site_contact_phone: siteContactPhone || null,
       });
       onSaved();
     } catch (e: any) {
@@ -466,7 +470,7 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
 
 const TicketDetailModal: React.FC<{
   ticket: TicketResponse; onClose: () => void;
-  onStatusChange?: (ticket: TicketResponse, target: string) => void;
+  onStatusChange?: (ticket: TicketResponse, target: string) => Promise<void>;
   onRefresh?: () => void; role?: string; currentUserId?: number;
 }> = ({ ticket, onClose, onStatusChange, onRefresh, role, currentUserId }) => {
   const [comments, setComments] = useState<any[]>([]);
@@ -499,12 +503,17 @@ const TicketDetailModal: React.FC<{
 
   useEffect(() => { load(); }, [ticket.id]);
 
+  const [statusError, setStatusError] = useState('');
+
   const handleStatus = async (target: string) => {
     if (!onStatusChange) return;
     try {
       await onStatusChange(ticket, target);
+      setStatusError('');
       onClose();
-    } catch {}
+    } catch (e: any) {
+      setStatusError(e.response?.data?.detail || e.message || 'Ошибка смены статуса');
+    }
   };
 
   const handleSendComment = async () => {
@@ -616,6 +625,7 @@ const TicketDetailModal: React.FC<{
               <button className="btn btn-success" onClick={() => handleStatus(next)} style={{ fontSize: 13 }}>
                 → {SL[next]}{next === 'COMPLETED' ? ' (Завершить)' : ''}
               </button>
+              {statusError && <p style={{ color: 'var(--danger)', fontSize: 12, marginTop: 4 }}>{statusError}</p>}
             </div>
           )}
           {attachments.length > 0 && (
@@ -672,12 +682,14 @@ const CompleteTicketModal: React.FC<{ ticket: TicketResponse; onConfirm: (commen
   const [comment, setComment] = useState('');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState('');
+  const [uploadedPhotoUrl, setUploadedPhotoUrl] = useState('');
   const [uploading, setUploading] = useState(false);
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setPhotoFile(file);
+      setUploadedPhotoUrl('');
       const reader = new FileReader();
       reader.onload = (ev) => setPhotoPreview(ev.target?.result as string);
       reader.readAsDataURL(file);
@@ -687,21 +699,19 @@ const CompleteTicketModal: React.FC<{ ticket: TicketResponse; onConfirm: (commen
   const submit = async () => {
     setUploading(true);
     try {
-      let photoUrl = '';
-      if (photoFile) {
-        try {
-          const form = new FormData();
-          form.append('file', photoFile);
-          form.append('ticket_id', String(ticket.id));
-          const resp = await api.post('/attachments', form);
-          const downloadUrl = resp.data?.download_url || '';
-          photoUrl = downloadUrl || `(файл: ${photoFile.name})`;
-        } catch {
-          photoUrl = `(файл: ${photoFile.name})`;
-        }
+      let photoUrl = uploadedPhotoUrl;
+      if (photoFile && !photoUrl) {
+        const form = new FormData();
+        form.append('file', photoFile);
+        form.append('ticket_id', String(ticket.id));
+        const resp = await api.post('/attachments', form);
+        photoUrl = resp.data?.download_url || '';
+        setUploadedPhotoUrl(photoUrl);
       }
       const fullComment = [comment, photoUrl ? `Фото: ${photoUrl}` : ''].filter(Boolean).join('\n\n');
       await onConfirm(fullComment);
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Ошибка загрузки фото');
     } finally {
       setUploading(false);
     }
@@ -852,6 +862,8 @@ const App: React.FC = () => {
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [viewingEngineerId, setViewingEngineerId] = useState<number | null>(null);
   const [stats, setStats] = useState<{ total: number; open: number; urgent: number }>({ total: 0, open: 0, urgent: 0 });
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const getInitialTheme = () => localStorage.getItem('theme') || 'dark';
   const [theme, setTheme] = useState(getInitialTheme);
@@ -881,6 +893,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (auth) {
       api.get('/users/list').then(r => setUsers(r.data)).catch(() => {});
+      setStatsLoading(true);
       api.get('/reports/tickets').then(r => {
         const s = r.data;
         setStats({
@@ -888,7 +901,8 @@ const App: React.FC = () => {
           open: (s.by_status || []).reduce((sum: number, st: any) => st.label !== 'COMPLETED' ? sum + st.count : sum, 0),
           urgent: (s.by_priority || []).reduce((sum: number, p: any) => (p.label === 'critical' || p.label === 'high') ? sum + p.count : sum, 0),
         });
-      }).catch(() => {});
+        setStatsLoading(false);
+      }).catch(() => { setStatsLoading(false); });
     }
   }, [auth, refreshKey]);
 
@@ -913,12 +927,8 @@ const App: React.FC = () => {
       setConfirmStatusTicket({ ticket, target });
       return;
     }
-    try {
-      await api.patch(`/tickets/${ticket.id}/status`, { status: target });
-      setRefreshKey(k => k + 1);
-    } catch (e: any) {
-      alert(e.response?.data?.detail || 'Ошибка');
-    }
+    await api.patch(`/tickets/${ticket.id}/status`, { status: target });
+    setRefreshKey(k => k + 1);
   };
 
   const handleDeleteTicket = async (ticket: TicketResponse) => {
@@ -944,10 +954,7 @@ const App: React.FC = () => {
       return;
     }
     try {
-      await api.patch(`/tickets/${confirmStatusTicket.ticket.id}/status`, { status: 'COMPLETED' });
-      if (comment) {
-        await api.post(`/tickets/${confirmStatusTicket.ticket.id}/comments`, { body: comment, is_internal: true });
-      }
+      await api.post(`/tickets/${confirmStatusTicket.ticket.id}/complete`, { comment });
       setConfirmStatusTicket(null);
       setDetailTicket(null);
       setRefreshKey(k => k + 1);
@@ -962,7 +969,8 @@ const App: React.FC = () => {
 
   return (
     <div className="app-layout">
-      <aside className="sidebar">
+      {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
+      <aside className={`sidebar${sidebarOpen ? ' sidebar-open' : ''}`}>
         <div className="sidebar-logo">
           <div className="logo-mark">H</div>
           HUB<span> Desk</span>
@@ -979,7 +987,7 @@ const App: React.FC = () => {
               <button
                 key={item.key}
                 className={`nav-item ${page === item.key ? 'active' : ''}`}
-                onClick={() => { setViewingEngineerId(null); setPage(item.key); }}
+                onClick={() => { setViewingEngineerId(null); setPage(item.key); setSidebarOpen(false); }}
               >
                 <span className="nav-icon">{item.icon}</span>
                 {item.label}
@@ -1019,6 +1027,7 @@ const App: React.FC = () => {
 
       <main className="main-content">
         <div className="top-bar">
+          <button className="mobile-menu-btn" onClick={() => setSidebarOpen(!sidebarOpen)}>☰</button>
           <h1>
             {page === 'tickets' ? 'Заявки' :
              page === 'calendar' ? 'Календарь' :
@@ -1033,19 +1042,19 @@ const App: React.FC = () => {
             <div className="stat-pill">
               <div>
                 <div className="stat-lab">Всего заявок</div>
-                <div className="stat-val" style={{ color: 'var(--text)' }}>{stats.total}</div>
+                <div className="stat-val" style={{ color: 'var(--text)' }}>{statsLoading ? '—' : stats.total}</div>
               </div>
             </div>
             <div className="stat-pill">
               <div>
                 <div className="stat-lab">Открыто</div>
-                <div className="stat-val" style={{ color: 'var(--warning)' }}>{stats.open}</div>
+                <div className="stat-val" style={{ color: 'var(--warning)' }}>{statsLoading ? '—' : stats.open}</div>
               </div>
             </div>
             <div className="stat-pill">
               <div>
                 <div className="stat-lab">Срочных</div>
-                <div className="stat-val" style={{ color: 'var(--danger)' }}>{stats.urgent}</div>
+                <div className="stat-val" style={{ color: 'var(--danger)' }}>{statsLoading ? '—' : stats.urgent}</div>
               </div>
             </div>
           </div>

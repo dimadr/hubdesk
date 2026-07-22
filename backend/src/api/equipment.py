@@ -44,6 +44,9 @@ async def create_equipment(
 ):
     if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
         raise HTTPException(status_code=403, detail="Недостаточно прав")
+    loc = await db.get(AssetLocation, data.location_id)
+    if not loc:
+        raise HTTPException(status_code=400, detail="Объект не найден")
     eq = Equipment(**data.model_dump())
     db.add(eq)
     await db.flush()

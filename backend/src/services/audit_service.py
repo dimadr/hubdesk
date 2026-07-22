@@ -16,6 +16,7 @@ async def log_audit(
     detail: str = "",
     meta: Any | None = None,
 ) -> AuditLog | None:
+    savepoint = await db.begin_nested()
     try:
         entry = AuditLog(
             user_id=user.id if user else None,
@@ -28,7 +29,9 @@ async def log_audit(
         )
         db.add(entry)
         await db.flush()
+        await savepoint.commit()
         return entry
     except Exception as e:
+        await savepoint.rollback()
         logger.error(f"Не удалось записать audit log: {e}", exc_info=True)
         return None

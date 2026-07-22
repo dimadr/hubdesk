@@ -48,13 +48,20 @@ class AttachmentService:
                     raise HTTPException(400, "ticket_id не совпадает с comment_id")
                 ticket_id = comment.ticket_id
 
-        filename = f"{uuid.uuid4()}_{file.filename}"
+        safe_name = os.path.basename(file.filename or "unknown")
+        if not safe_name or safe_name in (".", ".."):
+            safe_name = "unknown"
+        filename = f"{uuid.uuid4()}_{safe_name}"
 
         loc_id = ""
         if ticket and ticket.location_id:
             loc_id = str(ticket.location_id)
         path = os.path.join(UPLOAD_DIR, loc_id, filename)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        real_path = os.path.realpath(path)
+        uploads_real = os.path.realpath(UPLOAD_DIR)
+        if not real_path.startswith(uploads_real + os.sep) and real_path != uploads_real:
+            raise HTTPException(400, "Недопустимый путь файла")
+        os.makedirs(os.path.dirname(real_path), exist_ok=True)
 
         if file.size is not None and file.size > MAX_UPLOAD_SIZE:
             raise HTTPException(413, f"Файл превышает лимит {MAX_UPLOAD_SIZE // (1024*1024)} МБ")
@@ -62,14 +69,15 @@ class AttachmentService:
         content = await file.read()
         if len(content) > MAX_UPLOAD_SIZE:
             raise HTTPException(413, f"Файл превышает лимит {MAX_UPLOAD_SIZE // (1024*1024)} МБ")
-        with open(path, "wb") as f:
+
+        with open(real_path, "wb") as f:
             f.write(content)
 
         attachment = Attachment(
             ticket_id=ticket_id,
             comment_id=comment_id,
             filename=file.filename or "unknown",
-            path=path,
+            path=os.path.relpath(real_path, os.path.dirname(UPLOAD_DIR)),
             content_type=file.content_type or "application/octet-stream",
             size=len(content),
             is_internal=is_internal,

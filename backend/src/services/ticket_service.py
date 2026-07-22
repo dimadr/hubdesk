@@ -2,17 +2,19 @@ import logging
 from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 
 from src.models.ticket import Ticket, TicketStatus
 from src.models.user import User, UserRole
 from src.models.customer import Contract
+from src.models.equipment import AssetLocation, Equipment
 from src.models.checklist import Checklist
 from src.services.ticket_fsm import TicketFSM
 from src.services.acl_service import RoleChecker
 from src.services.audit_service import log_audit
 from src.services.mail_service import MailService
+from src.services.comment_service import CommentService
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +26,19 @@ class TicketService:
 
     async def create(self, data: dict, user: User | None = None) -> Ticket:
         now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        location = await self.session.get(AssetLocation, data["location_id"])
+        if not location:
+            raise HTTPException(400, "Объект не найден")
+        if location.customer_id != data["customer_id"]:
+            raise HTTPException(400, "Объект не принадлежит указанному заказчику")
+
+        if data.get("equipment_id"):
+            equip = await self.session.get(Equipment, data["equipment_id"])
+            if not equip:
+                raise HTTPException(400, "Оборудование не найдено")
+            if equip.location_id != data["location_id"]:
+                raise HTTPException(400, "Оборудование не принадлежит указанному объекту")
 
         ticket = Ticket(
             number=await self._secure_next_number(),
@@ -77,8 +92,16 @@ class TicketService:
         )
         return ticket
 
+    async def complete(self, ticket_id: int, comment: str, user: User) -> Ticket:
+        ticket = await self._get(ticket_id, for_update=True)
+        if ticket.status.value == "COMPLETED":
+            return ticket
+        if comment.strip():
+            await CommentService(self.session).add(ticket_id, comment.strip(), True, user)
+        return await self.change_status(ticket_id, "COMPLETED", user)
+
     async def change_status(self, ticket_id: int, target: str, user: User) -> Ticket:
-        ticket = await self._get(ticket_id)
+        ticket = await self._get(ticket_id, for_update=True)
         from_status = ticket.status.value
 
         if from_status == target:
@@ -120,7 +143,7 @@ class TicketService:
             return value.astimezone(timezone.utc).replace(tzinfo=None)
         return value
 
-    async def _get(self, ticket_id: int) -> Ticket:
+    async def _get(self, ticket_id: int, for_update: bool = False) -> Ticket:
         stmt = (
             select(Ticket)
             .where(Ticket.id == ticket_id)
@@ -131,6 +154,8 @@ class TicketService:
                 selectinload(Ticket.assignee),
             )
         )
+        if for_update:
+            stmt = stmt.with_for_update()
         result = await self.session.execute(stmt)
         ticket = result.scalar_one_or_none()
         if not ticket:
@@ -138,11 +163,11 @@ class TicketService:
         return ticket
 
     async def _secure_next_number(self) -> int:
+        await self.session.execute(text("SELECT pg_advisory_xact_lock(42)"))
         stmt = (
             select(Ticket.number)
             .order_by(Ticket.number.desc())
             .limit(1)
-            .with_for_update()
         )
         result = await self.session.execute(stmt)
         last = result.scalar()

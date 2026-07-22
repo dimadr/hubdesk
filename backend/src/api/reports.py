@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
+from sqlalchemy.orm import selectinload
 from datetime import datetime, timedelta
 from src.database import get_db
 from src.models.ticket import Ticket, TicketStatus
@@ -8,6 +9,7 @@ from src.models.customer import Customer
 from src.models.equipment import AssetLocation
 from src.models.user import User, UserRole
 from src.core.deps import get_current_user
+from src.api.schemas import TicketResponse
 
 reports_router = APIRouter(prefix="/reports", tags=["Reports"])
 
@@ -25,25 +27,75 @@ def _parse_date(s: str) -> datetime:
 
 
 async def ticket_query(db: AsyncSession, date_from: str | None, date_to: str | None):
-    from sqlalchemy import or_
-    stmt = select(Ticket)
-    conditions = []
+    from sqlalchemy import or_, and_
+    stmt = select(Ticket).options(
+        selectinload(Ticket.customer),
+        selectinload(Ticket.location),
+        selectinload(Ticket.assignee),
+    )
+    dt_from = None
+    dt_to = None
     if date_from:
         try:
             dt_from = _parse_date(date_from)
-            conditions.append(or_(Ticket.created_at >= dt_from, and_(Ticket.status == TicketStatus.COMPLETED, Ticket.completed_at >= dt_from)))
         except ValueError:
             raise HTTPException(400, f"Некорректная дата: {date_from}")
     if date_to:
         try:
             dt_to = _parse_date(date_to)
-            conditions.append(or_(Ticket.created_at <= dt_to, and_(Ticket.status == TicketStatus.COMPLETED, Ticket.completed_at <= dt_to)))
         except ValueError:
             raise HTTPException(400, f"Некорректная дата: {date_to}")
-    for cond in conditions:
-        stmt = stmt.where(cond)
+    if dt_from and dt_to:
+        stmt = stmt.where(or_(
+            and_(Ticket.created_at >= dt_from, Ticket.created_at <= dt_to),
+            and_(Ticket.status == TicketStatus.COMPLETED, Ticket.completed_at >= dt_from, Ticket.completed_at <= dt_to),
+        ))
+    elif dt_from:
+        stmt = stmt.where(or_(
+            Ticket.created_at >= dt_from,
+            and_(Ticket.status == TicketStatus.COMPLETED, Ticket.completed_at >= dt_from),
+        ))
+    elif dt_to:
+        stmt = stmt.where(or_(
+            Ticket.created_at <= dt_to,
+            and_(Ticket.status == TicketStatus.COMPLETED, Ticket.completed_at <= dt_to),
+        ))
     result = await db.execute(stmt)
     return result.scalars().all()
+
+
+@reports_router.get("/details", response_model=list[TicketResponse])
+async def report_details(
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    location_id: int | None = Query(None),
+    assignee_id: int | None = Query(None),
+    status: str | None = Query(None),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(200, ge=1, le=200),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    check_access(user)
+    tickets = await ticket_query(db, date_from, date_to)
+    if location_id is not None:
+        tickets = [t for t in tickets if t.location_id == location_id]
+    if assignee_id is not None:
+        tickets = [t for t in tickets if t.assignee_id == assignee_id]
+    if status:
+        tickets = [t for t in tickets if t.status.value == status]
+    tickets.sort(key=lambda t: t.created_at, reverse=True)
+
+    result = []
+    for ticket in tickets[offset:offset + limit]:
+        item = TicketResponse.model_validate(ticket)
+        item.customer_name = ticket.customer.name if ticket.customer else None
+        item.location_name = ticket.location.name if ticket.location else None
+        item.location_address = ticket.location.address if ticket.location else None
+        item.assignee_name = ticket.assignee.name if ticket.assignee else None
+        item.is_archived = ticket.archived_at is not None
+        result.append(item)
+    return result
 
 
 @reports_router.get("/objects")
@@ -94,7 +146,7 @@ async def report_objects(
 
     out = []
     for d in by_location.values():
-        avg_h = (d["total_time"].total_seconds() / 3600) if d["resolved_count"] else 0
+        avg_h = (d["total_time"].total_seconds() / 3600 / d["resolved_count"]) if d["resolved_count"] else 0
         out.append({
             "location_id": d["location_id"],
             "location_name": d["location_name"],
@@ -198,7 +250,7 @@ async def report_engineers(
     for d in by_eng.values():
         if d["total"] == 0:
             continue
-        avg_h = (d["total_time"].total_seconds() / 3600) if d["resolved_count"] else 0
+        avg_h = (d["total_time"].total_seconds() / 3600 / d["resolved_count"]) if d["resolved_count"] else 0
         out.append({
             "engineer_id": d["engineer_id"],
             "engineer_name": d["engineer_name"],

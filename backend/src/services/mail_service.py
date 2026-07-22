@@ -10,8 +10,11 @@ from sqlalchemy import select
 from src.models.mailbox import MailboxConfig
 from src.models.customer import Customer
 from src.models.equipment import AssetLocation
+from src.models.ticket import Ticket
 from src.models.user import User, UserRole
 from src.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class MailService:

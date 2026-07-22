@@ -256,3 +256,11 @@ class TicketFilter(BaseModel):
     archived: Optional[bool] = None
     limit: int = Field(default=50, le=200)
     offset: int = Field(default=0)
+    date_from: Optional[str] = None
+    date_to: Optional[str] = None
+    deadline_from: Optional[str] = None
+    deadline_to: Optional[str] = None
+    scheduled_from: Optional[str] = None
+    scheduled_to: Optional[str] = None
+    sort_by: Optional[str] = None
+    sort_dir: Optional[str] = "asc"

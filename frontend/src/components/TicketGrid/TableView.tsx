@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { api, TicketResponse } from '../../api/client';
 import { RowStyle } from './RowStyles';
 import { ColumnHeader } from './ColumnHeader';
@@ -15,7 +15,7 @@ interface Props {
   users: UserInfo[];
   onEdit?: (ticket: TicketResponse) => void;
   onDetail?: (ticket: TicketResponse) => void;
-  onStatusChange?: (ticket: TicketResponse, targetStatus: string) => void;
+  onStatusChange?: (ticket: TicketResponse, targetStatus: string) => Promise<void>;
   onDelete?: (ticket: TicketResponse) => void;
   currentUserId?: number;
   role?: string;
@@ -68,15 +68,17 @@ interface CellProps {
   userMap: Map<number, string>;
   engineerIds: number[];
   onEdit?: (ticket: TicketResponse) => void;
-  onStatusChange?: (ticket: TicketResponse, targetStatus: string) => void;
+  onStatusChange?: (ticket: TicketResponse, targetStatus: string) => Promise<void>;
   onDelete?: (ticket: TicketResponse) => void;
   currentUserId?: number;
   role?: string;
   onFilter?: (key: string, value: string) => void;
   onAssigneeChanged: (ticketId: number, assigneeId: number | null) => void;
+  stickyLeft?: number;
+  stickyRight?: boolean;
 }
 
-const Cell = React.memo<CellProps>(({ ticket, col, width, userMap, engineerIds, onEdit, onStatusChange, onDelete, currentUserId, role, onFilter, onAssigneeChanged }) => {
+const Cell = React.memo<CellProps>(({ ticket, col, width, userMap, engineerIds, onEdit, onStatusChange, onDelete, currentUserId, role, onFilter, onAssigneeChanged, stickyLeft, stickyRight }) => {
   const content = renderCellContent(ticket, col, userMap, engineerIds, onEdit, onStatusChange, onDelete, currentUserId, role, onAssigneeChanged);
   const isFilterable = FILTERABLE_COLUMNS.includes(col.key);
 
@@ -94,8 +96,18 @@ const Cell = React.memo<CellProps>(({ ticket, col, width, userMap, engineerIds, 
 
   const handleActionsClick = col.key === 'actions' ? (e: React.MouseEvent) => e.stopPropagation() : undefined;
 
+  const isSticky = stickyLeft !== undefined || stickyRight;
+  const tdStyle: React.CSSProperties = {
+    width,
+    position: isSticky ? 'sticky' : undefined,
+    left: stickyLeft !== undefined ? stickyLeft : undefined,
+    right: stickyRight ? 0 : undefined,
+    zIndex: isSticky ? 1 : undefined,
+    background: 'var(--bg-surface)',
+  };
+
   return (
-    <td style={{ width }} onClick={handleActionsClick}>
+    <td style={tdStyle} onClick={handleActionsClick}>
       {isFilterable ? (
         <button
           className="cell-filter-btn"
@@ -172,7 +184,14 @@ function renderCellContent(ticket: TicketResponse, col: ColumnDef, userMap: Map<
         <button
           className="btn btn-success"
           style={{ padding: '2px 6px', fontSize: 10, lineHeight: 1.2 }}
-          onClick={e => { e.stopPropagation(); onStatusChange(ticket, NEXT_STATUS[ticket.status]); }}
+          onClick={async e => {
+            e.stopPropagation();
+            try {
+              await onStatusChange(ticket, NEXT_STATUS[ticket.status]);
+            } catch (err: any) {
+              alert(err.response?.data?.detail || err.message || 'Ошибка смены статуса');
+            }
+          }}
           title={`Перевести в ${NEXT_STATUS[ticket.status]}`}
         >→ {STATUS_BUTTON_LABELS[NEXT_STATUS[ticket.status]]}</button>
       )}
@@ -203,6 +222,21 @@ export const TableView: React.FC<Props> = ({ tickets, users, onEdit, onDetail, o
       return saved ? JSON.parse(saved) : DEFAULT_COLUMNS;
     } catch { return DEFAULT_COLUMNS; }
   });
+
+  useEffect(() => {
+    const applyColumns = (event: Event) => {
+      const keys = (event as CustomEvent<string[]>).detail;
+      if (!Array.isArray(keys)) return;
+      const next = keys
+        .map(key => DEFAULT_COLUMNS.find(column => column.key === key))
+        .filter((column): column is ColumnDef => Boolean(column));
+      if (next.length === 0) return;
+      setColumns(next);
+      localStorage.setItem('ticket-columns-v2', JSON.stringify(next));
+    };
+    window.addEventListener('ticket-columns-change', applyColumns);
+    return () => window.removeEventListener('ticket-columns-change', applyColumns);
+  }, []);
 
   const [colWidths, setColWidths] = useState<Record<string, number>>({});
 
@@ -236,6 +270,18 @@ export const TableView: React.FC<Props> = ({ tickets, users, onEdit, onDetail, o
     [columns, onEdit]
   );
 
+  const stickyOffsets = useMemo(() => {
+    const offsets: Record<string, number> = {};
+    let cumLeft = 0;
+    for (const col of visibleColumns) {
+      if (col.sticky && col.key !== 'actions') {
+        offsets[col.key] = cumLeft;
+        cumLeft += colWidths[col.key] ?? col.width ?? 150;
+      }
+    }
+    return offsets;
+  }, [visibleColumns, colWidths]);
+
   if (tickets.length === 0) return <div className="loading">Нет заявок</div>;
 
   return (
@@ -247,7 +293,9 @@ export const TableView: React.FC<Props> = ({ tickets, users, onEdit, onDetail, o
               <tr>
                 {visibleColumns.map(col => (
                   <ColumnHeader key={col.key} id={col.key} label={col.label} sticky={col.sticky}
-                    colKey={col.key} width={colWidths[col.key] ?? col.width ?? 150} onResize={handleResize} />
+                    colKey={col.key} width={colWidths[col.key] ?? col.width ?? 150} onResize={handleResize}
+                    stickyLeft={stickyOffsets[col.key]}
+                    stickyRight={col.key === 'actions'} />
                 ))}
               </tr>
             </thead>
@@ -269,6 +317,8 @@ export const TableView: React.FC<Props> = ({ tickets, users, onEdit, onDetail, o
                     role={role}
                     onFilter={onFilter}
                     onAssigneeChanged={(ticketId, assigneeId) => updateTicket(ticketId, { assignee_id: assigneeId })}
+                    stickyLeft={stickyOffsets[col.key]}
+                    stickyRight={col.key === 'actions'}
                 />
               ))}
             </RowStyle>

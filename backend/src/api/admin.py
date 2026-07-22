@@ -268,7 +268,7 @@ async def create_customer(data: CustomerCreate, admin: User = Depends(require_ad
     db.add(c)
     await db.commit()
     await db.refresh(c)
-    return CustomerResponse(id=c.id, name=c.name, type=str(c.type), locations_count=0)
+    return CustomerResponse(id=c.id, name=c.name, type=c.type.value if hasattr(c.type, 'value') else str(c.type), locations_count=0)
 
 
 @admin_router.patch("/customers/{customer_id}", response_model=CustomerResponse)
@@ -285,7 +285,7 @@ async def update_customer(customer_id: int, data: CustomerUpdate, admin: User = 
     await db.commit()
 
     loc_cnt = (await db.execute(select(func.count()).select_from(AssetLocation).where(AssetLocation.customer_id == c.id))).scalar() or 0
-    return CustomerResponse(id=c.id, name=c.name, type=str(c.type), locations_count=loc_cnt)
+    return CustomerResponse(id=c.id, name=c.name, type=c.type.value if hasattr(c.type, 'value') else str(c.type), locations_count=loc_cnt)
 
 
 @admin_router.delete("/customers/{customer_id}")

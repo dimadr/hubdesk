@@ -4,15 +4,34 @@ import { useTicketStore } from '../../store/tickets';
 
 export const SavedViews: React.FC = () => {
   const [views, setViews] = useState<SavedViewResponse[]>([]);
-  const { setViewType, fetchTickets } = useTicketStore();
+  const { setViewType, setActiveTab, setSearch, setColFilter, fetchTickets, setLastFilters } = useTicketStore();
 
   useEffect(() => {
     api.get('/views').then(({ data }) => setViews(data)).catch(() => {});
   }, []);
 
   const applyView = (view: SavedViewResponse) => {
-    setViewType(view.view_type as any);
-    fetchTickets(view.filters);
+    if (view.view_type === 'table' || view.view_type === 'card') setViewType(view.view_type);
+    if (view.columns.length > 0) {
+      window.dispatchEvent(new CustomEvent('ticket-columns-change', { detail: view.columns }));
+    }
+    const f = view.filters || {};
+    if (f.status) setActiveTab(f.status);
+    else if (f.archived) setActiveTab('archive');
+    else if (f.overdue) setActiveTab('overdue');
+    else setActiveTab('all');
+    setSearch(f.q || '');
+    const colF: Record<string, string | undefined> = {};
+    if (f.status) colF.status = f.status;
+    if (f.priority) colF.priority = f.priority;
+    setColFilter(colF);
+    const filters = { ...f };
+    if (view.sort_by && view.sort_dir) {
+      filters.sort_by = view.sort_by;
+      filters.sort_dir = view.sort_dir;
+    }
+    setLastFilters(filters);
+    fetchTickets(filters);
   };
 
   return (

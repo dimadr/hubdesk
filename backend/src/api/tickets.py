@@ -12,6 +12,7 @@ from src.services.acl_service import RoleChecker
 from src.services.sla_service import SLAService
 from src.services.comment_service import CommentService
 from src.services.mail_service import MailService
+from src.services.audit_service import log_audit
 from src.api.schemas import (
     TicketCreate, TicketUpdate, TicketResponse, StatusChange, TicketFilter,
     CommentCreate, CommentResponse,
@@ -53,7 +54,10 @@ def create_ticket_router() -> APIRouter:
         if filters.location_id:
             stmt = stmt.where(Ticket.location_id == filters.location_id)
         if filters.q:
-            stmt = stmt.where(Ticket.subject.ilike(f"%{filters.q}%"))
+            stmt = stmt.where(
+                Ticket.subject.ilike(f"%{filters.q}%") |
+                Ticket.number.cast(text("text")).ilike(f"%{filters.q}%")
+            )
         if user.role.value == "customer":
             customer_subq = select(Customer.id).where(Customer.name == user.name).correlate(Ticket).scalar_subquery()
             stmt = stmt.where(Ticket.customer_id == customer_subq)
@@ -73,7 +77,64 @@ def create_ticket_router() -> APIRouter:
             stmt = stmt.where(
                 (Ticket.resolution_deadline == None) | (Ticket.completed_at != None) | (func.now() <= Ticket.resolution_deadline)
             )
-        stmt = stmt.order_by(Ticket.created_at.desc())
+        if filters.date_from:
+            try:
+                dt_from = datetime.fromisoformat(filters.date_from)
+                if dt_from.tzinfo is not None:
+                    dt_from = dt_from.replace(tzinfo=None)
+                stmt = stmt.where(Ticket.created_at >= dt_from)
+            except ValueError:
+                raise HTTPException(400, f"Некорректная дата: date_from={filters.date_from}")
+        if filters.date_to:
+            try:
+                dt_to = datetime.fromisoformat(filters.date_to)
+                if dt_to.tzinfo is not None:
+                    dt_to = dt_to.replace(tzinfo=None)
+                stmt = stmt.where(Ticket.created_at <= dt_to)
+            except ValueError:
+                raise HTTPException(400, f"Некорректная дата: date_to={filters.date_to}")
+        if filters.deadline_from:
+            try:
+                dt = datetime.fromisoformat(filters.deadline_from)
+                if dt.tzinfo is not None: dt = dt.replace(tzinfo=None)
+                stmt = stmt.where(Ticket.resolution_deadline >= dt)
+            except ValueError:
+                raise HTTPException(400, f"Некорректная дата: deadline_from={filters.deadline_from}")
+        if filters.deadline_to:
+            try:
+                dt = datetime.fromisoformat(filters.deadline_to)
+                if dt.tzinfo is not None: dt = dt.replace(tzinfo=None)
+                stmt = stmt.where(Ticket.resolution_deadline <= dt)
+            except ValueError:
+                raise HTTPException(400, f"Некорректная дата: deadline_to={filters.deadline_to}")
+        if filters.scheduled_from:
+            try:
+                dt = datetime.fromisoformat(filters.scheduled_from)
+                if dt.tzinfo is not None: dt = dt.replace(tzinfo=None)
+                stmt = stmt.where(Ticket.scheduled_end >= dt)
+            except ValueError:
+                raise HTTPException(400, f"Некорректная дата: scheduled_from={filters.scheduled_from}")
+        if filters.scheduled_to:
+            try:
+                dt = datetime.fromisoformat(filters.scheduled_to)
+                if dt.tzinfo is not None: dt = dt.replace(tzinfo=None)
+                stmt = stmt.where(Ticket.scheduled_end <= dt)
+            except ValueError:
+                raise HTTPException(400, f"Некорректная дата: scheduled_to={filters.scheduled_to}")
+        sort_columns = {
+            "number": Ticket.number,
+            "subject": Ticket.subject,
+            "status": Ticket.status,
+            "priority": Ticket.priority,
+            "created_at": Ticket.created_at,
+            "deadline": Ticket.resolution_deadline,
+            "resolution_deadline": Ticket.resolution_deadline,
+        }
+        if filters.sort_by:
+            sort_column = sort_columns.get(filters.sort_by, Ticket.created_at)
+            stmt = stmt.order_by(sort_column.desc() if filters.sort_dir == "desc" else sort_column.asc())
+        else:
+            stmt = stmt.order_by(Ticket.created_at.desc())
         stmt = stmt.offset(filters.offset).limit(filters.limit)
         result = await db.execute(stmt)
         tickets = result.scalars().all()
@@ -173,9 +234,27 @@ def create_ticket_router() -> APIRouter:
                 eng = await db.get(User, value)
                 if not eng or eng.role != UserRole.engineer:
                     raise HTTPException(400, "Исполнитель должен иметь роль engineer")
+            if user.role == UserRole.engineer:
+                if field not in ('source_description', 'body', 'site_contact_name', 'site_contact_phone', 'resolution_deadline'):
+                    raise HTTPException(403, f"Инженер не может изменять поле «{field}»")
             if isinstance(value, datetime):
                 value = value.replace(tzinfo=None)
             setattr(ticket, field, value)
+        update_fields = set(data.model_dump(exclude_unset=True).keys())
+        if 'location_id' in update_fields or 'customer_id' in update_fields:
+            from src.models.equipment import AssetLocation as AL
+            loc = await db.get(AL, ticket.location_id)
+            if not loc:
+                raise HTTPException(400, "Объект не найден")
+            if loc.customer_id != ticket.customer_id:
+                raise HTTPException(400, "Объект не принадлежит указанному заказчику")
+        if 'equipment_id' in update_fields and ticket.equipment_id:
+            from src.models.equipment import Equipment as EQ
+            eq = await db.get(EQ, ticket.equipment_id)
+            if not eq:
+                raise HTTPException(400, "Оборудование не найдено")
+            if eq.location_id != ticket.location_id:
+                raise HTTPException(400, "Оборудование не принадлежит указанному объекту")
         await db.commit()
         # Отправка email инженеру при смене исполнителя
         if 'assignee_id' in data.model_dump(exclude_unset=True) and ticket.assignee_id:
@@ -195,9 +274,39 @@ def create_ticket_router() -> APIRouter:
         svc = TicketService(db)
         try:
             ticket = await svc.change_status(ticket_id, data.status, user)
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(400, str(e))
         await db.commit()
+        return _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
+
+    class CompleteTicketRequest(BaseModel):
+        comment: str = ""
+
+    @router.post("/{ticket_id}/complete", response_model=TicketResponse)
+    async def complete_ticket(
+        ticket_id: int,
+        data: CompleteTicketRequest,
+        user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+    ):
+        svc = TicketService(db)
+        try:
+            ticket = await svc.complete(ticket_id, data.comment, user)
+            await db.commit()
+        except PermissionError as exc:
+            await db.rollback()
+            raise HTTPException(403, str(exc))
+        except ValueError as exc:
+            await db.rollback()
+            raise HTTPException(404, str(exc))
+        except HTTPException:
+            await db.rollback()
+            raise
+        except Exception as exc:
+            await db.rollback()
+            raise HTTPException(400, str(exc))
         return _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
 
     @router.post("/{ticket_id}/comments", status_code=201, response_model=CommentResponse)
@@ -341,29 +450,22 @@ def create_ticket_router() -> APIRouter:
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
-        if not RoleChecker.can_assign(user):
-            raise HTTPException(403, "Only dispatcher or admin can assign")
-        stmt = (
-            select(Ticket)
-            .where(Ticket.id == ticket_id)
-            .options(
-                selectinload(Ticket.customer),
-                selectinload(Ticket.location),
-                selectinload(Ticket.assignee),
-            )
-        )
-        ticket = (await db.execute(stmt)).scalar_one_or_none()
-        if not ticket:
-            raise HTTPException(404)
-        old_assignee = ticket.assignee_id
+        svc = TicketService(db)
         if data.assignee_id:
-            eng = await db.get(User, data.assignee_id)
-            if not eng:
-                raise HTTPException(404, "Исполнитель не найден")
-            if eng.role != UserRole.engineer:
-                raise HTTPException(400, "Назначать можно только пользователя с ролью engineer")
-        ticket.assignee_id = data.assignee_id
+            ticket = await svc.assign(ticket_id, data.assignee_id, user)
+        else:
+            if not RoleChecker.can_assign(user):
+                raise HTTPException(403, "Only dispatcher or admin can assign")
+            t = await db.get(Ticket, ticket_id)
+            if not t:
+                raise HTTPException(404)
+            t.assignee_id = None
+            await db.flush()
+            await log_audit(db, user, "ticket_unassigned", "ticket", ticket_id, f"Снят инженер с заявки №{t.number}")
+            ticket = t
         await db.commit()
+        stmt = select(Ticket).where(Ticket.id == ticket_id).options(selectinload(Ticket.customer), selectinload(Ticket.location), selectinload(Ticket.assignee))
+        ticket = (await db.execute(stmt)).scalar_one()
         return _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
 
     @router.delete("/{ticket_id}", status_code=204)
@@ -380,8 +482,8 @@ def create_ticket_router() -> APIRouter:
         num = ticket.number
         await db.execute(text("DELETE FROM checklist_fields WHERE checklist_id IN (SELECT id FROM checklists WHERE ticket_id = :tid)"), {"tid": ticket_id})
         await db.execute(text("DELETE FROM checklists WHERE ticket_id = :tid"), {"tid": ticket_id})
+        await db.execute(text("DELETE FROM attachments WHERE ticket_id = :tid OR comment_id IN (SELECT id FROM comments WHERE ticket_id = :tid)"), {"tid": ticket_id})
         await db.execute(text("DELETE FROM comments WHERE ticket_id = :tid"), {"tid": ticket_id})
-        await db.execute(text("DELETE FROM attachments WHERE ticket_id = :tid"), {"tid": ticket_id})
         await db.execute(text("DELETE FROM ticket_transitions WHERE ticket_id = :tid"), {"tid": ticket_id})
         await db.execute(text("DELETE FROM personal_tasks WHERE ticket_id = :tid"), {"tid": ticket_id})
         await db.execute(text("DELETE FROM tickets WHERE id = :tid"), {"tid": ticket_id})

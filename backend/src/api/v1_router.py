@@ -20,7 +20,7 @@ class TicketCreateV1(BaseModel):
     subject: str = Field(..., max_length=500)
     body: str = Field(default="", max_length=5000)
     customer_id: int = Field(..., description="ID заказчика")
-    location_id: int | None = None
+    location_id: int = Field(..., description="ID объекта")
     priority: TicketPriority = TicketPriority.medium
     type: TicketType | None = None
     site_contact_name: str | None = Field(None, max_length=255)

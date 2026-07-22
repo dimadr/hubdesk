@@ -42,6 +42,7 @@ export const ReportsPage: React.FC<{ onOpenTicket?: (t: any) => void }> = ({ onO
   const engReqIdRef = useRef(0);
   const statusReqIdRef = useRef(0);
   const locReqIdRef = useRef(0);
+  const loadAllAbortRef = useRef<AbortController | null>(null);
 
   const getParams = () => {
     const p: any = {};
@@ -51,21 +52,34 @@ export const ReportsPage: React.FC<{ onOpenTicket?: (t: any) => void }> = ({ onO
   };
 
   const loadAll = () => {
+    loadAllAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadAllAbortRef.current = controller;
     setLoading(true);
     setError('');
+    setSelectedEng(null);
+    setSelectedStatus(null);
+    setSelectedLoc(null);
+    setEngTickets([]);
+    setStatusTickets([]);
+    setLocTickets([]);
     const params = getParams();
     Promise.all([
-      api.get('/reports/objects', { params }),
-      api.get('/reports/tickets', { params }),
-      api.get('/reports/engineers', { params: { ...params, ...(engStatusFilter ? { status: engStatusFilter } : {}) } }),
+      api.get('/reports/objects', { params, signal: controller.signal }),
+      api.get('/reports/tickets', { params, signal: controller.signal }),
+      api.get('/reports/engineers', { params: { ...params, ...(engStatusFilter ? { status: engStatusFilter } : {}) }, signal: controller.signal }),
     ]).then(([o, t, e]) => {
-      setObjects(o.data);
-      setTicketStats(t.data);
-      setEngineers(e.data);
-      setLoading(false);
+      if (!controller.signal.aborted) {
+        setObjects(o.data);
+        setTicketStats(t.data);
+        setEngineers(e.data);
+        setLoading(false);
+      }
     }).catch((err: any) => {
-      setError(err.response?.data?.detail || 'Ошибка загрузки отчётов');
-      setLoading(false);
+      if (!controller.signal.aborted) {
+        setError(err.response?.data?.detail || 'Ошибка загрузки отчётов');
+        setLoading(false);
+      }
     });
   };
 
@@ -81,40 +95,56 @@ export const ReportsPage: React.FC<{ onOpenTicket?: (t: any) => void }> = ({ onO
     }).catch(() => {});
   }, []);
 
+  const fetchAllReportDetails = async (params: Record<string, any>) => {
+    const rows: any[] = [];
+    const limit = 200;
+    for (let offset = 0; ; offset += limit) {
+      const response = await api.get('/reports/details', { params: { ...params, limit, offset } });
+      rows.push(...response.data);
+      if (response.data.length < limit) return rows;
+    }
+  };
+
   const loadEngTickets = (eng: EngineerRow) => {
     setSelectedEng(eng);
     setSelectedStatus(null);
     setSelectedLoc(null);
+    setEngTickets([]);
     const reqId = ++engReqIdRef.current;
-    api.get('/tickets', { params: { assignee_id: eng.engineer_id, limit: 200, ...getParams() } }).then(r => {
-      if (reqId === engReqIdRef.current) setEngTickets(r.data);
-    }).catch(() => {});
+    const params: any = { assignee_id: eng.engineer_id, ...getParams() };
+    if (engStatusFilter) params.status = engStatusFilter;
+    fetchAllReportDetails(params).then(rows => {
+      if (reqId === engReqIdRef.current) setEngTickets(rows);
+    }).catch((err: any) => {
+      if (reqId === engReqIdRef.current) setError(err.response?.data?.detail || 'Ошибка загрузки заявок инженера');
+    });
   };
 
   const loadStatusTickets = (status: string) => {
     setSelectedStatus(status);
     setSelectedEng(null);
     setSelectedLoc(null);
+    setStatusTickets([]);
     const reqId = ++statusReqIdRef.current;
-    const params: any = { status, limit: 200, ...getParams() };
-    if (status === 'COMPLETED') {
-      params.archived = true;
-    } else {
-      params.archived = false;
-    }
-    api.get('/tickets', { params }).then(r => {
-      if (reqId === statusReqIdRef.current) setStatusTickets(r.data);
-    }).catch(() => {});
+    const params: any = { status, ...getParams() };
+    fetchAllReportDetails(params).then(rows => {
+      if (reqId === statusReqIdRef.current) setStatusTickets(rows);
+    }).catch((err: any) => {
+      if (reqId === statusReqIdRef.current) setError(err.response?.data?.detail || 'Ошибка загрузки заявок по статусу');
+    });
   };
 
   const loadLocTickets = (loc: ObjectRow) => {
     setSelectedLoc(loc);
     setSelectedStatus(null);
     setSelectedEng(null);
+    setLocTickets([]);
     const reqId = ++locReqIdRef.current;
-    api.get('/tickets', { params: { location_id: loc.location_id, limit: 200, ...getParams() } }).then(r => {
-      if (reqId === locReqIdRef.current) setLocTickets(r.data);
-    }).catch(() => {});
+    fetchAllReportDetails({ location_id: loc.location_id, ...getParams() }).then(rows => {
+      if (reqId === locReqIdRef.current) setLocTickets(rows);
+    }).catch((err: any) => {
+      if (reqId === locReqIdRef.current) setError(err.response?.data?.detail || 'Ошибка загрузки заявок объекта');
+    });
   };
 
   return (
@@ -407,13 +437,26 @@ const DevicesReport: React.FC = () => {
       api.get('/replacement/transactions').catch(() => ({ data: [] })),
     ]).then(([d, t]) => {
       const txns = t.data;
+      const txByDevice: Record<number, any[]> = {};
+      for (const tx of txns) {
+        if (!txByDevice[tx.device_id]) txByDevice[tx.device_id] = [];
+        txByDevice[tx.device_id].push(tx);
+      }
       const merged = d.data.map((dev: any) => {
-        const devTx = txns.filter((tx: any) => tx.device_id === dev.id);
-        const takenTx = devTx
-          .filter((tx: any) => tx.type === 'outgoing')
-          .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-          .slice(-1)[0];
-        return { ...dev, taken_by_name: takenTx?.taken_by_name || null, location_name: takenTx?.location_name || null };
+        const devTx = txByDevice[dev.id] || [];
+        const sortedTx = devTx.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        let currentHolder: string | null = null;
+        let currentLocation: string | null = null;
+        for (const tx of sortedTx) {
+          if (tx.type === 'outgoing') {
+            currentHolder = tx.taken_by_name || null;
+            currentLocation = tx.location_name || null;
+          } else if (tx.type === 'return') {
+            currentHolder = null;
+            currentLocation = null;
+          }
+        }
+        return { ...dev, taken_by_name: currentHolder, location_name: currentLocation };
       });
       setRows(merged);
       setLoading(false);

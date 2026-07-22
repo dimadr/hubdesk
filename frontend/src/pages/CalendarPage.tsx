@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { api, TicketResponse } from '../api/client';
 
 const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
@@ -33,21 +33,57 @@ export const CalendarPage: React.FC<{ onOpenTicket?: (ticket: TicketResponse) =>
   const [tickets, setTickets] = useState<TicketResponse[]>([]);
   const [current, setCurrent] = useState(() => new Date());
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedTickets, setSelectedTickets] = useState<TicketResponse[]>([]);
 
+  const abortRef = useRef<AbortController | null>(null);
+
+  const fetchAllPages = async (params: Record<string, any>, signal: AbortSignal): Promise<TicketResponse[]> => {
+    const all: TicketResponse[] = [];
+    let offset = 0;
+    const LIMIT = 200;
+    while (!signal.aborted) {
+      const { data } = await api.get('/tickets', { params: { ...params, limit: LIMIT, offset }, signal });
+      all.push(...data);
+      if (data.length < LIMIT) break;
+      offset += LIMIT;
+    }
+    return all;
+  };
+
   useEffect(() => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     const year = current.getFullYear();
     const month = current.getMonth();
-    const dateFrom = new Date(year, month, 1).toISOString();
-    const dateTo = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
-    api.get('/tickets', { params: { limit: 500, archived: false, date_from: dateFrom, date_to: dateTo } })
-      .then(r => {
-        const open = r.data.filter((t: TicketResponse) => t.status !== 'COMPLETED');
-        setTickets(open);
+    const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+    const dateFrom = `${monthKey}-01T00:00:00`;
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    const dateTo = `${monthKey}-${String(lastDay).padStart(2, '0')}T23:59:59`;
+    setLoading(true);
+    setError('');
+    Promise.all([
+      fetchAllPages({ deadline_from: dateFrom, deadline_to: dateTo, archived: false }, controller.signal),
+      fetchAllPages({ scheduled_from: dateFrom, scheduled_to: dateTo, archived: false }, controller.signal),
+      fetchAllPages({ date_from: dateFrom, date_to: dateTo, archived: false }, controller.signal),
+    ]).then(([deadlineTickets, scheduledTickets, createdTickets]) => {
+      if (!controller.signal.aborted) {
+        const merged = new Map<number, TicketResponse>();
+        for (const t of [...deadlineTickets, ...scheduledTickets, ...createdTickets]) {
+          const displayDate = t.resolution_deadline || t.scheduled_end || t.created_at;
+          if (t.status !== 'COMPLETED' && displayDate?.startsWith(monthKey)) merged.set(t.id, t);
+        }
+        setTickets(Array.from(merged.values()));
         setLoading(false);
-      })
-      .catch(() => setLoading(false));
+      }
+    }).catch((err: any) => {
+      if (!controller.signal.aborted) {
+        setError(err.response?.data?.detail || 'Ошибка загрузки календаря');
+        setLoading(false);
+      }
+    });
   }, [current.getFullYear(), current.getMonth()]);
 
   const year = current.getFullYear();
@@ -91,6 +127,7 @@ export const CalendarPage: React.FC<{ onOpenTicket?: (ticket: TicketResponse) =>
 
   return (
     <div>
+      {error && <p style={{ color: 'var(--danger)', fontSize: 13 }}>{error}</p>}
       <div className="cal-header">
         <button className="btn btn-secondary" onClick={prevMonth}>←</button>
         <h2 style={{ margin: '0 16px', fontSize: 18, fontWeight: 700 }}>{MONTHS[month]} {year}</h2>

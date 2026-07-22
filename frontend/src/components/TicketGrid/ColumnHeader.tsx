@@ -4,9 +4,11 @@ import { useSortable } from '@dnd-kit/sortable';
 interface Props {
   id: string; label: string; sticky?: boolean;
   width: number; colKey: string; onResize: (key: string, w: number) => void;
+  stickyLeft?: number;
+  stickyRight?: boolean;
 }
 
-export const ColumnHeader: React.FC<Props> = ({ id, label, sticky, width, colKey, onResize }) => {
+export const ColumnHeader: React.FC<Props> = ({ id, label, sticky, width, colKey, onResize, stickyLeft, stickyRight }) => {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -26,7 +28,8 @@ export const ColumnHeader: React.FC<Props> = ({ id, label, sticky, width, colKey
       style={{
         width,
         position: sticky ? 'sticky' : undefined,
-        left: sticky ? 0 : undefined,
+        left: sticky && !stickyRight ? (stickyLeft ?? 0) : undefined,
+        right: sticky && stickyRight ? 0 : undefined,
         zIndex: sticky ? 2 : 1,
         background: 'var(--bg-surface)',
         transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined,
