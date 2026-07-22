@@ -44,6 +44,11 @@ export const CardView: React.FC<Props> = ({ tickets, users, onDetail }) => {
             <span className="mono" style={{ color: 'var(--text-muted)', fontSize: 11 }}>#{ticket.number}</span>
             {' '}{ticket.subject}
           </div>
+          {(ticket.location_name || ticket.location_address) && (
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+              {ticket.location_name || ''}{ticket.location_address ? ` — ${ticket.location_address}` : ''}
+            </div>
+          )}
           <div className="card-meta">
             <StatusBadge status={ticket.status} />
             <span>{PRIORITY_MAP[ticket.priority]}</span>

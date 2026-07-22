@@ -13,6 +13,20 @@ warehouse_access = Table(
 )
 
 
+class LocationContact(Base):
+    __tablename__ = "location_contacts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    location_id: Mapped[int] = mapped_column(ForeignKey("asset_locations.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    position: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_primary: Mapped[bool] = mapped_column(default=False)
+
+    location: Mapped["AssetLocation"] = relationship(back_populates="contacts_list")
+
+
 class AssetLocation(Base):
     __tablename__ = "asset_locations"
 
@@ -42,6 +56,11 @@ class AssetLocation(Base):
         cascade="all, delete-orphan"
     )
     tickets: Mapped[List["Ticket"]] = relationship(back_populates="location")
+    contacts_list: Mapped[List["LocationContact"]] = relationship(
+        back_populates="location",
+        cascade="all, delete-orphan",
+        order_by="LocationContact.is_primary.desc(), LocationContact.id"
+    )
 
 
 class Equipment(Base):

@@ -71,10 +71,20 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE replacement_devices ADD COLUMN IF NOT EXISTS serial_number VARCHAR(100) DEFAULT ''",
             "ALTER TABLE replacement_devices ADD COLUMN IF NOT EXISTS accuracy_class VARCHAR(50)",
             "ALTER TABLE replacement_devices ADD COLUMN IF NOT EXISTS mounting VARCHAR(50)",
-            "ALTER TABLE mailbox_config DROP COLUMN IF EXISTS password",
+            "ALTER TABLE mailbox_config DROP COLUMN IF NOT EXISTS password",
             "ALTER TABLE insert_products ADD COLUMN IF NOT EXISTS diameter_outer VARCHAR(50)",
             "ALTER TABLE insert_products ADD COLUMN IF NOT EXISTS notes VARCHAR(1000)",
             "ALTER TABLE insert_products ADD COLUMN IF NOT EXISTS cell VARCHAR(100)",
+            """CREATE TABLE IF NOT EXISTS location_contacts (
+                id SERIAL PRIMARY KEY,
+                location_id INTEGER NOT NULL REFERENCES asset_locations(id) ON DELETE CASCADE,
+                name VARCHAR(255) NOT NULL,
+                phone VARCHAR(50),
+                email VARCHAR(255),
+                position VARCHAR(255),
+                is_primary BOOLEAN DEFAULT FALSE
+            )""",
+            "CREATE INDEX IF NOT EXISTS ix_location_contacts_location_id ON location_contacts(location_id)",
             # Миграция статусов заявок: ON_THE_WAY→IN_PROGRESS, ARRIVED→IN_PROGRESS, REVIEW→COMPLETED
             "UPDATE tickets SET status = 'IN_PROGRESS' WHERE status = 'ON_THE_WAY'",
             "UPDATE tickets SET status = 'IN_PROGRESS' WHERE status = 'ARRIVED'",

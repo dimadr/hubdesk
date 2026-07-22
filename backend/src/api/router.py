@@ -77,6 +77,15 @@ class AuthResponse(BaseModel):
     status: str
 
 
+class ContactItem(BaseModel):
+    id: int | None = None
+    name: str
+    phone: str | None = None
+    email: str | None = None
+    position: str | None = None
+    is_primary: bool = False
+
+
 class LocationResponse(BaseModel):
     id: int
     name: str
@@ -87,6 +96,7 @@ class LocationResponse(BaseModel):
     contact_name: str | None = None
     contact_phone: str | None = None
     contact_email: str | None = None
+    contacts_list: list[ContactItem] = []
     assigned_engineer_id: int | None = None
     assigned_engineer_name: str | None = None
     contract_number: str | None = None
@@ -106,6 +116,7 @@ class LocationCreate(BaseModel):
     contact_name: str | None = None
     contact_phone: str | None = None
     contact_email: str | None = None
+    contacts_list: list[ContactItem] = []
     assigned_engineer_id: int | None = None
     contract_number: str | None = None
     contract_valid_from: date | None = None
@@ -121,6 +132,7 @@ class LocationUpdate(BaseModel):
     contact_name: str | None = None
     contact_phone: str | None = None
     contact_email: str | None = None
+    contacts_list: list[ContactItem] | None = None
     assigned_engineer_id: int | None = None
     contract_number: str | None = None
     contract_valid_from: date | None = None
@@ -234,6 +246,7 @@ async def list_locations(
         .join(Customer)
         .options(
             selectinload(AssetLocation.assigned_engineer),
+            selectinload(AssetLocation.contacts_list),
         )
     )
     rows = result.all()
@@ -246,6 +259,7 @@ async def list_locations(
             contact_name=loc.contact_name,
             contact_phone=loc.contact_phone,
             contact_email=loc.contact_email,
+            contacts_list=[ContactItem(id=c.id, name=c.name, phone=c.phone, email=c.email, position=c.position, is_primary=c.is_primary) for c in loc.contacts_list],
             assigned_engineer_id=loc.assigned_engineer_id,
             assigned_engineer_name=loc.assigned_engineer.name if loc.assigned_engineer else None,
             contract_number=loc.contract_number,
@@ -293,6 +307,15 @@ async def create_location(
     )
     db.add(loc)
     await db.flush()
+
+    from src.models.equipment import LocationContact
+    for c in data.contacts_list:
+        db.add(LocationContact(
+            location_id=loc.id, name=c.name, phone=c.phone,
+            email=c.email, position=c.position, is_primary=c.is_primary,
+        ))
+    await db.flush()
+
     await log_audit(db, user, "location_created", "location", loc.id, f"Создан объект «{loc.name}» ({loc.address})")
     await db.commit()
 
@@ -301,6 +324,8 @@ async def create_location(
         eng = await db.get(User, data.assigned_engineer_id)
         eng_name = eng.name if eng else None
 
+    await db.refresh(loc, ['contacts_list'])
+
     return LocationResponse(
         id=loc.id, name=loc.name, address=loc.address, customer_id=loc.customer_id,
         customer_name=cust.name,
@@ -308,6 +333,7 @@ async def create_location(
         contact_name=loc.contact_name,
         contact_phone=loc.contact_phone,
         contact_email=loc.contact_email,
+        contacts_list=[ContactItem(id=c.id, name=c.name, phone=c.phone, email=c.email, position=c.position, is_primary=c.is_primary) for c in loc.contacts_list],
         assigned_engineer_id=loc.assigned_engineer_id,
         assigned_engineer_name=eng_name,
         contract_number=loc.contract_number,
@@ -329,13 +355,14 @@ async def update_location(
     result = await db.execute(
         select(AssetLocation)
         .where(AssetLocation.id == location_id)
-        .options(selectinload(AssetLocation.assigned_engineer))
+        .options(selectinload(AssetLocation.assigned_engineer), selectinload(AssetLocation.contacts_list))
     )
     loc = result.scalar_one_or_none()
     if not loc:
         raise HTTPException(404, "Объект не найден")
 
     update_data = data.model_dump(exclude_unset=True)
+    contacts_data = update_data.pop('contacts_list', None)
 
     if "assigned_engineer_id" in update_data and update_data["assigned_engineer_id"]:
         eng = await db.get(User, update_data["assigned_engineer_id"])
@@ -353,11 +380,22 @@ async def update_location(
     for field, value in update_data.items():
         setattr(loc, field, value)
 
+    if contacts_data is not None:
+        from src.models.equipment import LocationContact
+        for c in loc.contacts_list:
+            await db.delete(c)
+        for c in contacts_data:
+            db.add(LocationContact(
+                location_id=loc.id, name=c.name, phone=c.phone,
+                email=c.email, position=c.position, is_primary=c.is_primary,
+            ))
+
     await log_audit(db, user, "location_updated", "location", loc.id, f"Изменён объект «{loc.name}»")
     await db.commit()
 
     if "assigned_engineer_id" in update_data:
         await db.refresh(loc, ["assigned_engineer"])
+    await db.refresh(loc, ["contacts_list"])
 
     cust = await db.get(Customer, loc.customer_id)
     cust_name = cust.name if cust else ""
@@ -369,6 +407,7 @@ async def update_location(
         contact_name=loc.contact_name,
         contact_phone=loc.contact_phone,
         contact_email=loc.contact_email,
+        contacts_list=[ContactItem(id=c.id, name=c.name, phone=c.phone, email=c.email, position=c.position, is_primary=c.is_primary) for c in loc.contacts_list],
         assigned_engineer_id=loc.assigned_engineer_id,
         assigned_engineer_name=loc.assigned_engineer.name if loc.assigned_engineer else None,
         contract_number=loc.contract_number,

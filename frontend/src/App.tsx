@@ -578,7 +578,15 @@ const TicketDetailModal: React.FC<{
             <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Приоритет</span><div>{PL[ticket.priority] || ticket.priority}</div></div>
             {ticket.type && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Тип</span><div>{TL[ticket.type] || ticket.type}</div></div>}
             <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Создана</span><div>{new Date(ticket.created_at).toLocaleString('ru-RU')}</div></div>
-            {ticket.resolution_deadline && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Срок</span><div>{new Date(ticket.resolution_deadline).toLocaleDateString('ru-RU')}</div></div>}
+            {ticket.resolution_deadline && !editingDeadline && canStatus && (
+              <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Срок</span><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <span>{new Date(ticket.resolution_deadline).toLocaleDateString('ru-RU')}</span>
+                <button onClick={() => setEditingDeadline(true)} style={{ background: 'none', border: '1px dashed var(--border)', borderRadius: 4, padding: '1px 5px', fontSize: 10, color: 'var(--text-muted)', cursor: 'pointer' }}>✎</button>
+              </div></div>
+            )}
+            {ticket.resolution_deadline && !editingDeadline && !canStatus && (
+              <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Срок</span><div>{new Date(ticket.resolution_deadline).toLocaleDateString('ru-RU')}</div></div>
+            )}
             {!ticket.resolution_deadline && !editingDeadline && canStatus && (
               <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Срок</span><div>
                 <button onClick={() => setEditingDeadline(true)} style={{ background: 'none', border: '1px dashed var(--border)', borderRadius: 6, padding: '2px 8px', fontSize: 12, color: 'var(--text-muted)', cursor: 'pointer' }}>+ Указать срок</button>

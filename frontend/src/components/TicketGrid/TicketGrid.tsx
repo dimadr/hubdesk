@@ -18,7 +18,6 @@ const ViewSwitcher: React.FC = () => {
     <div className="view-switcher">
       <button onClick={() => setViewType('table')} className={viewType === 'table' ? 'active' : ''}>Таблица</button>
       <button onClick={() => setViewType('card')} className={viewType === 'card' ? 'active' : ''}>Карточки</button>
-      <button onClick={() => setViewType('tree')} className={viewType === 'tree' ? 'active' : ''}>Дерево</button>
     </div>
   );
 };

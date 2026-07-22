@@ -157,6 +157,11 @@ export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[]; onDetail?
                 <div style={{ fontWeight: 600, marginBottom: 4, fontSize: 12 }}>
                   <span style={{ color: 'var(--text-muted)' }}>#{t.number}</span> {t.subject}
                 </div>
+                {(t.location_name || t.location_address) && (
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>
+                    {t.location_name || ''}{t.location_address ? ` — ${t.location_address}` : ''}
+                  </div>
+                )}
                 <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{t.priority === 'critical' ? 'Критический' : t.priority === 'high' ? 'Высокий' : t.priority === 'medium' ? 'Средний' : 'Низкий'}</div>
               </div>
             ))}

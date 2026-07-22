@@ -1,6 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
 
+interface ContactItem {
+  id?: number;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  position: string | null;
+  is_primary: boolean;
+}
+
 interface Location {
   id: number;
   name: string;
@@ -11,6 +20,7 @@ interface Location {
   contact_name: string | null;
   contact_phone: string | null;
   contact_email: string | null;
+  contacts_list: ContactItem[];
   assigned_engineer_id: number | null;
   assigned_engineer_name: string | null;
   contract_number: string | null;
@@ -113,7 +123,9 @@ export const LocationsPage: React.FC = () => {
           </thead>
           <tbody>
             {filtered.map(l => {
-              const contactStr = [l.contact_name, l.contact_phone, l.contact_email].filter(Boolean).join(' / ') || l.contacts;
+              const contactStr = l.contacts_list?.length
+                ? l.contacts_list.map(c => [c.name, c.phone, c.email].filter(Boolean).join(' / ')).join(', ')
+                : [l.contact_name, l.contact_phone, l.contact_email].filter(Boolean).join(' / ') || l.contacts;
               return (
                 <tr key={l.id}>
                   <td className="mono" style={{ color: 'var(--text-muted)' }}>#{l.id}</td>
@@ -193,6 +205,13 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
   const [contactName, setContactName] = useState(loc?.contact_name || '');
   const [contactPhone, setContactPhone] = useState(loc?.contact_phone || '');
   const [contactEmail, setContactEmail] = useState(loc?.contact_email || '');
+  const [contactsList, setContactsList] = useState<ContactItem[]>(
+    loc?.contacts_list?.length
+      ? loc.contacts_list
+      : (loc?.contact_name || loc?.contact_phone || loc?.contact_email
+        ? [{ name: loc?.contact_name || '', phone: loc?.contact_phone || null, email: loc?.contact_email || null, position: null, is_primary: true }]
+        : [])
+  );
   const [engId, setEngId] = useState<string>(loc?.assigned_engineer_id != null ? loc.assigned_engineer_id.toString() : '');
   const [contractNo, setContractNo] = useState(loc?.contract_number || '');
   const [from, setFrom] = useState(loc?.contract_valid_from ? loc.contract_valid_from.substring(0, 10) : '');
@@ -259,6 +278,13 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
         contact_name: contactName.trim() || null,
         contact_phone: contactPhone.trim() || null,
         contact_email: contactEmail.trim() || null,
+        contacts_list: contactsList.filter(c => c.name.trim()).map((c, i) => ({
+          name: c.name.trim(),
+          phone: c.phone?.trim() || null,
+          email: c.email?.trim() || null,
+          position: c.position?.trim() || null,
+          is_primary: i === 0,
+        })),
         assigned_engineer_id: engId ? Number(engId) : null,
         contract_number: contractNo.trim() || null,
         contract_valid_from: from || null,
@@ -348,6 +374,40 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
           <div>
             <label>Email</label>
             <input type="email" placeholder="contact@domain.ru" value={contactEmail} onChange={e => setContactEmail(e.target.value)} />
+          </div>
+
+          <div className="span-2" style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <label style={{ margin: 0, fontWeight: 600 }}>Контактные лица</label>
+              <button type="button" className="btn btn-secondary" style={{ padding: '2px 8px', fontSize: 11 }}
+                onClick={() => setContactsList(prev => [...prev, { name: '', phone: null, email: null, position: null, is_primary: false }])}>
+                + Добавить
+              </button>
+            </div>
+            {contactsList.map((c, idx) => (
+              <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 6, marginBottom: 6, alignItems: 'end' }}>
+                <div>
+                  {idx === 0 && <label style={{ fontSize: 10 }}>ФИО</label>}
+                  <input placeholder="ФИО" value={c.name} onChange={e => {
+                    const v = [...contactsList]; v[idx] = { ...v[idx], name: e.target.value }; setContactsList(v);
+                  }} style={{ fontSize: 12 }} />
+                </div>
+                <div>
+                  {idx === 0 && <label style={{ fontSize: 10 }}>Телефон</label>}
+                  <input placeholder="Телефон" value={c.phone || ''} onChange={e => {
+                    const v = [...contactsList]; v[idx] = { ...v[idx], phone: e.target.value || null }; setContactsList(v);
+                  }} style={{ fontSize: 12 }} />
+                </div>
+                <div>
+                  {idx === 0 && <label style={{ fontSize: 10 }}>Email</label>}
+                  <input placeholder="Email" value={c.email || ''} onChange={e => {
+                    const v = [...contactsList]; v[idx] = { ...v[idx], email: e.target.value || null }; setContactsList(v);
+                  }} style={{ fontSize: 12 }} />
+                </div>
+                <button type="button" className="btn btn-secondary" style={{ padding: '2px 6px', fontSize: 11, marginBottom: 1 }}
+                  onClick={() => setContactsList(prev => prev.filter((_, i) => i !== idx))}>✕</button>
+              </div>
+            ))}
           </div>
 
           <div className="span-2">
