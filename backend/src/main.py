@@ -234,7 +234,7 @@ if os.path.exists(FRONTEND_DIR):
         from src.models.attachment import Attachment
         from src.models.ticket import Ticket
         from src.models.comment import Comment
-        from src.models.user import User, UserRole
+        from src.models.user import User, UserRole, UserStatus
         from src.services.acl_service import RoleChecker
 
         token = request.query_params.get("token") or ""
@@ -266,6 +266,8 @@ if os.path.exists(FRONTEND_DIR):
                 user = user_result.scalar_one_or_none()
                 if not user:
                     return JSONResponse(status_code=401, content={"detail": "User not found"})
+                if user.status != UserStatus.active:
+                    return JSONResponse(status_code=403, content={"detail": "User account is not active"})
                 if att.ticket_id:
                     ticket = await db.get(Ticket, att.ticket_id)
                     if ticket and not await RoleChecker.can_view_ticket_async(user, ticket, db):
@@ -286,6 +288,8 @@ if os.path.exists(FRONTEND_DIR):
                 user = user_result.scalar_one_or_none()
                 if not user or user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
                     return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+                if user.status != UserStatus.active:
+                    return JSONResponse(status_code=403, content={"detail": "User account is not active"})
 
         return FileResponse(real_path)
 

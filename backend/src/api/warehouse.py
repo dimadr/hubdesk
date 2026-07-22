@@ -173,7 +173,9 @@ async def update_nomenclature(nomenclature_id: int, data: NomenclatureCreate, us
 
 
 @warehouse_router.get("/balances", response_model=list[BalanceResponse])
-async def list_balances(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def list_balances(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if user.role not in _WAREHOUSE_READ_ROLES:
+        raise HTTPException(403, "Недостаточно прав для просмотра остатков")
     result = await db.execute(select(StockBalance))
     return [BalanceResponse(warehouse_id=b.warehouse_id, nomenclature_id=b.nomenclature_id, quantity=b.quantity) for b in result.scalars().all()]
 

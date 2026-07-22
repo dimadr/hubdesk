@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from src.models.mailbox import MailboxConfig
 from src.models.customer import Customer
-from src.models.ticket import Ticket
 from src.models.equipment import AssetLocation
 from src.models.user import User, UserRole
 from src.config import settings
@@ -126,19 +125,15 @@ class MailService:
                     if default_loc:
                         location_id = default_loc.id
 
-                last_num_result = await db.execute(
-                    select(Ticket.number).order_by(Ticket.number.desc()).limit(1).with_for_update()
-                )
-                last_num = last_num_result.scalar() or 999
-                ticket = Ticket(
-                    number=last_num + 1,
-                    subject=subject[:500],
-                    body=f"От: {sender}\n\n{body}"[:5000],
-                    customer_id=customer_id,
-                    location_id=location_id,
-                    source_description=f"Email от {sender}",
-                )
-                db.add(ticket)
+                from src.services.ticket_service import TicketService
+                svc = TicketService(db)
+                ticket = await svc.create({
+                    "subject": subject[:500],
+                    "body": f"От: {sender}\n\n{body}"[:5000],
+                    "customer_id": customer_id,
+                    "location_id": location_id,
+                    "source_description": f"Email от {sender}",
+                })
 
                 new_last_uid = uid_str
                 created += 1

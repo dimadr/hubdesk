@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from src.database import get_db
 from src.models.personal_task import PersonalTask
@@ -53,6 +54,14 @@ async def list_tasks(
         select(PersonalTask).where(PersonalTask.user_id == target_id).order_by(PersonalTask.position)
     )
     tasks = result.scalars().all()
+    # Batch-fetch related tickets to avoid N+1
+    ticket_ids = [t.ticket_id for t in tasks if t.ticket_id]
+    tickets_map = {}
+    if ticket_ids:
+        tickets_result = await db.execute(
+            select(Ticket).where(Ticket.id.in_(ticket_ids))
+        )
+        tickets_map = {t.id: t for t in tickets_result.scalars().all()}
     out = []
     for t in tasks:
         d = TaskResponse(
@@ -60,11 +69,10 @@ async def list_tasks(
             column=t.column, position=t.position, ticket_id=t.ticket_id,
             created_at=t.created_at.isoformat() if t.created_at else "",
         )
-        if t.ticket_id:
-            ticket = await db.get(Ticket, t.ticket_id)
-            if ticket:
-                d.ticket_subject = ticket.subject
-                d.ticket_status = ticket.status.value
+        if t.ticket_id and t.ticket_id in tickets_map:
+            ticket = tickets_map[t.ticket_id]
+            d.ticket_subject = ticket.subject
+            d.ticket_status = ticket.status.value
         out.append(d)
     return out
 

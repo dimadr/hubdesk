@@ -43,12 +43,12 @@ async def create_ticket_v1(
 
     svc = TicketService(db)
     ticket = await svc.create(data.model_dump())
-    await db.commit()
-    # Audit log for API key creation
+    # Audit log for API key creation (before commit)
     await log_audit(
         db, None, "ticket_created", "ticket",
         ticket.id, f"Создана заявка №{ticket.number} «{ticket.subject}» через API key «{api_key.name}»"
     )
+    await db.commit()
     # Reload with relationships for response
     stmt = (
         select(Ticket)

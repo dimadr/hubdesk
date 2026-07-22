@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text
+from sqlalchemy import select, text, func
 from sqlalchemy.orm import selectinload
 from datetime import datetime
 from pydantic import BaseModel
@@ -63,6 +63,16 @@ def create_ticket_router() -> APIRouter:
             stmt = stmt.where(Ticket.archived_at != None)
         elif filters.archived is False:
             stmt = stmt.where(Ticket.archived_at == None)
+        if filters.overdue is True:
+            stmt = stmt.where(
+                Ticket.resolution_deadline != None,
+                Ticket.completed_at == None,
+                func.now() > Ticket.resolution_deadline,
+            )
+        elif filters.overdue is False:
+            stmt = stmt.where(
+                (Ticket.resolution_deadline == None) | (Ticket.completed_at != None) | (func.now() <= Ticket.resolution_deadline)
+            )
         stmt = stmt.order_by(Ticket.created_at.desc())
         stmt = stmt.offset(filters.offset).limit(filters.limit)
         result = await db.execute(stmt)
