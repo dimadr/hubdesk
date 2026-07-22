@@ -294,9 +294,7 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
 
       if (customerId) {
         body.customer_id = Number(customerId);
-      } else if (loc) {
-        body.customer_id = null;  // редактирование: не менять клиента
-      } else if (newCustomerName.trim()) {
+      } else if (!loc && newCustomerName.trim()) {
         body.customer_name = newCustomerName.trim();
       }
 

@@ -172,6 +172,7 @@ const UsersTab: React.FC = () => {
 
 const UserEditModal: React.FC<{ user: UserInfo; onClose: () => void; onSaved: () => void }> = ({ user, onClose, onSaved }) => {
   const [name, setName] = useState('');
+  const [patronymic, setPatronymic] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState('');
@@ -181,7 +182,8 @@ const UserEditModal: React.FC<{ user: UserInfo; onClose: () => void; onSaved: ()
 
   useEffect(() => {
     if (user) {
-      setName(user.name + (user.patronymic ? ' ' + user.patronymic : ''));
+      setName(user.name || '');
+      setPatronymic(user.patronymic || '');
       setEmail(user.email);
       setPhone(user.phone || '');
       setRole(user.role);
@@ -195,9 +197,9 @@ const UserEditModal: React.FC<{ user: UserInfo; onClose: () => void; onSaved: ()
     setError('');
     try {
       const body: any = {};
-      const fullName = user.name + (user.patronymic ? ' ' + user.patronymic : '');
 
-      if (name.trim() !== fullName) body.name = name.trim();
+      if (name.trim() !== (user.name || '')) body.name = name.trim();
+      if (patronymic.trim() !== (user.patronymic || '')) body.patronymic = patronymic.trim();
       if (email.trim() !== user.email) body.email = email.trim();
       if (phone.trim() !== (user.phone || '')) body.phone = phone.trim();
       if (role !== user.role) body.role = role;
@@ -217,8 +219,10 @@ const UserEditModal: React.FC<{ user: UserInfo; onClose: () => void; onSaved: ()
       <div className="modal-card" onClick={e => e.stopPropagation()}>
         <h3>Редактировать: {user.name} {user.patronymic || ''}</h3>
         {error && <p style={{ color: 'var(--danger)', fontSize: 13, background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 6 }}>{error}</p>}
-        <label>ФИО</label>
+        <label>Имя</label>
         <input value={name} onChange={e => setName(e.target.value)} />
+        <label>Отчество</label>
+        <input value={patronymic} onChange={e => setPatronymic(e.target.value)} placeholder="Иванович" />
         <label>Email</label>
         <input value={email} onChange={e => setEmail(e.target.value)} />
         <label>Телефон</label>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { api, TicketResponse } from '../api/client';
 
 interface Task {
@@ -24,21 +24,26 @@ export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[]; onDetail?
   const [newTitle, setNewTitle] = useState('');
   const [addingCol, setAddingCol] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
-  const [selectedUser, setSelectedUser] = useState<number | ''>('');
   const selfUserId = Number(localStorage.getItem('currentUserId') || 0);
+  const abortRef = useRef<AbortController | null>(null);
 
   const loadTasks = useCallback(() => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     const tgtUserId = viewingEngineerId || currentUserId || selfUserId;
     const ptParams: any = {};
     if (viewingEngineerId && (role === 'admin' || role === 'director')) ptParams.user_id = viewingEngineerId;
     Promise.all([
-      api.get('/personal-tasks', { params: ptParams }),
-      api.get('/tickets', { params: { assignee_id: tgtUserId, limit: 200 } }),
+      api.get('/personal-tasks', { params: ptParams, signal: controller.signal }),
+      api.get('/tickets', { params: { assignee_id: tgtUserId, limit: 200 }, signal: controller.signal }),
     ]).then(([pt, t]) => {
-      setTasks(pt.data);
-      setTickets(t.data);
-      setLoading(false);
-    }).catch(() => setLoading(false));
+      if (!controller.signal.aborted) {
+        setTasks(pt.data);
+        setTickets(t.data);
+        setLoading(false);
+      }
+    }).catch(() => { if (!controller.signal.aborted) setLoading(false); });
   }, [currentUserId, selfUserId, viewingEngineerId, role]);
 
   useEffect(() => {
@@ -115,15 +120,8 @@ export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[]; onDetail?
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Моя доска</h2>
-        {role === 'admin' && (
-          <select
-            value={selectedUser ?? ''}
-            onChange={e => setSelectedUser(e.target.value ? Number(e.target.value) : '')}
-            style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-surface)', color: 'var(--text)', fontSize: 12 }}
-          >
-            <option value="">— Моя доска —</option>
-            {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-          </select>
+        {viewingEngineerId && (role === 'admin' || role === 'director') && (
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Доска: {users.find(u => u.id === viewingEngineerId)?.name || `#${viewingEngineerId}`}</span>
         )}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>

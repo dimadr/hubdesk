@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { api } from '../api/client';
 
 interface ObjectRow { location_id: number; location_name: string; customer_name: string; location_address: string; total: number; open: number; closed: number; overdue: number; avg_resolution_hours: number; types: Record<string, number>; }
@@ -39,6 +39,9 @@ export const ReportsPage: React.FC<{ onOpenTicket?: (t: any) => void }> = ({ onO
   const [selectedLoc, setSelectedLoc] = useState<ObjectRow | null>(null);
   const [locTickets, setLocTickets] = useState<any[]>([]);
   const [userMap, setUserMap] = useState<Record<number, string>>({});
+  const engReqIdRef = useRef(0);
+  const statusReqIdRef = useRef(0);
+  const locReqIdRef = useRef(0);
 
   const getParams = () => {
     const p: any = {};
@@ -66,19 +69,9 @@ export const ReportsPage: React.FC<{ onOpenTicket?: (t: any) => void }> = ({ onO
     });
   };
 
-  const loadEngineers = () => {
-    const params = getParams();
-    if (engStatusFilter) params.status = engStatusFilter;
-    api.get('/reports/engineers', { params }).then(r => setEngineers(r.data)).catch(() => {});
-  };
-
-  useEffect(() => {
-    loadEngineers();
-  }, [engStatusFilter]);
-
   useEffect(() => {
     loadAll();
-  }, [from, to]);
+  }, [from, to, engStatusFilter]);
 
   useEffect(() => {
     api.get('/users/list').then(r => {
@@ -92,21 +85,36 @@ export const ReportsPage: React.FC<{ onOpenTicket?: (t: any) => void }> = ({ onO
     setSelectedEng(eng);
     setSelectedStatus(null);
     setSelectedLoc(null);
-    api.get('/tickets', { params: { assignee_id: eng.engineer_id, limit: 200 } }).then(r => setEngTickets(r.data)).catch(() => setEngTickets([]));
+    const reqId = ++engReqIdRef.current;
+    api.get('/tickets', { params: { assignee_id: eng.engineer_id, limit: 200, ...getParams() } }).then(r => {
+      if (reqId === engReqIdRef.current) setEngTickets(r.data);
+    }).catch(() => {});
   };
 
   const loadStatusTickets = (status: string) => {
     setSelectedStatus(status);
     setSelectedEng(null);
     setSelectedLoc(null);
-    api.get('/tickets', { params: { status, archived: false, limit: 200 } }).then(r => setStatusTickets(r.data)).catch(() => setStatusTickets([]));
+    const reqId = ++statusReqIdRef.current;
+    const params: any = { status, limit: 200, ...getParams() };
+    if (status === 'COMPLETED') {
+      params.archived = true;
+    } else {
+      params.archived = false;
+    }
+    api.get('/tickets', { params }).then(r => {
+      if (reqId === statusReqIdRef.current) setStatusTickets(r.data);
+    }).catch(() => {});
   };
 
   const loadLocTickets = (loc: ObjectRow) => {
     setSelectedLoc(loc);
     setSelectedStatus(null);
     setSelectedEng(null);
-    api.get('/tickets', { params: { location_id: loc.location_id, limit: 200 } }).then(r => setLocTickets(r.data)).catch(() => setLocTickets([]));
+    const reqId = ++locReqIdRef.current;
+    api.get('/tickets', { params: { location_id: loc.location_id, limit: 200, ...getParams() } }).then(r => {
+      if (reqId === locReqIdRef.current) setLocTickets(r.data);
+    }).catch(() => {});
   };
 
   return (

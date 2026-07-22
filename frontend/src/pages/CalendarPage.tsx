@@ -37,14 +37,18 @@ export const CalendarPage: React.FC<{ onOpenTicket?: (ticket: TicketResponse) =>
   const [selectedTickets, setSelectedTickets] = useState<TicketResponse[]>([]);
 
   useEffect(() => {
-    api.get('/tickets', { params: { limit: 200, archived: false } })
+    const year = current.getFullYear();
+    const month = current.getMonth();
+    const dateFrom = new Date(year, month, 1).toISOString();
+    const dateTo = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
+    api.get('/tickets', { params: { limit: 500, archived: false, date_from: dateFrom, date_to: dateTo } })
       .then(r => {
         const open = r.data.filter((t: TicketResponse) => t.status !== 'COMPLETED');
         setTickets(open);
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, []);
+  }, [current.getFullYear(), current.getMonth()]);
 
   const year = current.getFullYear();
   const month = current.getMonth();

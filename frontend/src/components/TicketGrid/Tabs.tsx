@@ -10,7 +10,7 @@ const TABS = [
 ];
 
 export const Tabs: React.FC = () => {
-  const { activeTab, setActiveTab, counters } = useTicketStore();
+  const { activeTab, setActiveTab } = useTicketStore();
 
   return (
     <div className="tabs">
@@ -21,9 +21,6 @@ export const Tabs: React.FC = () => {
           onClick={() => setActiveTab(tab.key)}
         >
           {tab.label}
-          {counters[tab.key] !== undefined && (
-            <span className="counter">{counters[tab.key]}</span>
-          )}
         </button>
       ))}
     </div>

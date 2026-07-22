@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { api } from '../api/client';
 
 interface Warehouse { id: number; name: string; type: string; }
@@ -29,6 +29,19 @@ export const WarehousePage: React.FC = () => {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [balances, setBalances] = useState<Balance[]>([]);
   const [loading, setLoading] = useState(true);
+  const [accessError, setAccessError] = useState<string | null>(null);
+
+  const whMap = useMemo(() => {
+    const m: Record<number, Warehouse> = {};
+    warehouses.forEach(w => { m[w.id] = w; });
+    return m;
+  }, [warehouses]);
+
+  const nomMap = useMemo(() => {
+    const m: Record<number, NomenclatureItem> = {};
+    nomenclature.forEach(n => { m[n.id] = n; });
+    return m;
+  }, [nomenclature]);
 
   const [showWhModal, setShowWhModal] = useState(false);
   const [whForm, setWhForm] = useState({ id: null as number | null, name: '', type: 'physical' });
@@ -46,6 +59,7 @@ export const WarehousePage: React.FC = () => {
 
   const loadData = async () => {
     setLoading(true);
+    setAccessError(null);
     try {
       const [whRes, nomRes, docRes, balRes] = await Promise.all([
         api.get('/warehouses'),
@@ -57,8 +71,12 @@ export const WarehousePage: React.FC = () => {
       setNomenclature(nomRes.data);
       setDocs(docRes.data);
       setBalances(balRes.data);
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      if (e.response?.status === 403) {
+        setAccessError('Недостаточно прав для просмотра склада');
+      } else {
+        console.error(e);
+      }
     } finally {
       setLoading(false);
     }
@@ -129,16 +147,17 @@ export const WarehousePage: React.FC = () => {
     }
   };
 
-  const handleAccountDoc = async (id: number) => {
+  const handleAdvanceDoc = async (id: number, action: 'approve' | 'deliver' | 'account') => {
     try {
-      await api.post(`/warehouse-documents/${id}/account`);
+      await api.post(`/warehouse-documents/${id}/${action}`);
       loadData();
     } catch (e: any) {
-      alert(e.response?.data?.detail || 'Ошибка проведения документа');
+      alert(e.response?.data?.detail || 'Ошибка операции');
     }
   };
 
   if (loading) return <div className="loading">Загрузка данных склада...</div>;
+  if (accessError) return <div style={{ padding: 24, color: 'var(--danger)' }}>{accessError}</div>;
 
   return (
     <div className="card">
@@ -220,13 +239,19 @@ export const WarehousePage: React.FC = () => {
                       <td>{d.id}</td>
                       <td>{DOC_TYPES[d.doc_type as keyof typeof DOC_TYPES] || d.doc_type}</td>
                       <td><span className={`status-pill status-${d.status.toLowerCase()}`}>{DOC_STATUS[d.status] || d.status}</span></td>
-                      <td>{warehouses.find(w => w.id === d.source_warehouse_id)?.name || '—'}</td>
-                      <td>{warehouses.find(w => w.id === d.target_warehouse_id)?.name || '—'}</td>
+                      <td>{d.source_warehouse_id ? whMap[d.source_warehouse_id]?.name || '—' : '—'}</td>
+                      <td>{d.target_warehouse_id ? whMap[d.target_warehouse_id]?.name || '—' : '—'}</td>
                       <td>{d.lines?.length || 0}</td>
                       <td>{new Date(d.created_at).toLocaleString()}</td>
                       <td>
                         {d.status === 'DRAFT' && (
-                          <button className="btn btn-success" onClick={() => handleAccountDoc(d.id)} style={{ padding: '2px 6px', fontSize: 11 }}>Провести</button>
+                          <button className="btn btn-success" onClick={() => handleAdvanceDoc(d.id, 'approve')} style={{ padding: '2px 6px', fontSize: 11 }}>Согласовать</button>
+                        )}
+                        {d.status === 'APPROVAL' && (
+                          <button className="btn btn-success" onClick={() => handleAdvanceDoc(d.id, 'deliver')} style={{ padding: '2px 6px', fontSize: 11 }}>Отправить</button>
+                        )}
+                        {d.status === 'DELIVERY' && (
+                          <button className="btn btn-success" onClick={() => handleAdvanceDoc(d.id, 'account')} style={{ padding: '2px 6px', fontSize: 11 }}>Провести</button>
                         )}
                       </td>
                     </tr>
@@ -244,8 +269,8 @@ export const WarehousePage: React.FC = () => {
               <tbody>
                 {balances.map((b, idx) => (
                   <tr key={idx}>
-                    <td>{warehouses.find(w => w.id === b.warehouse_id)?.name || `Склад ID ${b.warehouse_id}`}</td>
-                    <td>{nomenclature.find(n => n.id === b.nomenclature_id)?.name || `Номенклатура ID ${b.nomenclature_id}`}</td>
+                    <td>{whMap[b.warehouse_id]?.name || `Склад ID ${b.warehouse_id}`}</td>
+                    <td>{nomMap[b.nomenclature_id]?.name || `Номенклатура ID ${b.nomenclature_id}`}</td>
                     <td className="mono" style={{ fontWeight: 'bold' }}>{b.quantity}</td>
                   </tr>
                 ))}

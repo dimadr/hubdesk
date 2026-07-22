@@ -4,7 +4,6 @@ import { Tabs } from './Tabs';
 import { SavedViews } from './SavedViews';
 import { TableView } from './TableView';
 import { CardView } from './CardView';
-import { TreeView } from './TreeView';
 
 interface UserInfo {
   id: number; email: string; name: string; role: string;
@@ -97,8 +96,7 @@ export const TicketGrid: React.FC<{ users: UserInfo[]; onEdit?: (ticket: any) =>
       )}
       {loading ? <div className="loading">Загрузка...</div> : (
         viewType === 'table' ? <TableView tickets={filteredTickets} users={users} onEdit={onEdit} onDetail={onDetail} onStatusChange={onStatusChange} onDelete={onDelete} currentUserId={currentUserId} role={role} colFilter={colFilter} onFilter={toggleFilter} /> :
-        viewType === 'card' ? <CardView tickets={filteredTickets} users={users} onDetail={onDetail} /> :
-        <TreeView tickets={filteredTickets} onDetail={onDetail} />
+        <CardView tickets={filteredTickets} users={users} onDetail={onDetail} />
       )}
     </div>
   );

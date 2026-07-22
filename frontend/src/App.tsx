@@ -472,7 +472,6 @@ const TicketDetailModal: React.FC<{
   const [comments, setComments] = useState<any[]>([]);
   const [attachments, setAttachments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState('');
-  const [isInternal, setIsInternal] = useState(false);
   const [sending, setSending] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const [linkTitle, setLinkTitle] = useState('');
@@ -502,8 +501,10 @@ const TicketDetailModal: React.FC<{
 
   const handleStatus = async (target: string) => {
     if (!onStatusChange) return;
-    onStatusChange(ticket, target);
-    setTimeout(onClose, 300);
+    try {
+      await onStatusChange(ticket, target);
+      onClose();
+    } catch {}
   };
 
   const handleSendComment = async () => {
@@ -880,12 +881,12 @@ const App: React.FC = () => {
   useEffect(() => {
     if (auth) {
       api.get('/users/list').then(r => setUsers(r.data)).catch(() => {});
-      api.get('/tickets').then(r => {
-        const tickets = r.data;
+      api.get('/reports/tickets').then(r => {
+        const s = r.data;
         setStats({
-          total: tickets.length,
-          open: tickets.filter((t: any) => t.status !== 'COMPLETED').length,
-          urgent: tickets.filter((t: any) => t.priority === 'critical' || t.priority === 'high').length,
+          total: s.total || 0,
+          open: (s.by_status || []).reduce((sum: number, st: any) => st.label !== 'COMPLETED' ? sum + st.count : sum, 0),
+          urgent: (s.by_priority || []).reduce((sum: number, p: any) => (p.label === 'critical' || p.label === 'high') ? sum + p.count : sum, 0),
         });
       }).catch(() => {});
     }
@@ -943,10 +944,10 @@ const App: React.FC = () => {
       return;
     }
     try {
+      await api.patch(`/tickets/${confirmStatusTicket.ticket.id}/status`, { status: 'COMPLETED' });
       if (comment) {
         await api.post(`/tickets/${confirmStatusTicket.ticket.id}/comments`, { body: comment, is_internal: true });
       }
-      await api.patch(`/tickets/${confirmStatusTicket.ticket.id}/status`, { status: 'COMPLETED' });
       setConfirmStatusTicket(null);
       setDetailTicket(null);
       setRefreshKey(k => k + 1);
@@ -973,6 +974,7 @@ const App: React.FC = () => {
             .filter(item => item.key !== 'audit' || ['admin', 'director'].includes(user.role))
             .filter(item => item.key !== 'employees' || ['admin', 'director', 'dispatcher', 'accountant'].includes(user.role))
             .filter(item => item.key !== 'kanban' || ['admin', 'director', 'dispatcher', 'engineer'].includes(user.role))
+            .filter(item => item.key !== 'warehouse' || ['admin', 'director', 'storekeeper', 'metrologist', 'accountant'].includes(user.role))
             .map(item => (
               <button
                 key={item.key}
