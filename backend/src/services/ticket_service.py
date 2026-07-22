@@ -82,6 +82,12 @@ class TicketService:
         if not RoleChecker.can_assign(dispatcher):
             raise HTTPException(403, "Назначать инженера может только диспетчер или администратор")
 
+        eng = await self.session.get(User, engineer_id)
+        if not eng:
+            raise HTTPException(404, "Пользователь не найден")
+        if eng.role != UserRole.engineer:
+            raise HTTPException(400, "Назначать можно только пользователя с ролью engineer")
+
         ticket = await self._get(ticket_id)
         ticket.assignee_id = engineer_id
 

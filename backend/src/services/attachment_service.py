@@ -73,15 +73,20 @@ class AttachmentService:
         with open(real_path, "wb") as f:
             f.write(content)
 
-        attachment = Attachment(
-            ticket_id=ticket_id,
-            comment_id=comment_id,
-            filename=file.filename or "unknown",
-            path=os.path.relpath(real_path, os.path.dirname(UPLOAD_DIR)),
-            content_type=file.content_type or "application/octet-stream",
-            size=len(content),
-            is_internal=is_internal,
-        )
-        self.session.add(attachment)
-        await self.session.flush()
-        return attachment
+        try:
+            attachment = Attachment(
+                ticket_id=ticket_id,
+                comment_id=comment_id,
+                filename=file.filename or "unknown",
+                path=os.path.relpath(real_path, os.path.dirname(UPLOAD_DIR)),
+                content_type=file.content_type or "application/octet-stream",
+                size=len(content),
+                is_internal=is_internal,
+            )
+            self.session.add(attachment)
+            await self.session.flush()
+            return attachment
+        except Exception:
+            if os.path.exists(real_path):
+                os.remove(real_path)
+            raise

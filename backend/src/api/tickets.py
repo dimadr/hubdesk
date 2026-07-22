@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text, func
 from sqlalchemy.orm import selectinload
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel
 from src.database import get_db
 from src.models.ticket import Ticket
@@ -81,7 +81,7 @@ def create_ticket_router() -> APIRouter:
             try:
                 dt_from = datetime.fromisoformat(filters.date_from)
                 if dt_from.tzinfo is not None:
-                    dt_from = dt_from.replace(tzinfo=None)
+                    dt_from = dt_from.astimezone(timezone.utc).replace(tzinfo=None)
                 stmt = stmt.where(Ticket.created_at >= dt_from)
             except ValueError:
                 raise HTTPException(400, f"Некорректная дата: date_from={filters.date_from}")
@@ -89,35 +89,35 @@ def create_ticket_router() -> APIRouter:
             try:
                 dt_to = datetime.fromisoformat(filters.date_to)
                 if dt_to.tzinfo is not None:
-                    dt_to = dt_to.replace(tzinfo=None)
+                    dt_to = dt_to.astimezone(timezone.utc).replace(tzinfo=None)
                 stmt = stmt.where(Ticket.created_at <= dt_to)
             except ValueError:
                 raise HTTPException(400, f"Некорректная дата: date_to={filters.date_to}")
         if filters.deadline_from:
             try:
                 dt = datetime.fromisoformat(filters.deadline_from)
-                if dt.tzinfo is not None: dt = dt.replace(tzinfo=None)
+                if dt.tzinfo is not None: dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
                 stmt = stmt.where(Ticket.resolution_deadline >= dt)
             except ValueError:
                 raise HTTPException(400, f"Некорректная дата: deadline_from={filters.deadline_from}")
         if filters.deadline_to:
             try:
                 dt = datetime.fromisoformat(filters.deadline_to)
-                if dt.tzinfo is not None: dt = dt.replace(tzinfo=None)
+                if dt.tzinfo is not None: dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
                 stmt = stmt.where(Ticket.resolution_deadline <= dt)
             except ValueError:
                 raise HTTPException(400, f"Некорректная дата: deadline_to={filters.deadline_to}")
         if filters.scheduled_from:
             try:
                 dt = datetime.fromisoformat(filters.scheduled_from)
-                if dt.tzinfo is not None: dt = dt.replace(tzinfo=None)
+                if dt.tzinfo is not None: dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
                 stmt = stmt.where(Ticket.scheduled_end >= dt)
             except ValueError:
                 raise HTTPException(400, f"Некорректная дата: scheduled_from={filters.scheduled_from}")
         if filters.scheduled_to:
             try:
                 dt = datetime.fromisoformat(filters.scheduled_to)
-                if dt.tzinfo is not None: dt = dt.replace(tzinfo=None)
+                if dt.tzinfo is not None: dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
                 stmt = stmt.where(Ticket.scheduled_end <= dt)
             except ValueError:
                 raise HTTPException(400, f"Некорректная дата: scheduled_to={filters.scheduled_to}")
@@ -238,7 +238,8 @@ def create_ticket_router() -> APIRouter:
                 if field not in ('source_description', 'body', 'site_contact_name', 'site_contact_phone', 'resolution_deadline'):
                     raise HTTPException(403, f"Инженер не может изменять поле «{field}»")
             if isinstance(value, datetime):
-                value = value.replace(tzinfo=None)
+                if value.tzinfo is not None:
+                    value = value.astimezone(timezone.utc).replace(tzinfo=None)
             setattr(ticket, field, value)
         update_fields = set(data.model_dump(exclude_unset=True).keys())
         if 'location_id' in update_fields or 'customer_id' in update_fields:
@@ -248,6 +249,11 @@ def create_ticket_router() -> APIRouter:
                 raise HTTPException(400, "Объект не найден")
             if loc.customer_id != ticket.customer_id:
                 raise HTTPException(400, "Объект не принадлежит указанному заказчику")
+            if 'location_id' in update_fields and ticket.equipment_id:
+                from src.models.equipment import Equipment as EQ
+                eq = await db.get(EQ, ticket.equipment_id)
+                if eq and eq.location_id != ticket.location_id:
+                    ticket.equipment_id = None
         if 'equipment_id' in update_fields and ticket.equipment_id:
             from src.models.equipment import Equipment as EQ
             eq = await db.get(EQ, ticket.equipment_id)
@@ -480,6 +486,14 @@ def create_ticket_router() -> APIRouter:
         if not ticket:
             raise HTTPException(404, "Заявка не найдена")
         num = ticket.number
+        import os
+        att_result = await db.execute(text("SELECT path FROM attachments WHERE ticket_id = :tid OR comment_id IN (SELECT id FROM comments WHERE ticket_id = :tid)"), {"tid": ticket_id})
+        for row in att_result:
+            if row[0] and os.path.exists(row[0]):
+                try:
+                    os.remove(row[0])
+                except OSError:
+                    pass
         await db.execute(text("DELETE FROM checklist_fields WHERE checklist_id IN (SELECT id FROM checklists WHERE ticket_id = :tid)"), {"tid": ticket_id})
         await db.execute(text("DELETE FROM checklists WHERE ticket_id = :tid"), {"tid": ticket_id})
         await db.execute(text("DELETE FROM attachments WHERE ticket_id = :tid OR comment_id IN (SELECT id FROM comments WHERE ticket_id = :tid)"), {"tid": ticket_id})

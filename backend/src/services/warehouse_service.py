@@ -4,6 +4,7 @@ from sqlalchemy.orm import selectinload
 
 from src.models.warehouse import (
     AccountingDocument, DocumentLine, StockBalance, DocType, DocStatus,
+    Warehouse, Nomenclature,
 )
 from src.models.user import User
 from src.services.warehouse_fsm import WarehouseDocFSM
@@ -25,6 +26,15 @@ class WarehouseService:
             raise ValueError("Для документа требуется склад-получатель")
         if not data.get("lines"):
             raise ValueError("Документ должен содержать хотя бы одну строку")
+        if data.get("source_warehouse_id"):
+            if not await self.session.get(Warehouse, data["source_warehouse_id"]):
+                raise ValueError(f"Склад-источник {data['source_warehouse_id']} не найден")
+        if data.get("target_warehouse_id"):
+            if not await self.session.get(Warehouse, data["target_warehouse_id"]):
+                raise ValueError(f"Склад-получатель {data['target_warehouse_id']} не найден")
+        for line_data in data.get("lines", []):
+            if not await self.session.get(Nomenclature, line_data["nomenclature_id"]):
+                raise ValueError(f"Номенклатура {line_data['nomenclature_id']} не найдена")
         doc = AccountingDocument(
             doc_type=doc_type,
             source_warehouse_id=data.get("source_warehouse_id"),

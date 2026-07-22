@@ -12,7 +12,7 @@ from passlib.hash import bcrypt
 
 from src.database import get_db
 from src.models.user import User, UserRole, UserStatus
-from src.models.customer import Customer
+from src.models.customer import Customer, CustomerType
 from src.models.ticket import Ticket, TicketStatus, TicketPriority
 from src.models.equipment import AssetLocation
 from src.models.warehouse import Warehouse
@@ -72,12 +72,12 @@ class CustomerResponse(BaseModel):
 
 class CustomerCreate(BaseModel):
     name: str
-    type: str = "company"
+    type: CustomerType = CustomerType.company
 
 
 class CustomerUpdate(BaseModel):
     name: str | None = None
-    type: str | None = None
+    type: CustomerType | None = None
 
 
 class PendingUserResponse(BaseModel):

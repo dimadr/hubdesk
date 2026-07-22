@@ -73,8 +73,9 @@ async def list_tasks(
         )
         if t.ticket_id and t.ticket_id in tickets_map:
             ticket = tickets_map[t.ticket_id]
-            d.ticket_subject = ticket.subject
-            d.ticket_status = ticket.status.value
+            if await RoleChecker.can_view_ticket_async(user, ticket, db):
+                d.ticket_subject = ticket.subject
+                d.ticket_status = ticket.status.value
         out.append(d)
     return out
 

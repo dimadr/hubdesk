@@ -159,8 +159,12 @@ class MailService:
             return created
         except Exception as e:
             try:
-                cfg.last_check_at = datetime.utcnow()
-                await db.commit()
+                await db.rollback()
+                cfg_result2 = await db.execute(select(MailboxConfig).limit(1))
+                cfg2 = cfg_result2.scalar_one_or_none()
+                if cfg2:
+                    cfg2.last_check_at = datetime.utcnow()
+                    await db.commit()
             except:
                 pass
             raise e

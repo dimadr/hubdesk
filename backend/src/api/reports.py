@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from sqlalchemy.orm import selectinload
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from src.database import get_db
 from src.models.ticket import Ticket, TicketStatus
 from src.models.customer import Customer
@@ -22,7 +22,7 @@ def check_access(user: User):
 def _parse_date(s: str) -> datetime:
     dt = datetime.fromisoformat(s)
     if dt.tzinfo is not None:
-        dt = dt.replace(tzinfo=None)
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
     return dt
 
 
