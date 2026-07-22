@@ -112,10 +112,9 @@ class MailService:
                 customer = await MailService._find_customer(db, sender)
                 customer_id = customer.id if customer else None
                 if not customer_id:
-                    customer = Customer(name=sender or "Email", type="company")
-                    db.add(customer)
-                    await db.flush()
-                    customer_id = customer.id
+                    logger.warning(f"Пропущен email от неизвестного отправителя: {sender} (ящик {cfg.email})")
+                    new_last_uid = uid_str
+                    continue
 
                 location_id = None
                 if customer_id:

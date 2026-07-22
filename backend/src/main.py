@@ -258,7 +258,8 @@ if os.path.exists(FRONTEND_DIR):
             return JSONResponse(status_code=404, content={"detail": "File not found"})
 
         async with async_session() as db:
-            result = await db.execute(sa_select(Attachment).where(Attachment.path == real_path))
+            rel_path = os.path.relpath(real_path, uploads_dir)
+            result = await db.execute(sa_select(Attachment).where(Attachment.path == rel_path))
             att = result.scalar_one_or_none()
             if att:
                 user_result = await db.execute(sa_select(User).where(User.id == user_id))

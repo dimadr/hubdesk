@@ -128,6 +128,7 @@ class TicketService:
                 selectinload(Ticket.checklists).selectinload(Checklist.fields),
                 selectinload(Ticket.customer),
                 selectinload(Ticket.location),
+                selectinload(Ticket.assignee),
             )
         )
         result = await self.session.execute(stmt)

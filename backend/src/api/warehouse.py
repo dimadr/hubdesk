@@ -16,11 +16,16 @@ from src.core.fsm.exceptions import InvalidTransitionError, GuardFailedError
 warehouse_router = APIRouter(tags=["Warehouse"])
 
 
+_WAREHOUSE_READ_ROLES = {UserRole.admin, UserRole.director, UserRole.storekeeper, UserRole.metrologist, UserRole.accountant}
+
+
 @warehouse_router.get("/warehouses", response_model=list[WarehouseResponse])
 async def list_warehouses(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if user.role not in _WAREHOUSE_READ_ROLES:
+        raise HTTPException(403, "Недостаточно прав для просмотра складов")
     result = await db.execute(select(Warehouse))
     return [WarehouseResponse.model_validate(w) for w in result.scalars().all()]
 
@@ -47,6 +52,8 @@ async def list_documents(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if user.role not in _WAREHOUSE_READ_ROLES:
+        raise HTTPException(403, "Недостаточно прав для просмотра документов")
     result = await db.execute(select(AccountingDocument).options(selectinload(AccountingDocument.lines)).order_by(AccountingDocument.id.desc()))
     docs = result.scalars().all()
     return [WarehouseDocResponse.model_validate(d) for d in docs]
@@ -100,6 +107,8 @@ async def account_doc(doc_id: int, user=Depends(get_current_user), db=Depends(ge
         raise HTTPException(400, str(e))
     except GuardFailedError as e:
         raise HTTPException(400, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     await db.commit()
     return WarehouseDocResponse.model_validate(doc)
 
@@ -107,8 +116,10 @@ async def account_doc(doc_id: int, user=Depends(get_current_user), db=Depends(ge
 @warehouse_router.get("/warehouses/{warehouse_id}/balance/{nomenclature_id}", response_model=BalanceResponse)
 async def get_balance(
     warehouse_id: int, nomenclature_id: int,
-    user=Depends(get_current_user), db=Depends(get_db),
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db),
 ):
+    if user.role not in _WAREHOUSE_READ_ROLES:
+        raise HTTPException(403, "Недостаточно прав для просмотра остатков")
     svc = WarehouseService(db)
     qty = await svc.get_balance(warehouse_id, nomenclature_id)
     return BalanceResponse(warehouse_id=warehouse_id, nomenclature_id=nomenclature_id, quantity=qty)
@@ -129,7 +140,9 @@ class NomenclatureResponse(BaseModel):
 
 
 @warehouse_router.get("/nomenclature", response_model=list[NomenclatureResponse])
-async def list_nomenclature(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def list_nomenclature(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if user.role not in _WAREHOUSE_READ_ROLES:
+        raise HTTPException(403, "Недостаточно прав для просмотра номенклатуры")
     result = await db.execute(select(Nomenclature))
     return [NomenclatureResponse.model_validate(n) for n in result.scalars().all()]
 
@@ -170,7 +183,9 @@ class AccessRequest(BaseModel):
 
 
 @warehouse_router.get("/warehouses/{warehouse_id}/access")
-async def get_warehouse_access(warehouse_id: int, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def get_warehouse_access(warehouse_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if user.role not in _WAREHOUSE_READ_ROLES:
+        raise HTTPException(403, "Недостаточно прав для просмотра доступа")
     from src.models.user import User
     wh = await db.get(Warehouse, warehouse_id)
     if not wh:
@@ -183,10 +198,23 @@ async def get_warehouse_access(warehouse_id: int, user=Depends(get_current_user)
 
 
 @warehouse_router.post("/warehouses/{warehouse_id}/access")
-async def add_warehouse_access(warehouse_id: int, data: AccessRequest, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    from fastapi import HTTPException
+async def add_warehouse_access(warehouse_id: int, data: AccessRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
         raise HTTPException(403, "Только админ, директор или кладовщик может управлять доступом")
+    wh = await db.get(Warehouse, warehouse_id)
+    if not wh:
+        raise HTTPException(404, "Склад не найден")
+    target_user = await db.get(User, data.user_id)
+    if not target_user:
+        raise HTTPException(404, "Пользователь не найден")
+    existing = await db.execute(
+        select(warehouse_access).where(
+            warehouse_access.c.warehouse_id == warehouse_id,
+            warehouse_access.c.user_id == data.user_id,
+        )
+    )
+    if existing.first():
+        return {"status": "ok"}
     stmt = warehouse_access.insert().values(warehouse_id=warehouse_id, user_id=data.user_id)
     await db.execute(stmt)
     await db.commit()

@@ -82,11 +82,18 @@ def create_ticket_router() -> APIRouter:
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
-        ticket = await db.get(Ticket, ticket_id)
+        stmt = (
+            select(Ticket)
+            .where(Ticket.id == ticket_id)
+            .options(
+                selectinload(Ticket.customer),
+                selectinload(Ticket.location),
+                selectinload(Ticket.assignee),
+            )
+        )
+        ticket = (await db.execute(stmt)).scalar_one_or_none()
         if not ticket or not await RoleChecker.can_view_ticket_async(user, ticket, db):
             raise HTTPException(404)
-        if ticket.location_id:
-            await db.refresh(ticket, ['location'])
         d = _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
         d.response_overdue = SLAService.is_response_overdue(ticket)
         d.resolution_overdue = SLAService.is_resolution_overdue(ticket)
@@ -106,11 +113,21 @@ def create_ticket_router() -> APIRouter:
         svc = TicketService(db)
         ticket = await svc.create(data.model_dump(), user)
         await db.commit()
+        # Reload with relationships for response
+        stmt = (
+            select(Ticket)
+            .where(Ticket.id == ticket.id)
+            .options(
+                selectinload(Ticket.customer),
+                selectinload(Ticket.location),
+                selectinload(Ticket.assignee),
+            )
+        )
+        ticket = (await db.execute(stmt)).scalar_one()
         # Отправка email инженеру при назначении
         if ticket.assignee_id:
             eng = await db.get(User, ticket.assignee_id)
             if eng:
-                await db.refresh(ticket, ['customer', 'location'])
                 await MailService.notify_engineer_assigned(ticket, eng, db)
         return _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
 
@@ -123,7 +140,16 @@ def create_ticket_router() -> APIRouter:
     ):
         if user.role not in (UserRole.admin, UserRole.director, UserRole.dispatcher, UserRole.engineer):
             raise HTTPException(403, "Недостаточно прав для редактирования заявки")
-        ticket = await db.get(Ticket, ticket_id)
+        stmt = (
+            select(Ticket)
+            .where(Ticket.id == ticket_id)
+            .options(
+                selectinload(Ticket.customer),
+                selectinload(Ticket.location),
+                selectinload(Ticket.assignee),
+            )
+        )
+        ticket = (await db.execute(stmt)).scalar_one_or_none()
         if not ticket:
             raise HTTPException(404)
         if not await RoleChecker.can_view_ticket_async(user, ticket, db):
@@ -307,7 +333,16 @@ def create_ticket_router() -> APIRouter:
     ):
         if not RoleChecker.can_assign(user):
             raise HTTPException(403, "Only dispatcher or admin can assign")
-        ticket = await db.get(Ticket, ticket_id)
+        stmt = (
+            select(Ticket)
+            .where(Ticket.id == ticket_id)
+            .options(
+                selectinload(Ticket.customer),
+                selectinload(Ticket.location),
+                selectinload(Ticket.assignee),
+            )
+        )
+        ticket = (await db.execute(stmt)).scalar_one_or_none()
         if not ticket:
             raise HTTPException(404)
         old_assignee = ticket.assignee_id

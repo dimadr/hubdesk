@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from src.database import get_db
 from src.models.insert_stock import InsertProduct, InsertTransaction
+from src.models.equipment import AssetLocation
 from src.models.user import User, UserRole
 from src.core.deps import get_current_user
 from src.services.audit_service import log_audit
@@ -101,6 +102,8 @@ async def _get_product_balance(db: AsyncSession, product_id: int) -> int:
 
 @insert_v2_router.get("/products", response_model=list[ProductResponse])
 async def list_products(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper, UserRole.metrologist):
+        raise HTTPException(403, "Недостаточно прав")
     stmt = (
         select(
             InsertProduct,
@@ -220,6 +223,8 @@ async def delete_product(product_id: int, user: User = Depends(get_current_user)
 
 @insert_v2_router.get("/transactions", response_model=list[TransactionResponse])
 async def list_transactions(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper, UserRole.metrologist):
+        raise HTTPException(403, "Недостаточно прав")
     result = await db.execute(
         select(InsertTransaction).options(
             selectinload(InsertTransaction.product),
@@ -253,6 +258,15 @@ async def create_transaction(data: TransactionCreate, user: User = Depends(get_c
 
     if not product:
         raise HTTPException(status_code=404, detail="Указанный продукт не найден")
+
+    if data.taken_by_id:
+        taken_by = await db.get(User, data.taken_by_id)
+        if not taken_by:
+            raise HTTPException(status_code=400, detail="Пользователь не найден")
+    if data.location_id:
+        loc = await db.get(AssetLocation, data.location_id)
+        if not loc:
+            raise HTTPException(status_code=400, detail="Объект не найден")
 
     if data.type == "outgoing":
         bal = await _get_product_balance(db, data.product_id)

@@ -33,7 +33,9 @@ class InsertCreate(BaseModel):
 
 
 @insert_router.get("")
-async def list_inserts(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def list_inserts(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper, UserRole.metrologist):
+        raise HTTPException(403, "Недостаточно прав")
     result = await db.execute(
         select(InsertItem).options(
             selectinload(InsertItem.taken_by),

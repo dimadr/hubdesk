@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from src.database import get_db
 from src.models.replacement_device import ReplacementDevice, ReplacementTransaction
+from src.models.equipment import AssetLocation
 from src.models.user import User, UserRole
 from src.core.deps import get_current_user
 
@@ -129,6 +130,8 @@ def _serialize_device(d: ReplacementDevice, balance: int) -> DeviceResponse:
 
 @replacement_router.get("/devices", response_model=list[DeviceResponse])
 async def list_devices(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
+        raise HTTPException(403, "Недостаточно прав")
     stmt = (
         select(
             ReplacementDevice,
@@ -209,6 +212,8 @@ async def delete_device(device_id: int, user: User = Depends(get_current_user), 
 
 @replacement_router.get("/transactions", response_model=list[TransactionResponse])
 async def list_transactions(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
+        raise HTTPException(403, "Недостаточно прав")
     result = await db.execute(
         select(ReplacementTransaction).options(
             selectinload(ReplacementTransaction.device),
@@ -241,6 +246,15 @@ async def create_transaction(data: TransactionCreate, user: User = Depends(get_c
     dev = await db.get(ReplacementDevice, data.device_id)
     if not dev:
         raise HTTPException(404, detail="Прибор не найден")
+
+    if data.taken_by_id:
+        taken_by = await db.get(User, data.taken_by_id)
+        if not taken_by:
+            raise HTTPException(400, detail="Пользователь не найден")
+    if data.location_id:
+        loc = await db.get(AssetLocation, data.location_id)
+        if not loc:
+            raise HTTPException(400, detail="Объект не найден")
 
     if data.type == "outgoing":
         # lock device row to prevent concurrent withdrawals

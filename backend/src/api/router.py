@@ -238,10 +238,10 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 @api_router.get("/locations", response_model=list[LocationResponse], tags=["Locations"])
 async def list_locations(
-    user=Depends(get_current_user),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
+    stmt = (
         select(AssetLocation, Customer.name)
         .join(Customer)
         .options(
@@ -249,6 +249,18 @@ async def list_locations(
             selectinload(AssetLocation.contacts_list),
         )
     )
+    if user.role in (UserRole.admin, UserRole.director, UserRole.dispatcher, UserRole.accountant,
+                     UserRole.storekeeper, UserRole.metrologist, UserRole.viewer):
+        pass  # all locations
+    elif user.role == UserRole.engineer:
+        stmt = stmt.where(AssetLocation.assigned_engineer_id == user.id)
+    elif user.role == UserRole.customer:
+        customer_subq = select(Customer.id).where(Customer.name == user.name).correlate(AssetLocation).scalar_subquery()
+        stmt = stmt.where(AssetLocation.customer_id == customer_subq)
+    else:
+        raise HTTPException(403, "Недостаточно прав")
+
+    result = await db.execute(stmt)
     rows = result.all()
     out = []
     for loc, cust_name in rows:

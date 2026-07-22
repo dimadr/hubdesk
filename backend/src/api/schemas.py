@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional
+from src.models.ticket import TicketStatus, TicketPriority, TicketType
 
 
 class TicketStatusEnum:
@@ -57,8 +58,8 @@ class TicketCreate(BaseModel):
     customer_id: int
     location_id: int
     equipment_id: Optional[int] = None
-    type: Optional[str] = None
-    priority: str = "medium"
+    type: Optional[TicketType] = None
+    priority: TicketPriority = TicketPriority.medium
     is_internal: bool = False
     assignee_id: Optional[int] = None
     group_id: Optional[int] = None
@@ -75,8 +76,8 @@ class TicketUpdate(BaseModel):
     body: Optional[str] = Field(None, max_length=5000)
     customer_id: Optional[int] = None
     location_id: Optional[int] = None
-    priority: Optional[str] = None
-    type: Optional[str] = None
+    priority: Optional[TicketPriority] = None
+    type: Optional[TicketType] = None
     assignee_id: Optional[int] = None
     group_id: Optional[int] = None
     equipment_id: Optional[int] = None
@@ -90,7 +91,7 @@ class TicketUpdate(BaseModel):
 
 
 class StatusChange(BaseModel):
-    status: str
+    status: TicketStatus
 
 
 class TicketResponse(BaseModel):
