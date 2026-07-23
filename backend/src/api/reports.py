@@ -190,8 +190,8 @@ async def report_objects(
             type_res = await db.execute(type_q)
             types = {}
             for row in type_res.all():
-                key = str(row.t) if row.t is not None else 'не указан'
-                types[key] = int(row.cnt)
+                key = str(row[0]) if row[0] is not None else 'не указан'
+                types[key] = int(row[1])
 
             out.append({
                 "location_id": loc.id,
@@ -258,7 +258,7 @@ async def report_tickets(
         if base:
             type_q = type_q.where(*base)
         type_rows = (await db.execute(type_q)).all()
-        by_type = [{"label": str(r.t) if r.t is not None else 'не указан', "count": int(r.cnt)} for r in type_rows]
+        by_type = [{"label": str(r[0]) if r[0] is not None else 'не указан', "count": int(r[1])} for r in type_rows]
 
         # Avg resolution hours
         avg_q = select(
