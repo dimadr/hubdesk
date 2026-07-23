@@ -103,7 +103,9 @@ export const LocationsPage: React.FC = () => {
     <div>
       <div className="page-header" style={{ marginBottom: 14 }}>
         <h2>Объекты обслуживания</h2>
-        <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Добавить объект</button>
+        {(role === 'admin' || role === 'director' || role === 'dispatcher' || role === 'accountant') && (
+          <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Добавить объект</button>
+        )}
       </div>
       <input
         type="text"

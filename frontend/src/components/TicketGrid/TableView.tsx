@@ -195,12 +195,14 @@ function renderCellContent(ticket: TicketResponse, col: ColumnDef, userMap: Map<
           title={`Перевести в ${NEXT_STATUS[ticket.status]}`}
         >→ {STATUS_BUTTON_LABELS[NEXT_STATUS[ticket.status]]}</button>
       )}
-      <button
-        className="btn btn-secondary"
-        style={{ padding: '2px 6px', fontSize: 11, lineHeight: 1 }}
-        onClick={e => { e.stopPropagation(); onEdit?.(ticket); }}
-        title="Редактировать"
-      >✎</button>
+      {(role === 'admin' || role === 'director' || role === 'dispatcher' || role === 'engineer') && (
+        <button
+          className="btn btn-secondary"
+          style={{ padding: '2px 6px', fontSize: 11, lineHeight: 1 }}
+          onClick={e => { e.stopPropagation(); onEdit?.(ticket); }}
+          title="Редактировать"
+        >✎</button>
+      )}
       {(role === 'admin' || role === 'director') && onDelete && (
         <button
           className="btn btn-danger"

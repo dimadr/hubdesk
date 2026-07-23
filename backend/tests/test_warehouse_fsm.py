@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 from src.services.warehouse_fsm import WarehouseDocFSM
 
 
+@pytest.mark.asyncio
 async def test_linear_transition():
     session = AsyncMock()
     fsm = WarehouseDocFSM(session)
@@ -12,6 +13,7 @@ async def test_linear_transition():
     assert doc.status == "APPROVAL"
 
 
+@pytest.mark.asyncio
 async def test_cannot_skip_approval():
     session = AsyncMock()
     fsm = WarehouseDocFSM(session)

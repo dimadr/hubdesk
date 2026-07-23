@@ -1074,11 +1074,13 @@ const App: React.FC = () => {
 
         {page === 'tickets' && (
           <>
-            <div style={{ marginBottom: 14 }}>
-              <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-                + Создать заявку
-              </button>
-            </div>
+            {(user.role === 'admin' || user.role === 'director' || user.role === 'dispatcher' || user.role === 'engineer') && (
+              <div style={{ marginBottom: 14 }}>
+                <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+                  + Создать заявку
+                </button>
+              </div>
+            )}
             <TicketGrid
               key={refreshKey}
               users={users}
