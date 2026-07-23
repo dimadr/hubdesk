@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_, and_, case, cast, Float, Integer
+from sqlalchemy import select, func, or_, and_, case, cast, String
 from datetime import datetime, timedelta, timezone
 from src.database import get_db
 from src.models.ticket import Ticket, TicketStatus
@@ -170,9 +170,9 @@ async def report_objects(
         if date_cond is not None:
             type_filter.append(date_cond)
         type_q = select(
-            func.coalesce(Ticket.type, 'не указан').label("t"),
+            func.coalesce(cast(Ticket.type, String), 'не указан').label("t"),
             func.count(Ticket.id).label("cnt"),
-        ).where(and_(*type_filter)).group_by(func.coalesce(Ticket.type, 'не указан'))
+        ).where(and_(*type_filter)).group_by(func.coalesce(cast(Ticket.type, String), 'не указан'))
         type_res = await db.execute(type_q)
         types = {row.t: row.cnt for row in type_res.all()}
 
@@ -230,8 +230,8 @@ async def report_tickets(
 
     # By type
     type_q = select(
-        func.coalesce(Ticket.type, 'не указан').label("t"), func.count(Ticket.id).label("cnt")
-    ).group_by(func.coalesce(Ticket.type, 'не указан'))
+        func.coalesce(cast(Ticket.type, String), 'не указан').label("t"), func.count(Ticket.id).label("cnt")
+    ).group_by(func.coalesce(cast(Ticket.type, String), 'не указан'))
     if base:
         type_q = type_q.where(*base)
     by_type = [{"label": r.t, "count": r.cnt} for r in (await db.execute(type_q)).all()]

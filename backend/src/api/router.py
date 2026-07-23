@@ -420,10 +420,16 @@ async def update_location(
         for c in loc.contacts_list:
             await db.delete(c)
         for c in contacts_data:
-            db.add(LocationContact(
-                location_id=loc.id, name=c.name, phone=c.phone,
-                email=c.email, position=c.position, is_primary=c.is_primary,
-            ))
+            if isinstance(c, dict):
+                db.add(LocationContact(
+                    location_id=loc.id, name=c.get("name", ""), phone=c.get("phone"),
+                    email=c.get("email"), position=c.get("position"), is_primary=c.get("is_primary", False),
+                ))
+            else:
+                db.add(LocationContact(
+                    location_id=loc.id, name=c.name, phone=c.phone,
+                    email=c.email, position=c.position, is_primary=c.is_primary,
+                ))
 
     await log_audit(db, user, "location_updated", "location", loc.id, f"Изменён объект «{loc.name}»")
     await db.commit()
