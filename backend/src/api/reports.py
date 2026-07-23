@@ -1,6 +1,8 @@
+import traceback
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_, and_, case, cast, String, text
+from sqlalchemy import select, func, or_, and_, case, cast, String, text, literal_column
 from datetime import datetime, timedelta, timezone
 from src.database import get_db
 from src.models.ticket import Ticket, TicketStatus
@@ -9,6 +11,8 @@ from src.models.equipment import AssetLocation
 from src.models.user import User, UserRole
 from src.core.deps import get_current_user
 from src.api.schemas import TicketResponse
+
+logger = logging.getLogger(__name__)
 
 reports_router = APIRouter(prefix="/reports", tags=["Reports"])
 
@@ -125,83 +129,86 @@ async def report_objects(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    check_access(user)
-    dt_from = _parse_date(date_from) if date_from else None
-    dt_to = _parse_date(date_to) if date_to else None
-    date_cond = _date_filter(dt_from, dt_to)
+    try:
+        check_access(user)
+        dt_from = _parse_date(date_from) if date_from else None
+        dt_to = _parse_date(date_to) if date_to else None
+        date_cond = _date_filter(dt_from, dt_to)
 
-    # SQL aggregation by location
-    stmt = select(
-        Ticket.location_id,
-        func.count(Ticket.id).label("total"),
-        func.sum(case((Ticket.status != TicketStatus.COMPLETED, 1), else_=0)).label("open"),
-        func.sum(case((Ticket.status == TicketStatus.COMPLETED, 1), else_=0)).label("closed"),
-        func.sum(case((
-            and_(Ticket.status != TicketStatus.COMPLETED, Ticket.response_deadline < func.now()),
-            1
-        ), else_=0)).label("overdue"),
-        func.sum(case((
-            Ticket.status == TicketStatus.COMPLETED,
-            func.extract('epoch', Ticket.completed_at - Ticket.created_at) / 3600
-        ), else_=0)).label("total_hours"),
-        func.sum(case((Ticket.status == TicketStatus.COMPLETED, 1), else_=0)).label("resolved_count"),
-    )
-    if date_cond is not None:
-        stmt = stmt.where(date_cond)
-    stmt = stmt.group_by(Ticket.location_id)
-    result = await db.execute(stmt)
-    agg_rows = {row.location_id: row for row in result.all()}
-
-    # Load locations and customers
-    locs = (await db.execute(select(AssetLocation))).scalars().all()
-    custs_q = await db.execute(select(Customer))
-    custs = {c.id: c.name for c in custs_q.scalars().all()}
-
-    # Type breakdown per location
-    type_stmt = select(
-        Ticket.location_id,
-        func.count(Ticket.id).label("cnt"),
-    ).group_by(Ticket.location_id)
-    if date_cond is not None:
-        type_stmt = type_stmt.where(date_cond)
-
-    out = []
-    for loc in locs:
-        agg = agg_rows.get(loc.id)
-        total = int(agg.total) if agg else 0
-        if total == 0:
-            continue
-        open_c = int(agg.open) if agg else 0
-        closed = int(agg.closed) if agg else 0
-        overdue = int(agg.overdue) if agg else 0
-        resolved = int(agg.resolved_count) if agg else 0
-        total_h = float(agg.total_hours) if agg else 0
-        avg_h = round(total_h / resolved, 1) if resolved else 0
-
-        # Get types for this location
-        type_filter = [Ticket.location_id == loc.id]
+        # SQL aggregation by location
+        stmt = select(
+            Ticket.location_id,
+            func.count(Ticket.id).label("total"),
+            func.sum(case((Ticket.status != TicketStatus.COMPLETED, 1), else_=0)).label("open"),
+            func.sum(case((Ticket.status == TicketStatus.COMPLETED, 1), else_=0)).label("closed"),
+            func.sum(case((
+                and_(Ticket.status != TicketStatus.COMPLETED, Ticket.response_deadline < func.now()),
+                1
+            ), else_=0)).label("overdue"),
+            func.sum(case((
+                Ticket.status == TicketStatus.COMPLETED,
+                func.extract('epoch', Ticket.completed_at - Ticket.created_at) / 3600
+            ), else_=0)).label("total_hours"),
+            func.sum(case((Ticket.status == TicketStatus.COMPLETED, 1), else_=0)).label("resolved_count"),
+        )
         if date_cond is not None:
-            type_filter.append(date_cond)
-        type_q = select(
-            func.coalesce(text("tickets.type::text"), 'не указан').label("t"),
-            func.count(Ticket.id).label("cnt"),
-        ).where(and_(*type_filter)).group_by(text("tickets.type::text"))
-        type_res = await db.execute(type_q)
-        types = {row.t: row.cnt for row in type_res.all()}
+            stmt = stmt.where(date_cond)
+        stmt = stmt.group_by(Ticket.location_id)
+        result = await db.execute(stmt)
+        agg_rows = {row.location_id: row for row in result.all()}
 
-        out.append({
-            "location_id": loc.id,
-            "location_name": loc.name or "",
-            "customer_name": custs.get(loc.customer_id, ""),
-            "location_address": loc.address or "",
-            "total": total,
-            "open": open_c,
-            "closed": closed,
-            "overdue": overdue,
-            "avg_resolution_hours": avg_h,
-            "types": types,
-        })
-    return sorted(out, key=lambda x: x["total"], reverse=True)
+        # Load locations and customers
+        locs = (await db.execute(select(AssetLocation))).scalars().all()
+        custs_q = await db.execute(select(Customer))
+        custs = {c.id: c.name for c in custs_q.scalars().all()}
+
+        out = []
+        for loc in locs:
+            agg = agg_rows.get(loc.id)
+            total = int(agg.total) if agg else 0
+            if total == 0:
+                continue
+            open_c = int(agg.open) if agg else 0
+            closed = int(agg.closed) if agg else 0
+            overdue = int(agg.overdue) if agg else 0
+            resolved = int(agg.resolved_count) if agg else 0
+            try:
+                raw = agg.total_hours if agg else None
+                total_h = float(raw) if raw is not None else 0
+            except (TypeError, ValueError):
+                total_h = 0
+            avg_h = round(total_h / resolved, 1) if resolved else 0
+
+            # Get types for this location
+            type_filter = [Ticket.location_id == loc.id]
+            if date_cond is not None:
+                type_filter.append(date_cond)
+            type_q = select(
+                literal_column("tickets.type::text").label("t"),
+                func.count(Ticket.id).label("cnt"),
+            ).where(and_(*type_filter)).group_by(literal_column("tickets.type::text"))
+            type_res = await db.execute(type_q)
+            types = {}
+            for row in type_res.all():
+                key = str(row.t) if row.t is not None else 'не указан'
+                types[key] = int(row.cnt)
+
+            out.append({
+                "location_id": loc.id,
+                "location_name": loc.name or "",
+                "customer_name": custs.get(loc.customer_id, ""),
+                "location_address": loc.address or "",
+                "total": total,
+                "open": open_c,
+                "closed": closed,
+                "overdue": overdue,
+                "avg_resolution_hours": avg_h,
+                "types": types,
+            })
+        return sorted(out, key=lambda x: x["total"], reverse=True)
+    except Exception:
+        logger.error("report_objects failed\n%s", traceback.format_exc())
+        raise
 
 
 @reports_router.get("/tickets")
@@ -211,73 +218,80 @@ async def report_tickets(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    check_access(user)
-    dt_from = _parse_date(date_from) if date_from else None
-    dt_to = _parse_date(date_to) if date_to else None
-    date_cond = _date_filter(dt_from, dt_to)
+    try:
+        check_access(user)
+        dt_from = _parse_date(date_from) if date_from else None
+        dt_to = _parse_date(date_to) if date_to else None
+        date_cond = _date_filter(dt_from, dt_to)
 
-    # Total count + avg resolution + SLA
-    base = [date_cond] if date_cond is not None else []
-    total_q = select(func.count(Ticket.id)).select_from(Ticket)
-    if base:
-        total_q = total_q.where(*base)
-    total = (await db.execute(total_q)).scalar() or 0
-    if total == 0:
-        return {"total": 0, "by_status": [], "by_priority": [], "by_type": [], "avg_resolution_hours": 0, "sla_percent": 0}
+        # Total count + avg resolution + SLA
+        base = [date_cond] if date_cond is not None else []
+        total_q = select(func.count(Ticket.id))
+        if base:
+            total_q = total_q.where(*base)
+        total = int((await db.execute(total_q)).scalar() or 0)
+        if total == 0:
+            return {"total": 0, "by_status": [], "by_priority": [], "by_type": [], "avg_resolution_hours": 0, "sla_percent": 0}
 
-    # By status
-    status_q = select(
-        Ticket.status, func.count(Ticket.id).label("cnt")
-    ).group_by(Ticket.status)
-    if base:
-        status_q = status_q.where(*base)
-    by_status = [{"label": r.status.value, "count": r.cnt} for r in (await db.execute(status_q)).all()]
+        # By status
+        status_q = select(
+            Ticket.status, func.count(Ticket.id).label("cnt")
+        ).group_by(Ticket.status)
+        if base:
+            status_q = status_q.where(*base)
+        status_rows = (await db.execute(status_q)).all()
+        by_status = [{"label": str(r[0].value) if hasattr(r[0], 'value') else str(r[0]), "count": int(r[1])} for r in status_rows]
 
-    # By priority
-    prio_q = select(
-        Ticket.priority, func.count(Ticket.id).label("cnt")
-    ).group_by(Ticket.priority)
-    if base:
-        prio_q = prio_q.where(*base)
-    by_priority = [{"label": r.priority.value, "count": r.cnt} for r in (await db.execute(prio_q)).all()]
+        # By priority
+        prio_q = select(
+            Ticket.priority, func.count(Ticket.id).label("cnt")
+        ).group_by(Ticket.priority)
+        if base:
+            prio_q = prio_q.where(*base)
+        prio_rows = (await db.execute(prio_q)).all()
+        by_priority = [{"label": str(r[0].value) if hasattr(r[0], 'value') else str(r[0]), "count": int(r[1])} for r in prio_rows]
 
-    # By type
-    type_q = select(
-        func.coalesce(text("tickets.type::text"), 'не указан').label("t"), func.count(Ticket.id).label("cnt")
-    ).group_by(text("tickets.type::text"))
-    if base:
-        type_q = type_q.where(*base)
-    by_type = [{"label": r.t, "count": r.cnt} for r in (await db.execute(type_q)).all()]
+        # By type
+        type_q = select(
+            literal_column("tickets.type::text").label("t"), func.count(Ticket.id).label("cnt")
+        ).group_by(literal_column("tickets.type::text"))
+        if base:
+            type_q = type_q.where(*base)
+        type_rows = (await db.execute(type_q)).all()
+        by_type = [{"label": str(r.t) if r.t is not None else 'не указан', "count": int(r.cnt)} for r in type_rows]
 
-    # Avg resolution hours
-    avg_q = select(
-        func.avg(func.extract('epoch', Ticket.completed_at - Ticket.created_at) / 3600)
-    ).where(Ticket.status == TicketStatus.COMPLETED, Ticket.completed_at.isnot(None), Ticket.created_at.isnot(None))
-    if base:
-        avg_q = avg_q.where(*base)
-    avg_h = (await db.execute(avg_q)).scalar()
-    avg_hours = round(float(avg_h), 1) if avg_h else 0
+        # Avg resolution hours
+        avg_q = select(
+            func.avg(func.extract('epoch', Ticket.completed_at - Ticket.created_at) / 3600)
+        ).where(Ticket.status == TicketStatus.COMPLETED, Ticket.completed_at.isnot(None), Ticket.created_at.isnot(None))
+        if base:
+            avg_q = avg_q.where(*base)
+        avg_h = (await db.execute(avg_q)).scalar()
+        avg_hours = round(float(avg_h or 0), 1)
 
-    # SLA %
-    sla_q = select(func.count(Ticket.id)).where(
-        Ticket.status == TicketStatus.COMPLETED,
-        Ticket.completed_at.isnot(None),
-        Ticket.resolution_deadline.isnot(None),
-        Ticket.completed_at <= Ticket.resolution_deadline,
-    )
-    if base:
-        sla_q = sla_q.where(*base)
-    on_time = (await db.execute(sla_q)).scalar() or 0
-    sla_pct = round(on_time / total * 100, 1) if total else 0
+        # SLA %
+        sla_q = select(func.count(Ticket.id)).where(
+            Ticket.status == TicketStatus.COMPLETED,
+            Ticket.completed_at.isnot(None),
+            Ticket.resolution_deadline.isnot(None),
+            Ticket.completed_at <= Ticket.resolution_deadline,
+        )
+        if base:
+            sla_q = sla_q.where(*base)
+        on_time = int((await db.execute(sla_q)).scalar() or 0)
+        sla_pct = round(on_time / total * 100, 1) if total else 0
 
-    return {
-        "total": total,
-        "by_status": by_status,
-        "by_priority": by_priority,
-        "by_type": by_type,
-        "avg_resolution_hours": avg_hours,
-        "sla_percent": sla_pct,
-    }
+        return {
+            "total": total,
+            "by_status": by_status,
+            "by_priority": by_priority,
+            "by_type": by_type,
+            "avg_resolution_hours": avg_hours,
+            "sla_percent": sla_pct,
+        }
+    except Exception:
+        logger.error("report_tickets failed\n%s", traceback.format_exc())
+        raise
 
 
 @reports_router.get("/engineers")
