@@ -59,8 +59,9 @@ def create_ticket_router() -> APIRouter:
                 Ticket.number.cast(text("text")).ilike(f"%{filters.q}%")
             )
         if user.role.value == "customer":
-            customer_subq = select(Customer.id).where(Customer.name == user.name).correlate(Ticket).scalar_subquery()
-            stmt = stmt.where(Ticket.customer_id == customer_subq)
+            if user.customer_id is None:
+                raise HTTPException(403, "Пользователь не привязан к заказчику")
+            stmt = stmt.where(Ticket.customer_id == user.customer_id)
         elif user.role.value == "engineer":
             stmt = stmt.where(Ticket.assignee_id == user.id)
         if filters.archived is True:

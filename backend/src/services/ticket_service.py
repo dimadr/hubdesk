@@ -100,6 +100,8 @@ class TicketService:
 
     async def complete(self, ticket_id: int, comment: str, user: User) -> Ticket:
         ticket = await self._get(ticket_id, for_update=True)
+        if not await RoleChecker.can_view_ticket_async(user, ticket, self.session):
+            raise HTTPException(403, "Доступ к данной заявке запрещен")
         if ticket.status.value == "COMPLETED":
             return ticket
         if comment.strip():
@@ -108,13 +110,12 @@ class TicketService:
 
     async def change_status(self, ticket_id: int, target: str, user: User) -> Ticket:
         ticket = await self._get(ticket_id, for_update=True)
+        if not await RoleChecker.can_view_ticket_async(user, ticket, self.session):
+            raise HTTPException(403, "Доступ к данной заявке запрещен")
         from_status = ticket.status.value
 
         if from_status == target:
             return ticket
-
-        if not await RoleChecker.can_view_ticket_async(user, ticket, self.session):
-            raise HTTPException(403, "Доступ к данной заявке запрещен")
 
         if not RoleChecker.can_change_status(user, ticket, target):
             raise HTTPException(

@@ -1,6 +1,6 @@
 import logging
 import os
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete as sa_delete, func as sa_func, case
@@ -30,24 +30,24 @@ def _log(action: str, detail: str, user: User):
 
 class DeviceCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
-    serial_number: str = ""
-    verification_date: str | None = None
+    serial_number: str = Field("", max_length=100)
+    verification_date: str | None = Field(None, max_length=20)
     verification_interval_months: int | None = None
-    verification_expiry: str | None = None
-    passport_scan: str | None = None
-    accuracy_class: str | None = None
-    mounting: str | None = None
+    verification_expiry: str | None = Field(None, max_length=20)
+    passport_scan: str | None = Field(None, max_length=500)
+    accuracy_class: str | None = Field(None, max_length=50)
+    mounting: str | None = Field(None, max_length=50)
 
 
 class DeviceUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
-    serial_number: str | None = None
-    verification_date: str | None = None
+    serial_number: str | None = Field(None, max_length=100)
+    verification_date: str | None = Field(None, max_length=20)
     verification_interval_months: int | None = None
-    verification_expiry: str | None = None
-    passport_scan: str | None = None
-    accuracy_class: str | None = None
-    mounting: str | None = None
+    verification_expiry: str | None = Field(None, max_length=20)
+    passport_scan: str | None = Field(None, max_length=500)
+    accuracy_class: str | None = Field(None, max_length=50)
+    mounting: str | None = Field(None, max_length=50)
 
 
 class DeviceResponse(BaseModel):
@@ -67,13 +67,13 @@ class DeviceResponse(BaseModel):
 
 
 class TransactionCreate(BaseModel):
-    type: str
+    type: str = Field(..., max_length=50)
     device_id: int
     quantity: int = Field(..., gt=0)
     taken_by_id: int | None = None
     location_id: int | None = None
-    comment: str | None = None
-    document: str | None = None
+    comment: str | None = Field(None, max_length=1000)
+    document: str | None = Field(None, max_length=255)
 
 
 class TransactionResponse(BaseModel):
@@ -211,16 +211,35 @@ async def delete_device(device_id: int, user: User = Depends(get_current_user), 
 # ── Transactions ─────────────────────────────────────────────
 
 @replacement_router.get("/transactions", response_model=list[TransactionResponse])
-async def list_transactions(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def list_transactions(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    date_from: str | None = None,
+    date_to: str | None = None,
+):
     if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
         raise HTTPException(403, "Недостаточно прав")
-    result = await db.execute(
-        select(ReplacementTransaction).options(
-            selectinload(ReplacementTransaction.device),
-            selectinload(ReplacementTransaction.taken_by),
-            selectinload(ReplacementTransaction.location),
-        ).order_by(ReplacementTransaction.id.desc()).limit(200)
+    stmt = select(ReplacementTransaction).options(
+        selectinload(ReplacementTransaction.device),
+        selectinload(ReplacementTransaction.taken_by),
+        selectinload(ReplacementTransaction.location),
     )
+    if date_from:
+        try:
+            dt = datetime.fromisoformat(date_from)
+            if dt.tzinfo: dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+            stmt = stmt.where(ReplacementTransaction.created_at >= dt)
+        except ValueError:
+            raise HTTPException(400, f"Некорректная дата: date_from={date_from}")
+    if date_to:
+        try:
+            dt = datetime.fromisoformat(date_to)
+            if dt.tzinfo: dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+            stmt = stmt.where(ReplacementTransaction.created_at <= dt)
+        except ValueError:
+            raise HTTPException(400, f"Некорректная дата: date_to={date_to}")
+    stmt = stmt.order_by(ReplacementTransaction.id.desc()).limit(500)
+    result = await db.execute(stmt)
     return [
         TransactionResponse(
             id=t.id, type=t.type, device_id=t.device_id,

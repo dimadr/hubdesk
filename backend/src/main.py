@@ -19,7 +19,8 @@ from sqlalchemy import text
 
 from src.api.router import api_router
 from src.config import settings
-from src.database import async_session, engine
+from src.database import async_session, engine, Base
+from src.models import *  # noqa: ensure all models are registered for create_all
 from src.core.http_client import set_http_client
 
 logging.basicConfig(level=logging.INFO)
@@ -58,6 +59,10 @@ async def mail_worker_loop():
 async def lifespan(app: FastAPI):
     http_client = httpx.AsyncClient(timeout=10.0)
     set_http_client(http_client)
+
+    # Create tables if they don't exist (idempotent, for fresh databases)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
     mail_task = None
     if os.getenv("ENABLE_MAIL_WORKER", "").lower() == "true":
@@ -237,11 +242,10 @@ if os.path.exists(FRONTEND_DIR):
         from src.models.user import User, UserRole, UserStatus
         from src.services.acl_service import RoleChecker
 
-        token = request.query_params.get("token") or ""
-        if not token:
-            auth = request.headers.get("Authorization", "")
-            if auth.startswith("Bearer "):
-                token = auth[7:]
+        token = ""
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            token = auth[7:]
         if not token:
             return JSONResponse(status_code=401, content={"detail": "Missing token"})
         try:

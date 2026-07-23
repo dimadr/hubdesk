@@ -7,6 +7,7 @@ from email.mime.text import MIMEText
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from fastapi.concurrency import run_in_threadpool
 from src.models.mailbox import MailboxConfig
 from src.models.customer import Customer
 from src.models.equipment import AssetLocation
@@ -27,12 +28,14 @@ class MailService:
             msg['From'] = settings.mailbox_email
             msg['To'] = to
 
-            with smtplib.SMTP_SSL(settings.smtp_server, settings.smtp_port) as s:
-                s.login(settings.mailbox_email, settings.mailbox_password)
-                s.send_message(msg)
+            def _send():
+                with smtplib.SMTP_SSL(settings.smtp_server, settings.smtp_port) as s:
+                    s.login(settings.mailbox_email, settings.mailbox_password)
+                    s.send_message(msg)
+
+            await run_in_threadpool(_send)
             return True
         except Exception as e:
-            logger = logging.getLogger(__name__)
             logger.error(f"Ошибка отправки email на {to}: {e}")
             return False
 
@@ -75,21 +78,28 @@ class MailService:
         if not cfg or not cfg.enabled or not email_addr or not password:
             return 0
 
-        try:
+        def _fetch_uids():
             mail = imaplib.IMAP4_SSL(imap_server, imap_port)
             mail.login(email_addr, password)
             mail.select(cfg.folder)
-
             search_criteria = f'(UID {int(cfg.last_uid or 0) + 1}:*)' if cfg.last_uid else 'ALL'
             status, data = mail.uid('search', None, search_criteria)
-
             if status != 'OK' or not data[0]:
                 mail.logout()
-                return 0
-
+                return [], mail
             uid_list = data[0].split()
+            return uid_list, mail
+
+        def _fetch_one(mail, uid):
+            status, msg_data = mail.uid('fetch', uid, '(RFC822)')
+            if status != 'OK':
+                return None
+            return msg_data[0][1]
+
+        try:
+            uid_list, mail = await run_in_threadpool(_fetch_uids)
             if not uid_list:
-                mail.logout()
+                await run_in_threadpool(mail.logout)
                 return 0
 
             new_last_uid = cfg.last_uid
@@ -100,11 +110,10 @@ class MailService:
                 if cfg.last_uid and int(uid_str) <= int(cfg.last_uid):
                     continue
 
-                status, msg_data = mail.uid('fetch', uid, '(RFC822)')
-                if status != 'OK':
+                raw_email = await run_in_threadpool(_fetch_one, mail, uid)
+                if raw_email is None:
                     continue
 
-                raw_email = msg_data[0][1]
                 msg = email.message_from_bytes(raw_email)
 
                 subject = MailService._decode_header(msg['Subject'] or 'Без темы')
@@ -141,7 +150,7 @@ class MailService:
                 new_last_uid = uid_str
                 created += 1
 
-            mail.logout()
+            await run_in_threadpool(mail.logout)
 
             if new_last_uid and new_last_uid != cfg.last_uid:
                 cfg.last_uid = new_last_uid

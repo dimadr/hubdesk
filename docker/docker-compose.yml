@@ -4,13 +4,13 @@ services:
     env_file: ../backend/.env
     environment:
       POSTGRES_DB: fsm
-    ports: ["5434:5432"]
+    ports: ["127.0.0.1:5434:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
-    ports: ["6380:6379"]
+    ports: ["127.0.0.1:6380:6379"]
     restart: unless-stopped
 
   app:
@@ -20,10 +20,12 @@ services:
     env_file: ../backend/.env
     ports: ["8002:8000"]
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:0a5ODVipwmKX3431IWndTz2Np0Fxnr@db:5432/fsm
+      DATABASE_URL: postgresql+asyncpg://postgres:changeme@db:5432/fsm
       REDIS_URL: redis://redis:6379/0
     depends_on: [db, redis]
+    volumes: [uploads:/app/uploads]
     restart: unless-stopped
 
 volumes:
   pgdata:
+  uploads:

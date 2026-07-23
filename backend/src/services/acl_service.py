@@ -22,7 +22,7 @@ class RoleChecker:
         if user.role == UserRole.engineer:
             return ticket.assignee_id == user.id
         if user.role == UserRole.customer:
-            return ticket.customer_id is not None and ticket.customer_id == getattr(user, '_customer_id', None)
+            return ticket.customer_id is not None and user.customer_id is not None and ticket.customer_id == user.customer_id
         return False
 
     @staticmethod
@@ -32,13 +32,9 @@ class RoleChecker:
         if user.role == UserRole.engineer:
             return ticket.assignee_id == user.id
         if user.role == UserRole.customer:
-            if ticket.customer_id is None:
+            if ticket.customer_id is None or user.customer_id is None:
                 return False
-            result = await db.execute(
-                select(Customer.id).where(Customer.name == user.name)
-            )
-            cust_id = result.scalar_one_or_none()
-            return cust_id is not None and ticket.customer_id == cust_id
+            return ticket.customer_id == user.customer_id
         return False
 
     @staticmethod

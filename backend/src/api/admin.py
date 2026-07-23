@@ -59,6 +59,7 @@ class UserUpdate(BaseModel):
     role: str | None = None
     password: str | None = None
     status: str | None = None
+    customer_id: int | None = None
 
 
 class CustomerResponse(BaseModel):
@@ -216,6 +217,13 @@ async def update_user(
             raise HTTPException(status_code=400, detail="Неизвестный статус")
         target.status = UserStatus(data.status)
 
+    if data.customer_id is not None:
+        if data.customer_id != 0:
+            cust = await db.get(Customer, data.customer_id)
+            if not cust:
+                raise HTTPException(status_code=400, detail="Заказчик не найден")
+        target.customer_id = data.customer_id if data.customer_id != 0 else None
+
     await log_audit(db, admin, "user_updated", "user", target.id, f"Изменён пользователь: {target.name}")
     await db.commit()
     return {"ok": True}
@@ -357,6 +365,38 @@ async def get_mailbox(admin: User = Depends(require_admin), db: AsyncSession = D
         "last_check_at": cfg.last_check_at.isoformat() if cfg.last_check_at else None,
         "last_uid": cfg.last_uid,
     }
+
+
+class MailboxUpdate(BaseModel):
+    enabled: bool = False
+    email: str = ""
+    imap_server: str = "imap.timeweb.ru"
+    imap_port: int = 993
+    folder: str = "INBOX"
+    check_interval_min: int = 5
+
+
+@admin_router.post("/mailbox")
+async def save_mailbox(data: MailboxUpdate, admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    from src.models.mailbox import MailboxConfig
+    result = await db.execute(select(MailboxConfig).limit(1))
+    cfg = result.scalar_one_or_none()
+    if cfg:
+        cfg.enabled = data.enabled
+        cfg.email = data.email
+        cfg.imap_server = data.imap_server
+        cfg.imap_port = data.imap_port
+        cfg.folder = data.folder
+        cfg.check_interval_min = max(1, min(data.check_interval_min, 1440))
+    else:
+        cfg = MailboxConfig(
+            enabled=data.enabled, email=data.email,
+            imap_server=data.imap_server, imap_port=data.imap_port,
+            folder=data.folder, check_interval_min=data.check_interval_min,
+        )
+        db.add(cfg)
+    await db.commit()
+    return {"ok": True}
 
 
 @admin_router.post("/mailbox/fetch")

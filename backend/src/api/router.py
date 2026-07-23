@@ -1,7 +1,8 @@
 import os
+import time
 import logging
 from datetime import datetime, date, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -9,6 +10,23 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 from passlib.hash import bcrypt
 from pydantic import BaseModel, Field, ConfigDict
+
+logger = logging.getLogger(__name__)
+
+# Simple in-memory rate limiter for login attempts
+_login_attempts: dict[str, list[float]] = {}
+_LOGIN_RATE_LIMIT = 5  # max attempts
+_LOGIN_RATE_WINDOW = 600  # 10 minutes in seconds
+
+
+def _check_login_rate_limit(ip: str) -> None:
+    now = time.time()
+    attempts = _login_attempts.get(ip, [])
+    attempts = [t for t in attempts if now - t < _LOGIN_RATE_WINDOW]
+    _login_attempts[ip] = attempts
+    if len(attempts) >= _LOGIN_RATE_LIMIT:
+        raise HTTPException(429, "Слишком много попыток входа. Попробуйте через 10 минут.")
+    attempts.append(now)
 
 from src.database import get_db
 from src.models.user import User, UserRole, UserStatus, Group
@@ -57,7 +75,7 @@ class SignupRequest(BaseModel):
     phone: str = ""
     patronymic: str = ""
     position: str = ""
-    password: str = Field(..., min_length=4)
+    password: str = Field(..., min_length=12)
     role: str = "dispatcher"
     consent_given: bool = False
 
@@ -213,11 +231,15 @@ async def signup(data: SignupRequest, db: AsyncSession = Depends(get_db)):
 
 
 @api_router.post("/login", response_model=AuthResponse, tags=["Auth"])
-async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(data: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    client_ip = request.client.host if request.client else "unknown"
+    _check_login_rate_limit(client_ip)
+
     result = await db.execute(select(User).where(User.email == data.email))
     user = result.scalar_one_or_none()
 
     if not user or not await run_in_threadpool(bcrypt.verify, data.password, user.password_hash):
+        logger.warning(f"Failed login attempt for {data.email} from {client_ip}")
         raise HTTPException(401, "Неверный email или пароль")
 
     if user.status == UserStatus.pending:
@@ -225,7 +247,7 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
     if user.status == UserStatus.rejected:
         raise HTTPException(403, "Учётная запись отклонена администратором")
 
-    ttl = 2592000 if data.remember_me else 14400
+    ttl = 604800 if data.remember_me else 14400
     return AuthResponse(
         token=create_token(user.id, ttl),
         user_id=user.id,
@@ -255,8 +277,9 @@ async def list_locations(
     elif user.role == UserRole.engineer:
         stmt = stmt.where(AssetLocation.assigned_engineer_id == user.id)
     elif user.role == UserRole.customer:
-        customer_subq = select(Customer.id).where(Customer.name == user.name).correlate(AssetLocation).scalar_subquery()
-        stmt = stmt.where(AssetLocation.customer_id == customer_subq)
+        if user.customer_id is None:
+            raise HTTPException(403, "Пользователь не привязан к заказчику")
+        stmt = stmt.where(AssetLocation.customer_id == user.customer_id)
     else:
         raise HTTPException(403, "Недостаточно прав")
 

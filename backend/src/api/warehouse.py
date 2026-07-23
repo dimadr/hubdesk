@@ -17,6 +17,26 @@ warehouse_router = APIRouter(tags=["Warehouse"])
 
 
 _WAREHOUSE_READ_ROLES = {UserRole.admin, UserRole.director, UserRole.storekeeper, UserRole.metrologist, UserRole.accountant}
+_WAREHOUSE_FULL_ACCESS_ROLES = {UserRole.admin, UserRole.director}
+
+
+async def _get_user_warehouse_ids(user: User, db: AsyncSession) -> list[int] | None:
+    """Return warehouse IDs user can access, or None for full access."""
+    if user.role in _WAREHOUSE_FULL_ACCESS_ROLES:
+        return None
+    result = await db.execute(
+        select(warehouse_access.c.warehouse_id).where(warehouse_access.c.user_id == user.id)
+    )
+    return [row[0] for row in result.all()]
+
+
+async def _check_warehouse_access(user: User, warehouse_id: int, db: AsyncSession) -> None:
+    """Raise 403 if user cannot access this warehouse."""
+    if user.role in _WAREHOUSE_FULL_ACCESS_ROLES:
+        return
+    allowed = await _get_user_warehouse_ids(user, db)
+    if allowed is not None and warehouse_id not in allowed:
+        raise HTTPException(403, "Доступ к данному складу запрещён")
 
 
 @warehouse_router.get("/warehouses", response_model=list[WarehouseResponse])
@@ -26,7 +46,11 @@ async def list_warehouses(
 ):
     if user.role not in _WAREHOUSE_READ_ROLES:
         raise HTTPException(403, "Недостаточно прав для просмотра складов")
-    result = await db.execute(select(Warehouse))
+    stmt = select(Warehouse)
+    allowed = await _get_user_warehouse_ids(user, db)
+    if allowed is not None:
+        stmt = stmt.where(Warehouse.id.in_(allowed))
+    result = await db.execute(stmt)
     return [WarehouseResponse.model_validate(w) for w in result.scalars().all()]
 
 
@@ -36,6 +60,10 @@ async def create_warehouse_doc(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if data.source_warehouse_id:
+        await _check_warehouse_access(user, data.source_warehouse_id, db)
+    if data.target_warehouse_id:
+        await _check_warehouse_access(user, data.target_warehouse_id, db)
     svc = WarehouseService(db)
     try:
         doc = await svc.create_document(data.model_dump(), user)
@@ -54,13 +82,27 @@ async def list_documents(
 ):
     if user.role not in _WAREHOUSE_READ_ROLES:
         raise HTTPException(403, "Недостаточно прав для просмотра документов")
-    result = await db.execute(select(AccountingDocument).options(selectinload(AccountingDocument.lines)).order_by(AccountingDocument.id.desc()))
+    stmt = select(AccountingDocument).options(selectinload(AccountingDocument.lines)).order_by(AccountingDocument.id.desc())
+    allowed = await _get_user_warehouse_ids(user, db)
+    if allowed is not None:
+        stmt = stmt.where(
+            (AccountingDocument.source_warehouse_id.in_(allowed)) |
+            (AccountingDocument.target_warehouse_id.in_(allowed))
+        )
+    result = await db.execute(stmt)
     docs = result.scalars().all()
     return [WarehouseDocResponse.model_validate(d) for d in docs]
 
 
 @warehouse_router.patch("/warehouse-documents/{doc_id}/approve", response_model=WarehouseDocResponse)
 async def approve_doc(doc_id: int, user=Depends(get_current_user), db=Depends(get_db)):
+    doc = await db.get(AccountingDocument, doc_id)
+    if not doc:
+        raise HTTPException(404, "Документ не найден")
+    if doc.source_warehouse_id:
+        await _check_warehouse_access(user, doc.source_warehouse_id, db)
+    if doc.target_warehouse_id:
+        await _check_warehouse_access(user, doc.target_warehouse_id, db)
     svc = WarehouseService(db)
     try:
         doc = await svc.approve(doc_id, user)
@@ -78,6 +120,13 @@ async def approve_doc(doc_id: int, user=Depends(get_current_user), db=Depends(ge
 
 @warehouse_router.patch("/warehouse-documents/{doc_id}/deliver", response_model=WarehouseDocResponse)
 async def deliver_doc(doc_id: int, user=Depends(get_current_user), db=Depends(get_db)):
+    doc = await db.get(AccountingDocument, doc_id)
+    if not doc:
+        raise HTTPException(404, "Документ не найден")
+    if doc.source_warehouse_id:
+        await _check_warehouse_access(user, doc.source_warehouse_id, db)
+    if doc.target_warehouse_id:
+        await _check_warehouse_access(user, doc.target_warehouse_id, db)
     svc = WarehouseService(db)
     try:
         doc = await svc.deliver(doc_id, user)
@@ -96,6 +145,13 @@ async def deliver_doc(doc_id: int, user=Depends(get_current_user), db=Depends(ge
 @warehouse_router.post("/warehouse-documents/{doc_id}/account", response_model=WarehouseDocResponse)
 @warehouse_router.patch("/warehouse-documents/{doc_id}/account", response_model=WarehouseDocResponse)
 async def account_doc(doc_id: int, user=Depends(get_current_user), db=Depends(get_db)):
+    doc = await db.get(AccountingDocument, doc_id)
+    if not doc:
+        raise HTTPException(404, "Документ не найден")
+    if doc.source_warehouse_id:
+        await _check_warehouse_access(user, doc.source_warehouse_id, db)
+    if doc.target_warehouse_id:
+        await _check_warehouse_access(user, doc.target_warehouse_id, db)
     svc = WarehouseService(db)
     try:
         doc = await svc.account(doc_id, user)
@@ -120,6 +176,7 @@ async def get_balance(
 ):
     if user.role not in _WAREHOUSE_READ_ROLES:
         raise HTTPException(403, "Недостаточно прав для просмотра остатков")
+    await _check_warehouse_access(user, warehouse_id, db)
     svc = WarehouseService(db)
     qty = await svc.get_balance(warehouse_id, nomenclature_id)
     return BalanceResponse(warehouse_id=warehouse_id, nomenclature_id=nomenclature_id, quantity=qty)
@@ -176,7 +233,11 @@ async def update_nomenclature(nomenclature_id: int, data: NomenclatureCreate, us
 async def list_balances(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.role not in _WAREHOUSE_READ_ROLES:
         raise HTTPException(403, "Недостаточно прав для просмотра остатков")
-    result = await db.execute(select(StockBalance))
+    stmt = select(StockBalance)
+    allowed = await _get_user_warehouse_ids(user, db)
+    if allowed is not None:
+        stmt = stmt.where(StockBalance.warehouse_id.in_(allowed))
+    result = await db.execute(stmt)
     return [BalanceResponse(warehouse_id=b.warehouse_id, nomenclature_id=b.nomenclature_id, quantity=b.quantity) for b in result.scalars().all()]
 
 

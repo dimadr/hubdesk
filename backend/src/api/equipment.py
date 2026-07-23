@@ -26,9 +26,10 @@ async def list_equipment(
             AssetLocation.assigned_engineer_id == user.id
         )
     elif user.role == UserRole.customer:
-        customer_subq = select(Customer.id).where(Customer.name == user.name).scalar_subquery()
+        if user.customer_id is None:
+            raise HTTPException(403, "Пользователь не привязан к заказчику")
         stmt = stmt.join(AssetLocation, Equipment.location_id == AssetLocation.id).where(
-            AssetLocation.customer_id == customer_subq
+            AssetLocation.customer_id == user.customer_id
         )
     else:
         raise HTTPException(403, "Недостаточно прав")

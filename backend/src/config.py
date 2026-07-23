@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/fsm"
     redis_url: str = "redis://localhost:6379/0"
     secret_key: str = ""
-    access_token_ttl: int = 604800
+    access_token_ttl: int = 86400
     mailbox_email: str = ""
     mailbox_password: str = ""
     mailbox_imap_server: str = "imap.timeweb.ru"

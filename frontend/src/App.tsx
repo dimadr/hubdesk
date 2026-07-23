@@ -8,6 +8,18 @@ import { CalendarPage } from './pages/CalendarPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { KanbanPage } from './pages/KanbanPage';
 import { AuditLogPage } from './pages/AuditLogPage';
+
+async function downloadFile(url: string, filename: string) {
+  const resp = await api.get(url, { responseType: 'blob' });
+  const blob = new Blob([resp.data]);
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
+}
 import { L } from './locale';
 
 interface Location {
@@ -633,7 +645,7 @@ const TicketDetailModal: React.FC<{
               <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Файлы ({attachments.length})</span>
               <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {attachments.map((a: any) => (
-                  <a key={a.id} href={a.download_url || `/api/attachments/${a.id}`} target="_blank" rel="noopener" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: 'var(--bg-surface)', borderRadius: 6, fontSize: 12, color: 'var(--primary)', textDecoration: 'none', border: '1px solid var(--border)' }}>
+                  <a key={a.id} href="#" onClick={(e) => { e.preventDefault(); downloadFile(a.download_url || `/api/attachments/${a.id}`, a.filename); }} target="_blank" rel="noopener" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: 'var(--bg-surface)', borderRadius: 6, fontSize: 12, color: 'var(--primary)', textDecoration: 'none', border: '1px solid var(--border)', cursor: 'pointer' }}>
                     {a.filename}
                   </a>
                 ))}

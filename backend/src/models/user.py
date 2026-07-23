@@ -45,6 +45,7 @@ class User(Base):
     status: Mapped[UserStatus] = mapped_column(Enum(UserStatus), default=UserStatus.active)
     consent_given: Mapped[bool] = mapped_column(Boolean, default=False)
     consent_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), nullable=True)
 
     assigned_tickets: Mapped[list["Ticket"]] = relationship(
         back_populates="assignee", foreign_keys="Ticket.assignee_id"

@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,22 +20,22 @@ insert_v2_router = APIRouter(prefix="/insert", tags=["Insert Stock v2"])
 
 class ProductCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
-    diameter_inner: str | None = None
-    diameter_outer: str | None = None
-    length: str | None = None
-    flange_type: str | None = None
-    notes: str | None = None
-    cell: str | None = None
+    diameter_inner: str | None = Field(None, max_length=50)
+    diameter_outer: str | None = Field(None, max_length=50)
+    length: str | None = Field(None, max_length=50)
+    flange_type: str | None = Field(None, max_length=100)
+    notes: str | None = Field(None, max_length=1000)
+    cell: str | None = Field(None, max_length=100)
 
 
 class ProductUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
-    diameter_inner: str | None = None
-    diameter_outer: str | None = None
-    length: str | None = None
-    flange_type: str | None = None
-    notes: str | None = None
-    cell: str | None = None
+    diameter_inner: str | None = Field(None, max_length=50)
+    diameter_outer: str | None = Field(None, max_length=50)
+    length: str | None = Field(None, max_length=50)
+    flange_type: str | None = Field(None, max_length=100)
+    notes: str | None = Field(None, max_length=1000)
+    cell: str | None = Field(None, max_length=100)
 
 
 class ProductResponse(BaseModel):
@@ -54,14 +54,14 @@ class ProductResponse(BaseModel):
 
 
 class TransactionCreate(BaseModel):
-    type: str
+    type: str = Field(..., max_length=50)
     product_id: int
     quantity: int = Field(..., gt=0)
     taken_by_id: int | None = None
     location_id: int | None = None
-    destination: str | None = None
-    comment: str | None = None
-    document: str | None = None
+    destination: str | None = Field(None, max_length=500)
+    comment: str | None = Field(None, max_length=1000)
+    document: str | None = Field(None, max_length=255)
 
 
 class TransactionResponse(BaseModel):
@@ -166,7 +166,11 @@ async def create_product(data: ProductCreate, user: User = Depends(get_current_u
         length=data.length, flange_type=data.flange_type, cell=data.cell, notes=data.notes
     )
     db.add(p)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Продукт с таким названием уже существует")
 
     await log_audit(db, user, "product_created", "insert_product", p.id, f"Добавлен продукт «{p.name}»")
     await db.commit()
@@ -222,16 +226,35 @@ async def delete_product(product_id: int, user: User = Depends(get_current_user)
 
 
 @insert_v2_router.get("/transactions", response_model=list[TransactionResponse])
-async def list_transactions(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def list_transactions(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    date_from: str | None = None,
+    date_to: str | None = None,
+):
     if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper, UserRole.metrologist):
         raise HTTPException(403, "Недостаточно прав")
-    result = await db.execute(
-        select(InsertTransaction).options(
-            selectinload(InsertTransaction.product),
-            selectinload(InsertTransaction.taken_by),
-            selectinload(InsertTransaction.location),
-        ).order_by(InsertTransaction.id.desc()).limit(200)
+    stmt = select(InsertTransaction).options(
+        selectinload(InsertTransaction.product),
+        selectinload(InsertTransaction.taken_by),
+        selectinload(InsertTransaction.location),
     )
+    if date_from:
+        try:
+            dt = datetime.fromisoformat(date_from)
+            if dt.tzinfo: dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+            stmt = stmt.where(InsertTransaction.created_at >= dt)
+        except ValueError:
+            raise HTTPException(400, f"Некорректная дата: date_from={date_from}")
+    if date_to:
+        try:
+            dt = datetime.fromisoformat(date_to)
+            if dt.tzinfo: dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+            stmt = stmt.where(InsertTransaction.created_at <= dt)
+        except ValueError:
+            raise HTTPException(400, f"Некорректная дата: date_to={date_to}")
+    stmt = stmt.order_by(InsertTransaction.id.desc()).limit(500)
+    result = await db.execute(stmt)
 
     out = []
     for t in result.scalars().all():
