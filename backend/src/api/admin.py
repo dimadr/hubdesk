@@ -210,6 +210,8 @@ async def update_user(
         target.role = UserRole(data.role)
 
     if data.password:
+        if len(data.password) < 12:
+            raise HTTPException(status_code=400, detail="Пароль должен быть не менее 12 символов")
         target.password_hash = await run_in_threadpool(bcrypt.hash, data.password)
 
     if data.status is not None:

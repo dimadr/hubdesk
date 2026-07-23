@@ -85,7 +85,6 @@ class MailService:
             search_criteria = f'(UID {int(cfg.last_uid or 0) + 1}:*)' if cfg.last_uid else 'ALL'
             status, data = mail.uid('search', None, search_criteria)
             if status != 'OK' or not data[0]:
-                mail.logout()
                 return [], mail
             uid_list = data[0].split()
             return uid_list, mail
@@ -96,10 +95,10 @@ class MailService:
                 return None
             return msg_data[0][1]
 
+        mail = None
         try:
             uid_list, mail = await run_in_threadpool(_fetch_uids)
             if not uid_list:
-                await run_in_threadpool(mail.logout)
                 return 0
 
             new_last_uid = cfg.last_uid
@@ -177,6 +176,12 @@ class MailService:
             except:
                 pass
             raise e
+        finally:
+            if mail:
+                try:
+                    await run_in_threadpool(mail.logout)
+                except:
+                    pass
 
     @staticmethod
     def _decode_header(value: str) -> str:
@@ -212,8 +217,25 @@ class MailService:
 
     @staticmethod
     async def _find_customer(db: AsyncSession, email_addr: str):
-        from sqlalchemy import select as sa_select
+        from sqlalchemy import select as sa_select, or_
+        from src.models.equipment import LocationContact, AssetLocation
+        email_lower = email_addr.strip().lower()
+        # Search by LocationContact.email
         result = await db.execute(
-            sa_select(Customer).where(Customer.name.ilike(f"%{email_addr}%"))
+            sa_select(Customer)
+            .join(AssetLocation, AssetLocation.customer_id == Customer.id)
+            .join(LocationContact, LocationContact.location_id == AssetLocation.id)
+            .where(func.lower(LocationContact.email) == email_lower)
+            .limit(1)
+        )
+        customer = result.scalar_one_or_none()
+        if customer:
+            return customer
+        # Search by AssetLocation.contact_email
+        result = await db.execute(
+            sa_select(Customer)
+            .join(AssetLocation, AssetLocation.customer_id == Customer.id)
+            .where(func.lower(AssetLocation.contact_email) == email_lower)
+            .limit(1)
         )
         return result.scalar_one_or_none()

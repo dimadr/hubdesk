@@ -249,6 +249,7 @@ class AccessRequest(BaseModel):
 async def get_warehouse_access(warehouse_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.role not in _WAREHOUSE_READ_ROLES:
         raise HTTPException(403, "Недостаточно прав для просмотра доступа")
+    await _check_warehouse_access(user, warehouse_id, db)
     from src.models.user import User
     wh = await db.get(Warehouse, warehouse_id)
     if not wh:
@@ -264,6 +265,9 @@ async def get_warehouse_access(warehouse_id: int, user: User = Depends(get_curre
 async def add_warehouse_access(warehouse_id: int, data: AccessRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
         raise HTTPException(403, "Только админ, директор или кладовщик может управлять доступом")
+    await _check_warehouse_access(user, warehouse_id, db)
+    if user.role == UserRole.storekeeper and data.user_id == user.id:
+        raise HTTPException(403, "Кладовщик не может назначить сам себя")
     wh = await db.get(Warehouse, warehouse_id)
     if not wh:
         raise HTTPException(404, "Склад не найден")
@@ -285,10 +289,10 @@ async def add_warehouse_access(warehouse_id: int, data: AccessRequest, user: Use
 
 
 @warehouse_router.delete("/warehouses/{warehouse_id}/access/{user_id}")
-async def remove_warehouse_access(warehouse_id: int, user_id: int, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    from fastapi import HTTPException
+async def remove_warehouse_access(warehouse_id: int, user_id: int, user=Depends(get_current_user), db=Depends(get_db)):
     if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
         raise HTTPException(403)
+    await _check_warehouse_access(user, warehouse_id, db)
     stmt = warehouse_access.delete().where(
         warehouse_access.c.warehouse_id == warehouse_id,
         warehouse_access.c.user_id == user_id,
@@ -337,6 +341,14 @@ async def delete_warehouse(warehouse_id: int, user=Depends(get_current_user), db
     bal = (await db.execute(sa_select(func.sum(StockBalance.quantity)).where(StockBalance.warehouse_id == warehouse_id))).scalar()
     if bal and bal > 0:
         raise HTTPException(400, f"Нельзя удалить склад с остатками (сумма: {bal}). Обнулите остатки.")
+    doc_count = (await db.execute(
+        sa_select(func.count()).select_from(AccountingDocument).where(
+            (AccountingDocument.source_warehouse_id == warehouse_id) |
+            (AccountingDocument.target_warehouse_id == warehouse_id)
+        )
+    )).scalar() or 0
+    if doc_count > 0:
+        raise HTTPException(409, f"Нельзя удалить склад с {doc_count} документами. Архивируйте склад.")
     await db.delete(w)
     await db.commit()
     return {"ok": True}

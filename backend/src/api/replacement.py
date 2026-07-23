@@ -158,11 +158,16 @@ async def list_devices(user: User = Depends(get_current_user), db: AsyncSession 
 async def create_device(data: DeviceCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
         raise HTTPException(403, "Недостаточно прав")
+    try:
+        vdate = date.fromisoformat(data.verification_date) if data.verification_date else None
+        vexpiry = date.fromisoformat(data.verification_expiry) if data.verification_expiry else None
+    except ValueError:
+        raise HTTPException(422, "Неверный формат даты (ожидается YYYY-MM-DD)")
     d = ReplacementDevice(
         name=data.name.strip(), serial_number=data.serial_number,
-        verification_date=date.fromisoformat(data.verification_date) if data.verification_date else None,
+        verification_date=vdate,
         verification_interval_months=data.verification_interval_months,
-        verification_expiry=date.fromisoformat(data.verification_expiry) if data.verification_expiry else None,
+        verification_expiry=vexpiry,
         passport_scan=data.passport_scan,
         accuracy_class=data.accuracy_class,
         mounting=data.mounting,

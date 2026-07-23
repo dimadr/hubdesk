@@ -489,12 +489,7 @@ def create_ticket_router() -> APIRouter:
         num = ticket.number
         import os
         att_result = await db.execute(text("SELECT path FROM attachments WHERE ticket_id = :tid OR comment_id IN (SELECT id FROM comments WHERE ticket_id = :tid)"), {"tid": ticket_id})
-        for row in att_result:
-            if row[0] and os.path.exists(row[0]):
-                try:
-                    os.remove(row[0])
-                except OSError:
-                    pass
+        file_paths = [row[0] for row in att_result if row[0]]
         await db.execute(text("DELETE FROM checklist_fields WHERE checklist_id IN (SELECT id FROM checklists WHERE ticket_id = :tid)"), {"tid": ticket_id})
         await db.execute(text("DELETE FROM checklists WHERE ticket_id = :tid"), {"tid": ticket_id})
         await db.execute(text("DELETE FROM attachments WHERE ticket_id = :tid OR comment_id IN (SELECT id FROM comments WHERE ticket_id = :tid)"), {"tid": ticket_id})
@@ -503,5 +498,11 @@ def create_ticket_router() -> APIRouter:
         await db.execute(text("DELETE FROM personal_tasks WHERE ticket_id = :tid"), {"tid": ticket_id})
         await db.execute(text("DELETE FROM tickets WHERE id = :tid"), {"tid": ticket_id})
         await db.commit()
+        for fp in file_paths:
+            if os.path.exists(fp):
+                try:
+                    os.remove(fp)
+                except OSError:
+                    pass
 
     return router

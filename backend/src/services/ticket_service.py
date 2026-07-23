@@ -32,6 +32,8 @@ class TicketService:
             raise HTTPException(400, "Объект не найден")
         if location.customer_id != data["customer_id"]:
             raise HTTPException(400, "Объект не принадлежит указанному заказчику")
+        if user and user.role == UserRole.engineer and location.assigned_engineer_id != user.id:
+            raise HTTPException(403, "Вы можете создавать заявки только на своих объектах")
 
         if data.get("equipment_id"):
             equip = await self.session.get(Equipment, data["equipment_id"])

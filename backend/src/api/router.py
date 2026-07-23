@@ -167,6 +167,7 @@ class UserListResponse(BaseModel):
     position: str | None = None
     role: str
     status: str
+    customer_id: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -241,6 +242,9 @@ async def login(data: LoginRequest, request: Request, db: AsyncSession = Depends
     if not user or not await run_in_threadpool(bcrypt.verify, data.password, user.password_hash):
         logger.warning(f"Failed login attempt for {data.email} from {client_ip}")
         raise HTTPException(401, "Неверный email или пароль")
+
+    # Successful login — clear rate limit for this IP
+    _login_attempts.pop(client_ip, None)
 
     if user.status == UserStatus.pending:
         raise HTTPException(403, "Учётная запись ожидает утверждения администратором")

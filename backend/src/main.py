@@ -39,6 +39,7 @@ STATIC_DIR = os.path.join(FRONTEND_DIR, "assets") if os.path.exists(os.path.join
 
 async def mail_worker_loop():
     from src.services.mail_service import MailService
+    from src.models.mailbox import MailboxConfig
 
     await asyncio.sleep(10)
     logger.info("Фоновый почтовый воркер запущен.")
@@ -52,7 +53,16 @@ async def mail_worker_loop():
         except Exception as e:
             logger.error(f"Ошибка почтового воркера: {e}", exc_info=True)
 
-        await asyncio.sleep(120)
+        # Read interval from DB, fallback to 120s
+        interval = 120
+        try:
+            async with async_session() as session:
+                cfg = (await session.execute(select(MailboxConfig).limit(1))).scalar_one_or_none()
+                if cfg and cfg.check_interval_min:
+                    interval = max(60, cfg.check_interval_min * 60)
+        except:
+            pass
+        await asyncio.sleep(interval)
 
 
 @asynccontextmanager
@@ -221,7 +231,12 @@ app.include_router(api_router, prefix="/api")
 
 @app.get("/api/health", tags=["Infrastructure"])
 async def health():
-    return {"status": "ok"}
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        return {"status": "ok", "db": "ok"}
+    except Exception:
+        return JSONResponse(status_code=503, content={"status": "degraded", "db": "unavailable"})
 
 
 if os.path.exists(FRONTEND_DIR):

@@ -193,6 +193,15 @@ async def update_product(product_id: int, data: ProductUpdate, user: User = Depe
     update_data = data.model_dump(exclude_unset=True)
     if "name" in update_data and update_data["name"]:
         update_data["name"] = update_data["name"].strip()
+        from sqlalchemy import func as sa_func
+        dup = await db.execute(
+            select(InsertProduct).where(
+                sa_func.lower(InsertProduct.name) == update_data["name"].lower(),
+                InsertProduct.id != product_id,
+            )
+        )
+        if dup.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Продукт с таким названием уже существует")
 
     for field, value in update_data.items():
         setattr(p, field, value)
