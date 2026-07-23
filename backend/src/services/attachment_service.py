@@ -66,12 +66,26 @@ class AttachmentService:
         if file.size is not None and file.size > MAX_UPLOAD_SIZE:
             raise HTTPException(413, f"Файл превышает лимит {MAX_UPLOAD_SIZE // (1024*1024)} МБ")
 
-        content = await file.read()
-        if len(content) > MAX_UPLOAD_SIZE:
-            raise HTTPException(413, f"Файл превышает лимит {MAX_UPLOAD_SIZE // (1024*1024)} МБ")
-
-        with open(real_path, "wb") as f:
-            f.write(content)
+        CHUNK_SIZE = 1024 * 1024  # 1 MB
+        total_size = 0
+        try:
+            with open(real_path, "wb") as out:
+                while True:
+                    chunk = await file.read(CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    total_size += len(chunk)
+                    if total_size > MAX_UPLOAD_SIZE:
+                        out.close()
+                        os.remove(real_path)
+                        raise HTTPException(413, f"Файл превышает лимит {MAX_UPLOAD_SIZE // (1024*1024)} МБ")
+                    out.write(chunk)
+        except HTTPException:
+            raise
+        except Exception:
+            if os.path.exists(real_path):
+                os.remove(real_path)
+            raise
 
         try:
             attachment = Attachment(
@@ -80,7 +94,7 @@ class AttachmentService:
                 filename=file.filename or "unknown",
                 path=os.path.relpath(real_path, os.path.dirname(UPLOAD_DIR)),
                 content_type=file.content_type or "application/octet-stream",
-                size=len(content),
+                size=total_size,
                 is_internal=is_internal,
             )
             self.session.add(attachment)

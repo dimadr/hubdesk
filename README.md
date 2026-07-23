@@ -2,7 +2,7 @@
 
 Платформа для диспетчеризации заявок, управления объектами, складского учёта и контроля работы выездных инженеров.
 
-**Стек:** FastAPI · PostgreSQL · React · TypeScript · Redis · Docker
+**Стек:** FastAPI · PostgreSQL · React · TypeScript · Docker
 
 ---
 
@@ -92,7 +92,6 @@ backend/
 │   ├── core/         # FSM-движок, зависимости, исключения
 │   ├── models/       # SQLAlchemy 2.0 модели (async)
 │   ├── services/     # Бизнес-логика
-│   └── ws/           # WebSocket менеджер
 ├── history.log       # Аудит-лог действий
 └── .env              # Конфигурация (почта, БД, ключи)
 
@@ -101,7 +100,6 @@ frontend/
 │   ├── api/          # Axios-клиент с 401-интерсептором
 │   ├── components/   # Переиспользуемые компоненты (TicketGrid и др.)
 │   ├── pages/        # Страницы приложения
-│   ├── hooks/        # useDebounce, useWebSocket
 │   └── store/        # Zustand сторы
 ```
 

@@ -84,25 +84,38 @@ async def report_details(
     db: AsyncSession = Depends(get_db),
 ):
     check_access(user)
-    tickets = await ticket_query(db, date_from, date_to)
-    if location_id is not None:
-        tickets = [t for t in tickets if t.location_id == location_id]
-    if assignee_id is not None:
-        tickets = [t for t in tickets if t.assignee_id == assignee_id]
-    if status:
-        tickets = [t for t in tickets if t.status.value == status]
-    tickets.sort(key=lambda t: t.created_at, reverse=True)
+    dt_from = _parse_date(date_from) if date_from else None
+    dt_to = _parse_date(date_to) if date_to else None
+    date_cond = _date_filter(dt_from, dt_to)
 
-    result = []
-    for ticket in tickets[offset:offset + limit]:
+    from sqlalchemy.orm import selectinload
+    stmt = select(Ticket).options(
+        selectinload(Ticket.customer),
+        selectinload(Ticket.location),
+        selectinload(Ticket.assignee),
+    )
+    if date_cond is not None:
+        stmt = stmt.where(date_cond)
+    if location_id is not None:
+        stmt = stmt.where(Ticket.location_id == location_id)
+    if assignee_id is not None:
+        stmt = stmt.where(Ticket.assignee_id == assignee_id)
+    if status:
+        stmt = stmt.where(Ticket.status == status)
+    stmt = stmt.order_by(Ticket.created_at.desc()).offset(offset).limit(limit)
+    result = await db.execute(stmt)
+    tickets = result.scalars().all()
+
+    out = []
+    for ticket in tickets:
         item = TicketResponse.model_validate(ticket)
         item.customer_name = ticket.customer.name if ticket.customer else None
         item.location_name = ticket.location.name if ticket.location else None
         item.location_address = ticket.location.address if ticket.location else None
         item.assignee_name = ticket.assignee.name if ticket.assignee else None
         item.is_archived = ticket.archived_at is not None
-        result.append(item)
-    return result
+        out.append(item)
+    return out
 
 
 @reports_router.get("/objects")

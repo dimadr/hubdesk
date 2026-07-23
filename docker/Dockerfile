@@ -9,7 +9,9 @@ RUN npm run build
 # Stage 2: Python backend + frontend dist
 FROM python:3.12-slim
 WORKDIR /app
+COPY backend/pyproject.toml backend/requirements.lock* ./
+RUN if [ -f requirements.lock ]; then pip install --no-cache-dir -r requirements.lock; fi
 COPY backend/ .
-RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir --no-deps -e .
 COPY --from=frontend-build /build/frontend/dist /frontend/dist
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]

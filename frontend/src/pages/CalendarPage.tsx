@@ -72,8 +72,7 @@ export const CalendarPage: React.FC<{ onOpenTicket?: (ticket: TicketResponse) =>
       if (!controller.signal.aborted) {
         const merged = new Map<number, TicketResponse>();
         for (const t of [...deadlineTickets, ...scheduledTickets, ...createdTickets]) {
-          const displayDate = t.resolution_deadline || t.scheduled_end || t.created_at;
-          if (t.status !== 'COMPLETED' && displayDate?.startsWith(monthKey)) merged.set(t.id, t);
+          if (t.status !== 'COMPLETED') merged.set(t.id, t);
         }
         setTickets(Array.from(merged.values()));
         setLoading(false);

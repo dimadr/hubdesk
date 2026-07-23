@@ -4,17 +4,14 @@
 
 ASSIGNED
 -> ACCEPTED
--> ON_THE_WAY
--> ARRIVED
 -> IN_PROGRESS
--> REVIEW
 -> COMPLETED
 
 ## Rules
 
 - Only valid transitions are allowed.
 - All transitions are audited.
-- Completion requires checklist validation.
+- Completion requires checklist validation (mandatory fields must not be empty/false/whitespace).
 - Completion may require mandatory photos.
 - SLA timers use status timestamps.
 

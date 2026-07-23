@@ -57,47 +57,12 @@ async def list_inserts(user: User = Depends(get_current_user), db: AsyncSession 
 
 @insert_router.post("", status_code=201)
 async def create_insert(data: InsertCreate, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
-        raise HTTPException(403, "Недостаточно прав")
-    try:
-        rdate = date.fromisoformat(data.return_date) if data.return_date else None
-    except ValueError:
-        raise HTTPException(422, "Неверный формат даты (ожидается YYYY-MM-DD)")
-    i = InsertItem(
-        device_name=data.device_name, diameter=data.diameter, length=data.length,
-        flange_type=data.flange_type, taken_by_id=data.taken_by_id, location_id=data.location_id,
-        return_date=rdate,
-    )
-    db.add(i)
-    await db.flush()
-    await db.commit()
-    log("Склад вставок", f"Добавлено: {i.device_name}", user)
-    return {"id": i.id, "device_name": i.device_name, "diameter": i.diameter, "length": i.length,
-            "flange_type": i.flange_type, "taken_by_id": i.taken_by_id, "location_id": i.location_id,
-            "return_date": i.return_date.isoformat() if i.return_date else None}
+    raise HTTPException(410, "Legacy API отключён. Используйте /insert/products и /insert/transactions")
 
 
 @insert_router.patch("/{item_id}")
 async def update_insert(item_id: int, data: InsertCreate, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
-        raise HTTPException(403, "Недостаточно прав")
-    i = await db.get(InsertItem, item_id)
-    if not i:
-        raise HTTPException(404)
-    try:
-        rdate = date.fromisoformat(data.return_date) if data.return_date else None
-    except ValueError:
-        raise HTTPException(422, "Неверный формат даты (ожидается YYYY-MM-DD)")
-    i.device_name = data.device_name
-    i.diameter = data.diameter
-    i.length = data.length
-    i.flange_type = data.flange_type
-    i.taken_by_id = data.taken_by_id
-    i.location_id = data.location_id
-    i.return_date = rdate
-    await db.commit()
-    log("Склад вставок", f"Обновлено: {i.device_name}", user)
-    return {"ok": True}
+    raise HTTPException(410, "Legacy API отключён. Используйте /insert/products и /insert/transactions")
 
 
 @insert_router.delete("/{item_id}")

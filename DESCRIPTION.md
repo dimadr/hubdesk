@@ -50,7 +50,7 @@ HubDesk is a modular monolith service management platform for field engineering 
 | File | Purpose |
 |------|---------|
 | `ticket_service.py` | Ticket CRUD, filtering, assignment, business rules |
-| `ticket_fsm.py` | Ticket state machine transitions (ASSIGNED → ACCEPTED → ON_THE_WAY → ARRIVED → IN_PROGRESS → REVIEW → COMPLETED) |
+| `ticket_fsm.py` | Ticket state machine transitions (ASSIGNED → ACCEPTED → IN_PROGRESS → COMPLETED) |
 | `warehouse_service.py` | Warehouse CRUD, document processing, stock balance calculations |
 | `warehouse_fsm.py` | Warehouse document state machine (draft → approved → completed) |
 | `acl_service.py` | Role-based access control enforcement |
@@ -186,7 +186,7 @@ HubDesk is a modular monolith service management platform for field engineering 
 ### Finite State Machine (FSM)
 Tickets follow a strict FSM workflow:
 ```
-ASSIGNED → ACCEPTED → ON_THE_WAY → ARRIVED → IN_PROGRESS → REVIEW → COMPLETED
+ASSIGNED → ACCEPTED → IN_PROGRESS → COMPLETED
 ```
 Status transitions are enforced server-side via `core/fsm/` engine. No status can be changed without passing through valid transitions.
 

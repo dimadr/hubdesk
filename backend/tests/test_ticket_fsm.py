@@ -62,3 +62,48 @@ def test_acl_customer_cannot_accept():
     u = MagicMock()
     u.role = UserRole.customer
     assert RoleChecker.can_change_status(u, t, "ACCEPTED") is False
+
+
+@pytest.mark.asyncio
+async def test_checklist_false_blocks_completion(fsm, ticket):
+    ticket.status.value = "IN_PROGRESS"
+    f = MagicMock()
+    f.is_mandatory = True
+    f.value = "false"
+    ticket.checklists = [MagicMock(fields=[f])]
+    with pytest.raises(GuardFailedError, match="checklist_complete"):
+        await fsm.transition(ticket, "COMPLETED", user_id=1)
+
+
+@pytest.mark.asyncio
+async def test_checklist_whitespace_blocks_completion(fsm, ticket):
+    ticket.status.value = "IN_PROGRESS"
+    f = MagicMock()
+    f.is_mandatory = True
+    f.value = "   "
+    ticket.checklists = [MagicMock(fields=[f])]
+    with pytest.raises(GuardFailedError, match="checklist_complete"):
+        await fsm.transition(ticket, "COMPLETED", user_id=1)
+
+
+@pytest.mark.asyncio
+async def test_checklist_filled_allows_completion(fsm, ticket):
+    ticket.status.value = "IN_PROGRESS"
+    f = MagicMock()
+    f.is_mandatory = True
+    f.value = "выполнено"
+    f.field_type = MagicMock()
+    f.field_type.value = "checkbox"
+    ticket.checklists = [MagicMock(fields=[f])]
+    await fsm.transition(ticket, "COMPLETED", user_id=1)
+    assert ticket.status == "COMPLETED"
+
+
+def test_acl_admin_can_change_any_status():
+    from src.services.acl_service import RoleChecker
+    from src.models.user import UserRole
+    t = MagicMock()
+    t.status.value = "ASSIGNED"
+    u = MagicMock()
+    u.role = UserRole.admin
+    assert RoleChecker.can_change_status(u, t, "COMPLETED") is True
