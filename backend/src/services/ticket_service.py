@@ -115,6 +115,7 @@ class TicketService:
         if not await RoleChecker.can_view_ticket_async(user, ticket, self.session):
             raise HTTPException(403, "Доступ к данной заявке запрещен")
         from_status = ticket.status.value
+        target = target.value if hasattr(target, 'value') else str(target)
 
         if from_status == target:
             return ticket
