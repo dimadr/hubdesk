@@ -236,7 +236,7 @@ def create_ticket_router() -> APIRouter:
                 if not eng or eng.role != UserRole.engineer:
                     raise HTTPException(400, "Исполнитель должен иметь роль engineer")
             if user.role == UserRole.engineer:
-                if field not in ('source_description', 'body', 'site_contact_name', 'site_contact_phone', 'resolution_deadline'):
+                if field not in ('subject', 'source_description', 'body', 'site_contact_name', 'site_contact_phone', 'resolution_deadline'):
                     raise HTTPException(403, f"Инженер не может изменять поле «{field}»")
             if isinstance(value, datetime):
                 if value.tzinfo is not None:
