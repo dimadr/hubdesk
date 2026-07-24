@@ -389,7 +389,7 @@ async def update_location(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if user.role not in (UserRole.admin, UserRole.director, UserRole.dispatcher, UserRole.accountant):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.dispatcher, UserRole.accountant, UserRole.engineer):
         raise HTTPException(403, "Недостаточно прав")
     result = await db.execute(
         select(AssetLocation)
