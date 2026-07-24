@@ -17,7 +17,7 @@ const COLUMNS = [
   { key: 'done', label: 'Завершённые', color: '#60a5fa', bg: 'rgba(96,165,250,.08)' },
 ];
 
-export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[]; onDetail?: (ticket: TicketResponse) => void; onStatusChange?: (ticket: TicketResponse, target: string) => Promise<void>; currentUserId?: number; viewingEngineerId?: number | null }> = ({ role, users = [], onDetail, onStatusChange, currentUserId, viewingEngineerId }) => {
+export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[]; onDetail?: (ticket: TicketResponse) => void; onStatusChange?: (ticket: TicketResponse, target: string) => Promise<void>; currentUserId?: number; viewingEngineerId?: number | null; refreshKey?: number }> = ({ role, users = [], onDetail, onStatusChange, currentUserId, viewingEngineerId, refreshKey }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tickets, setTickets] = useState<TicketResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,7 +67,7 @@ export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[]; onDetail?
     setTasks([]);
     setTickets([]);
     loadTasks();
-  }, [loadTasks]);
+  }, [loadTasks, refreshKey]);
 
   const ticketToColumn = (status: string) => {
     if (status === 'ASSIGNED') return 'project';
