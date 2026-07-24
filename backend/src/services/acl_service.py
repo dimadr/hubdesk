@@ -41,7 +41,9 @@ class RoleChecker:
     def can_change_status(user: User, ticket: Ticket, target: str) -> bool:
         if user.role in (UserRole.admin, UserRole.director):
             return True
-        key = f"{ticket.status.value}->{target}"
+        target_val = target.value if hasattr(target, 'value') else str(target)
+        from_val = ticket.status.value if hasattr(ticket.status, 'value') else str(ticket.status)
+        key = f"{from_val}->{target_val}"
         allowed_roles = RoleChecker.TRANSITION_ROLES.get(key, [])
         return user.role in allowed_roles
 
