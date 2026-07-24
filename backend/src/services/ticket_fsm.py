@@ -8,9 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 class TicketFSM(BaseFSM, AuditMixin):
     transitions = {
         "ASSIGNED":    ["ACCEPTED"],
-        "ACCEPTED":    ["IN_PROGRESS"],
-        "IN_PROGRESS": ["COMPLETED"],
-        "COMPLETED":   [],
+        "ACCEPTED":    ["IN_PROGRESS", "ASSIGNED"],
+        "IN_PROGRESS": ["COMPLETED", "ACCEPTED"],
+        "COMPLETED":   ["IN_PROGRESS"],
     }
 
     def __init__(self, session: AsyncSession):

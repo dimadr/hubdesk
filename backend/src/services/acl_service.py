@@ -12,7 +12,10 @@ class RoleChecker:
     TRANSITION_ROLES: dict[str, list[UserRole]] = {
         "ASSIGNED->ACCEPTED":     [UserRole.engineer],
         "ACCEPTED->IN_PROGRESS":  [UserRole.engineer],
+        "ACCEPTED->ASSIGNED":     [UserRole.engineer],
         "IN_PROGRESS->COMPLETED": [UserRole.engineer, UserRole.dispatcher],
+        "IN_PROGRESS->ACCEPTED":  [UserRole.engineer],
+        "COMPLETED->IN_PROGRESS": [UserRole.dispatcher],
     }
 
     @staticmethod
