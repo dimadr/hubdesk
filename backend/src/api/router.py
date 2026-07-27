@@ -399,6 +399,8 @@ async def update_location(
     loc = result.scalar_one_or_none()
     if not loc:
         raise HTTPException(404, "Объект не найден")
+    if user.role == UserRole.engineer and loc.assigned_engineer_id != user.id:
+        raise HTTPException(404, "Объект не найден")
 
     update_data = data.model_dump(exclude_unset=True)
     contacts_data = update_data.pop('contacts_list', None)
@@ -479,6 +481,25 @@ async def delete_location(location_id: int, user=Depends(get_current_user), db: 
     if ticket_count > 0:
         raise HTTPException(400, f"Нельзя удалить объект с заявками ({ticket_count} шт.)")
 
+    from src.models.insert_stock import InsertTransaction
+    from src.models.replacement_device import ReplacementTransaction
+    insert_count = (await db.execute(
+        select(func.count()).select_from(InsertTransaction).where(
+            InsertTransaction.location_id == location_id
+        )
+    )).scalar() or 0
+    replacement_count = (await db.execute(
+        select(func.count()).select_from(ReplacementTransaction).where(
+            ReplacementTransaction.location_id == location_id
+        )
+    )).scalar() or 0
+    if insert_count or replacement_count:
+        raise HTTPException(
+            409,
+            "Нельзя удалить объект со складскими движениями "
+            f"(вставки: {insert_count}, подменный фонд: {replacement_count})",
+        )
+
     await db.delete(loc)
     await log_audit(db, user, "location_deleted", "location", location_id, f"Удалён объект «{loc.name}»")
     await db.commit()
@@ -495,7 +516,7 @@ async def list_users(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if user.role not in (UserRole.admin, UserRole.director, UserRole.dispatcher, UserRole.accountant):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.dispatcher, UserRole.accountant, UserRole.engineer):
         raise HTTPException(403, "Недостаточно прав для просмотра списка пользователей")
 
     result = await db.execute(select(User))
