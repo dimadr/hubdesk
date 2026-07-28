@@ -15,7 +15,7 @@ class FieldType(str, enum.Enum):
 class Checklist(Base):
     __tablename__ = "checklists"
     id: Mapped[int] = mapped_column(primary_key=True)
-    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id"))
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id"), index=True)
     name: Mapped[str] = mapped_column(String(255))
 
     ticket: Mapped["Ticket"] = relationship(back_populates="checklists")
@@ -25,7 +25,7 @@ class Checklist(Base):
 class ChecklistField(Base):
     __tablename__ = "checklist_fields"
     id: Mapped[int] = mapped_column(primary_key=True)
-    checklist_id: Mapped[int] = mapped_column(ForeignKey("checklists.id"))
+    checklist_id: Mapped[int] = mapped_column(ForeignKey("checklists.id"), index=True)
     label: Mapped[str] = mapped_column(String(255))
     field_type: Mapped[FieldType] = mapped_column(SAEnum(FieldType))
     is_mandatory: Mapped[bool] = mapped_column(Boolean, default=False)

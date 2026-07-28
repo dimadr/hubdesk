@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text, func
@@ -5,7 +7,7 @@ from sqlalchemy.orm import selectinload
 from datetime import datetime, timezone
 from pydantic import BaseModel
 from src.database import get_db
-from src.models.ticket import Ticket
+from src.models.ticket import Ticket, TicketStatus
 from src.models.customer import Customer
 from src.services.ticket_service import TicketService
 from src.services.acl_service import RoleChecker
@@ -20,6 +22,8 @@ from src.api.schemas import (
 from src.core.deps import get_current_user
 from src.models.user import User, UserRole
 from src.models.checklist import Checklist, ChecklistField, FieldType
+
+logger = logging.getLogger(__name__)
 
 
 def _enrich_ticket(d: TicketResponse, ticket: Ticket) -> TicketResponse:
@@ -40,6 +44,8 @@ def create_ticket_router() -> APIRouter:
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
+        if user.role in (UserRole.storekeeper, UserRole.metrologist, UserRole.accountant):
+            raise HTTPException(403, "Недостаточно прав для просмотра заявок")
         stmt = select(Ticket).options(selectinload(Ticket.customer), selectinload(Ticket.location), selectinload(Ticket.assignee))
         if filters.status:
             stmt = stmt.where(Ticket.status == filters.status)
@@ -70,14 +76,29 @@ def create_ticket_router() -> APIRouter:
             stmt = stmt.where(Ticket.archived_at == None)
         if filters.overdue is True:
             stmt = stmt.where(
-                Ticket.resolution_deadline != None,
-                Ticket.completed_at == None,
-                func.now() > Ticket.resolution_deadline,
+                (
+                    (Ticket.response_deadline != None) &
+                    (Ticket.accepted_at == None) &
+                    (func.now() > Ticket.response_deadline)
+                ) | (
+                    (Ticket.resolution_deadline != None) &
+                    (Ticket.status != TicketStatus.COMPLETED) &
+                    (func.now() > Ticket.resolution_deadline)
+                )
             )
         elif filters.overdue is False:
-            stmt = stmt.where(
-                (Ticket.resolution_deadline == None) | (Ticket.completed_at != None) | (func.now() <= Ticket.resolution_deadline)
+            overdue_condition = (
+                (
+                    (Ticket.response_deadline != None) &
+                    (Ticket.accepted_at == None) &
+                    (func.now() > Ticket.response_deadline)
+                ) | (
+                    (Ticket.resolution_deadline != None) &
+                    (Ticket.status != TicketStatus.COMPLETED) &
+                    (func.now() > Ticket.resolution_deadline)
+                )
             )
+            stmt = stmt.where(~overdue_condition)
         if filters.date_from:
             try:
                 dt_from = datetime.fromisoformat(filters.date_from)
@@ -180,6 +201,14 @@ def create_ticket_router() -> APIRouter:
     ):
         if user.role == UserRole.engineer:
             data.assignee_id = user.id
+        elif user.role == UserRole.customer:
+            if user.customer_id is None:
+                raise HTTPException(403, "Пользователь не привязан к заказчику")
+            data.customer_id = user.customer_id
+            data.assignee_id = None
+            data.group_id = None
+            data.is_internal = False
+            data.resolution_deadline = None
         elif user.role not in (UserRole.admin, UserRole.director, UserRole.dispatcher):
             raise HTTPException(403, "Только диспетчер, администратор или инженер может создавать заявки")
         svc = TicketService(db)
@@ -226,7 +255,9 @@ def create_ticket_router() -> APIRouter:
             raise HTTPException(404)
         if not await RoleChecker.can_view_ticket_async(user, ticket, db):
             raise HTTPException(404)
-        for field, value in data.model_dump(exclude_unset=True).items():
+        requested_updates = data.model_dump(exclude_unset=True)
+        changed_fields: list[str] = []
+        for field, value in requested_updates.items():
             if field in ('status', 'assigned_at', 'completed_at'):
                 continue
             if field == 'assignee_id' and value is not None:
@@ -236,13 +267,15 @@ def create_ticket_router() -> APIRouter:
                 if not eng or eng.role != UserRole.engineer:
                     raise HTTPException(400, "Исполнитель должен иметь роль engineer")
             if user.role == UserRole.engineer:
-                if field not in ('subject', 'source_description', 'body', 'site_contact_name', 'site_contact_phone', 'resolution_deadline'):
+                if field not in ('subject', 'source_description', 'body', 'site_contact_name', 'site_contact_phone'):
                     continue
             if isinstance(value, datetime):
                 if value.tzinfo is not None:
                     value = value.astimezone(timezone.utc).replace(tzinfo=None)
-            setattr(ticket, field, value)
-        update_fields = set(data.model_dump(exclude_unset=True).keys())
+            if getattr(ticket, field) != value:
+                setattr(ticket, field, value)
+                changed_fields.append(field)
+        update_fields = set(requested_updates.keys())
         if 'location_id' in update_fields or 'customer_id' in update_fields:
             from src.models.equipment import AssetLocation as AL
             loc = await db.get(AL, ticket.location_id)
@@ -262,6 +295,15 @@ def create_ticket_router() -> APIRouter:
                 raise HTTPException(400, "Оборудование не найдено")
             if eq.location_id != ticket.location_id:
                 raise HTTPException(400, "Оборудование не принадлежит указанному объекту")
+        if changed_fields:
+            await log_audit(
+                db,
+                user,
+                "ticket_updated",
+                "ticket",
+                ticket.id,
+                f"Изменена заявка №{ticket.number}; поля: {', '.join(sorted(changed_fields))}",
+            )
         await db.commit()
         # Отправка email инженеру при смене исполнителя
         if 'assignee_id' in data.model_dump(exclude_unset=True) and ticket.assignee_id:
@@ -283,8 +325,9 @@ def create_ticket_router() -> APIRouter:
             ticket = await svc.change_status(ticket_id, data.status, user)
         except HTTPException:
             raise
-        except Exception as e:
-            raise HTTPException(400, str(e))
+        except Exception:
+            logger.exception("Unexpected ticket status change failure for ticket %s", ticket_id)
+            raise HTTPException(500, "Не удалось изменить статус заявки")
         await db.commit()
         return _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
 
@@ -311,9 +354,10 @@ def create_ticket_router() -> APIRouter:
         except HTTPException:
             await db.rollback()
             raise
-        except Exception as exc:
+        except Exception:
             await db.rollback()
-            raise HTTPException(400, str(exc))
+            logger.exception("Unexpected ticket completion failure for ticket %s", ticket_id)
+            raise HTTPException(500, "Не удалось завершить заявку")
         return _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
 
     @router.post("/{ticket_id}/comments", status_code=201, response_model=CommentResponse)
@@ -382,12 +426,15 @@ def create_ticket_router() -> APIRouter:
             raise HTTPException(404)
         if not await RoleChecker.can_view_ticket_async(user, ticket, db):
             raise HTTPException(403, "Нет доступа к заявке")
-        result = await db.execute(select(Checklist).where(Checklist.ticket_id == ticket_id))
+        result = await db.execute(
+            select(Checklist)
+            .where(Checklist.ticket_id == ticket_id)
+            .options(selectinload(Checklist.fields))
+        )
         checklists = result.scalars().all()
         out = []
         for cl in checklists:
-            fields_result = await db.execute(select(ChecklistField).where(ChecklistField.checklist_id == cl.id))
-            fields = [{"id": f.id, "label": f.label, "field_type": f.field_type.value, "is_mandatory": f.is_mandatory, "value": f.value} for f in fields_result.scalars().all()]
+            fields = [{"id": f.id, "label": f.label, "field_type": f.field_type.value, "is_mandatory": f.is_mandatory, "value": f.value} for f in cl.fields]
             out.append({"id": cl.id, "name": cl.name, "fields": fields})
         return out
 
@@ -487,9 +534,18 @@ def create_ticket_router() -> APIRouter:
         if not ticket:
             raise HTTPException(404, "Заявка не найдена")
         num = ticket.number
+        subject = ticket.subject
         import os
         att_result = await db.execute(text("SELECT path FROM attachments WHERE ticket_id = :tid OR comment_id IN (SELECT id FROM comments WHERE ticket_id = :tid)"), {"tid": ticket_id})
         file_paths = [row[0] for row in att_result if row[0]]
+        await log_audit(
+            db,
+            user,
+            "ticket_deleted",
+            "ticket",
+            ticket_id,
+            f"Удалена заявка №{num} «{subject}»",
+        )
         await db.execute(text("DELETE FROM checklist_fields WHERE checklist_id IN (SELECT id FROM checklists WHERE ticket_id = :tid)"), {"tid": ticket_id})
         await db.execute(text("DELETE FROM checklists WHERE ticket_id = :tid"), {"tid": ticket_id})
         await db.execute(text("DELETE FROM attachments WHERE ticket_id = :tid OR comment_id IN (SELECT id FROM comments WHERE ticket_id = :tid)"), {"tid": ticket_id})

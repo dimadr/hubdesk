@@ -28,7 +28,12 @@ async def upload_attachment(
             raise HTTPException(403, "Только админ/директор/кладовщик могут загружать файлы без привязки к заявке")
     svc = AttachmentService(db)
     att = await svc.upload(file, ticket_id, comment_id, user)
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        AttachmentService.remove_stored_file(att.path)
+        raise
     resp = AttachmentResponse.model_validate(att)
     resp.download_url = f"/api/attachments/{att.id}"
     return resp

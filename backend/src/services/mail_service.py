@@ -6,7 +6,7 @@ from email.header import decode_header
 from email.mime.text import MIMEText
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import func, select, text
 from fastapi.concurrency import run_in_threadpool
 from src.models.mailbox import MailboxConfig
 from src.models.customer import Customer
@@ -16,6 +16,7 @@ from src.models.user import User, UserRole
 from src.config import settings
 
 logger = logging.getLogger(__name__)
+MAIL_BATCH_LIMIT = 100
 
 
 class MailService:
@@ -68,6 +69,12 @@ class MailService:
             await MailService.send_email(creator.email, subject, body)
     @staticmethod
     async def fetch_and_create_tickets(db: AsyncSession):
+        lock_result = await db.execute(text("SELECT pg_try_advisory_xact_lock(43)"))
+        if not lock_result.scalar():
+            await db.rollback()
+            logger.info("Проверка почты уже выполняется другим процессом")
+            return 0
+
         cfg_result = await db.execute(select(MailboxConfig).limit(1))
         cfg = cfg_result.scalar_one_or_none()
         email_addr = settings.mailbox_email or (cfg.email if cfg else "")
@@ -82,12 +89,19 @@ class MailService:
             mail = imaplib.IMAP4_SSL(imap_server, imap_port)
             mail.login(email_addr, password)
             mail.select(cfg.folder)
-            search_criteria = f'(UID {int(cfg.last_uid or 0) + 1}:*)' if cfg.last_uid else 'ALL'
+            if cfg.last_uid is None:
+                status, data = mail.uid('search', None, 'ALL')
+                if status != 'OK':
+                    return [], mail, None
+                existing_uids = data[0].split() if data[0] else []
+                baseline_uid = existing_uids[-1].decode() if existing_uids else "0"
+                return [], mail, baseline_uid
+            search_criteria = f'(UID {int(cfg.last_uid) + 1}:*)'
             status, data = mail.uid('search', None, search_criteria)
             if status != 'OK' or not data[0]:
-                return [], mail
-            uid_list = data[0].split()
-            return uid_list, mail
+                return [], mail, None
+            uid_list = data[0].split()[:MAIL_BATCH_LIMIT]
+            return uid_list, mail, None
 
         def _fetch_one(mail, uid):
             status, msg_data = mail.uid('fetch', uid, '(RFC822)')
@@ -97,8 +111,12 @@ class MailService:
 
         mail = None
         try:
-            uid_list, mail = await run_in_threadpool(_fetch_uids)
+            uid_list, mail, baseline_uid = await run_in_threadpool(_fetch_uids)
             if not uid_list:
+                if baseline_uid is not None:
+                    cfg.last_uid = baseline_uid
+                cfg.last_check_at = datetime.utcnow()
+                await db.commit()
                 return 0
 
             new_last_uid = cfg.last_uid
@@ -111,45 +129,54 @@ class MailService:
 
                 raw_email = await run_in_threadpool(_fetch_one, mail, uid)
                 if raw_email is None:
-                    continue
+                    logger.warning("Не удалось получить письмо UID %s; обработка остановлена для повторной попытки", uid_str)
+                    break
 
-                msg = email.message_from_bytes(raw_email)
+                try:
+                    async with db.begin_nested():
+                        msg = email.message_from_bytes(raw_email)
+                        subject = MailService._decode_header(msg['Subject'] or 'Без темы')
+                        body = MailService._get_body(msg)
+                        sender = MailService._parse_sender(msg['From'] or '')
 
-                subject = MailService._decode_header(msg['Subject'] or 'Без темы')
-                body = MailService._get_body(msg)
-                sender = MailService._parse_sender(msg['From'] or '')
+                        customer = await MailService._find_customer(db, sender)
+                        if not customer:
+                            logger.warning(
+                                "Пропущен email от неизвестного отправителя: %s (ящик %s)",
+                                sender, cfg.email,
+                            )
+                            new_last_uid = uid_str
+                            continue
 
-                customer = await MailService._find_customer(db, sender)
-                customer_id = customer.id if customer else None
-                if not customer_id:
-                    logger.warning(f"Пропущен email от неизвестного отправителя: {sender} (ящик {cfg.email})")
-                    new_last_uid = uid_str
-                    continue
+                        loc_result = await db.execute(
+                            select(AssetLocation)
+                            .where(AssetLocation.customer_id == customer.id)
+                            .order_by(AssetLocation.id)
+                            .limit(1)
+                        )
+                        default_loc = loc_result.scalar_one_or_none()
+                        if not default_loc:
+                            logger.warning(
+                                "Пропущен email от %s: у заказчика %s нет объекта",
+                                sender, customer.id,
+                            )
+                            new_last_uid = uid_str
+                            continue
 
-                location_id = None
-                if customer_id:
-                    from src.models.equipment import AssetLocation
-                    loc_result = await db.execute(
-                        select(AssetLocation).where(AssetLocation.customer_id == customer_id).limit(1)
-                    )
-                    default_loc = loc_result.scalar_one_or_none()
-                    if default_loc:
-                        location_id = default_loc.id
-
-                from src.services.ticket_service import TicketService
-                svc = TicketService(db)
-                ticket = await svc.create({
-                    "subject": subject[:500],
-                    "body": f"От: {sender}\n\n{body}"[:5000],
-                    "customer_id": customer_id,
-                    "location_id": location_id,
-                    "source_description": f"Email от {sender}",
-                })
+                        from src.services.ticket_service import TicketService
+                        svc = TicketService(db)
+                        await svc.create({
+                            "subject": subject[:500],
+                            "body": f"От: {sender}\n\n{body}"[:5000],
+                            "customer_id": customer.id,
+                            "location_id": default_loc.id,
+                            "source_description": f"Email от {sender}",
+                        })
+                        created += 1
+                except Exception:
+                    logger.exception("Ошибка обработки письма UID %s; письмо пропущено", uid_str)
 
                 new_last_uid = uid_str
-                created += 1
-
-            await run_in_threadpool(mail.logout)
 
             if new_last_uid and new_last_uid != cfg.last_uid:
                 cfg.last_uid = new_last_uid
@@ -217,7 +244,7 @@ class MailService:
 
     @staticmethod
     async def _find_customer(db: AsyncSession, email_addr: str):
-        from sqlalchemy import select as sa_select, or_
+        from sqlalchemy import select as sa_select
         from src.models.equipment import LocationContact, AssetLocation
         email_lower = email_addr.strip().lower()
         # Search by LocationContact.email

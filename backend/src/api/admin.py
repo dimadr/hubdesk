@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, case
-from pydantic import BaseModel, ConfigDict
+from sqlalchemy.exc import IntegrityError
+from pydantic import BaseModel, ConfigDict, Field
 from passlib.hash import bcrypt
 
 from src.database import get_db
@@ -60,6 +61,16 @@ class UserUpdate(BaseModel):
     password: str | None = None
     status: str | None = None
     customer_id: int | None = None
+
+
+class AdminUserCreate(BaseModel):
+    email: str = Field(..., max_length=255)
+    name: str = Field(..., min_length=1, max_length=255)
+    phone: str = Field("", max_length=50)
+    patronymic: str = Field("", max_length=255)
+    password: str = Field(..., min_length=12)
+    role: str
+    consent_given: bool
 
 
 class CustomerResponse(BaseModel):
@@ -229,6 +240,49 @@ async def update_user(
     await log_audit(db, admin, "user_updated", "user", target.id, f"Изменён пользователь: {target.name}")
     await db.commit()
     return {"ok": True}
+
+
+@admin_router.post("/users", status_code=201)
+async def create_user(
+    data: AdminUserCreate,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    if not data.consent_given:
+        raise HTTPException(400, "Требуется согласие на обработку персональных данных")
+    if data.role not in UserRole._value2member_map_:
+        raise HTTPException(400, "Неизвестная роль")
+    existing = await db.execute(select(User).where(User.email == data.email))
+    if existing.scalar_one_or_none():
+        raise HTTPException(400, "Email уже зарегистрирован")
+
+    user = User(
+        email=data.email,
+        name=data.name,
+        phone=data.phone or None,
+        patronymic=data.patronymic or None,
+        role=UserRole(data.role),
+        password_hash=await run_in_threadpool(bcrypt.hash, data.password),
+        status=UserStatus.pending,
+        consent_given=True,
+        consent_date=datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+    db.add(user)
+    try:
+        await db.flush()
+        await log_audit(
+            db,
+            admin,
+            "user_created",
+            "user",
+            user.id,
+            f"Создан пользователь: {user.name} ({user.email}), роль: {user.role.value}",
+        )
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(400, "Email уже зарегистрирован")
+    return {"id": user.id, "status": user.status.value}
 
 
 @admin_router.delete("/users/{user_id}")
@@ -407,8 +461,9 @@ async def trigger_mailbox_fetch(admin: User = Depends(require_admin), db: AsyncS
     try:
         count = await MailService.fetch_and_create_tickets(db)
         return {"ok": True, "created": count}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка обработки почтового ящика: {str(e)}")
+    except Exception:
+        logger.exception("Mailbox fetch failed")
+        raise HTTPException(status_code=500, detail="Ошибка обработки почтового ящика")
 
 
 @admin_router.get("/api-keys", response_model=List[ApiKeyResponse])

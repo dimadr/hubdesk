@@ -26,6 +26,7 @@ export const TicketGrid: React.FC<{ users: UserInfo[]; onEdit?: (ticket: any) =>
   const [loadingMore, setLoadingMore] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const appendAbortRef = useRef<AbortController | null>(null);
+  const skippedAutomaticFiltersRef = useRef<string | null>(null);
 
   const buildFilters = useCallback(() => {
     const filters: Record<string, any> = {};
@@ -48,6 +49,32 @@ export const TicketGrid: React.FC<{ users: UserInfo[]; onEdit?: (ticket: any) =>
   }, [activeTab, storeSearch, colFilter]);
 
   useEffect(() => {
+      const applySavedView = (event: Event) => {
+        const detail = (event as CustomEvent<{
+          filters: Record<string, any>;
+          automaticFilters: Record<string, any>;
+        }>).detail;
+        const filters = detail?.filters;
+        if (!filters || typeof filters !== 'object') return;
+        skippedAutomaticFiltersRef.current = JSON.stringify(detail.automaticFilters || {});
+      abortRef.current?.abort();
+      appendAbortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setLastFilters(filters);
+      fetchTickets(filters, controller.signal);
+    };
+    window.addEventListener('ticket-saved-view-apply', applySavedView);
+    return () => window.removeEventListener('ticket-saved-view-apply', applySavedView);
+  }, [fetchTickets, setLastFilters]);
+
+  useEffect(() => {
+    const automaticFilters = buildFilters();
+    if (skippedAutomaticFiltersRef.current === JSON.stringify(automaticFilters)) {
+      skippedAutomaticFiltersRef.current = null;
+      return;
+    }
+    skippedAutomaticFiltersRef.current = null;
     abortRef.current?.abort();
     appendAbortRef.current?.abort();
     const controller = new AbortController();

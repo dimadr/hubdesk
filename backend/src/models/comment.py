@@ -7,7 +7,7 @@ from datetime import datetime
 class Comment(Base):
     __tablename__ = "comments"
     id: Mapped[int] = mapped_column(primary_key=True)
-    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id"))
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     body: Mapped[str] = mapped_column(String(5000))
     is_internal: Mapped[bool] = mapped_column(Boolean, default=False)

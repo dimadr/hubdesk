@@ -93,8 +93,15 @@ export const CalendarPage: React.FC<{ onOpenTicket?: (ticket: TicketResponse) =>
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
   const ticketsByDate: Record<string, TicketResponse[]> = {};
+  const visibleMonthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
   for (const t of tickets) {
-    const d = (t.resolution_deadline || t.scheduled_end || t.created_at)?.substring(0, 10);
+    const candidateDates = [
+      t.resolution_deadline,
+      t.scheduled_end,
+      t.created_at,
+    ].filter((value): value is string => Boolean(value))
+      .map(value => value.substring(0, 10));
+    const d = candidateDates.find(value => value.startsWith(visibleMonthPrefix));
     if (d) {
       if (!ticketsByDate[d]) ticketsByDate[d] = [];
       ticketsByDate[d].push(t);

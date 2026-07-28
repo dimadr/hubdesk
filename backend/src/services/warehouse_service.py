@@ -39,6 +39,7 @@ class WarehouseService:
             doc_type=doc_type,
             source_warehouse_id=data.get("source_warehouse_id"),
             target_warehouse_id=data.get("target_warehouse_id"),
+            created_by=user.id,
         )
         self.session.add(doc)
         await self.session.flush()
@@ -93,7 +94,13 @@ class WarehouseService:
         return balance.quantity if balance else 0.0
 
     async def _get(self, doc_id: int, for_update: bool = False) -> AccountingDocument:
-        stmt = select(AccountingDocument).where(AccountingDocument.id == doc_id).options(selectinload(AccountingDocument.lines))
+        stmt = (
+            select(AccountingDocument)
+            .where(AccountingDocument.id == doc_id)
+            .options(
+                selectinload(AccountingDocument.lines).selectinload(DocumentLine.nomenclature)
+            )
+        )
         if for_update:
             stmt = stmt.with_for_update()
         result = await self.session.execute(stmt)

@@ -1,4 +1,6 @@
-from sqlalchemy import String, ForeignKey, Enum, DateTime, func, UniqueConstraint, Table, Column, Integer
+from decimal import Decimal
+
+from sqlalchemy import String, ForeignKey, Enum, DateTime, func, UniqueConstraint, Numeric
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from ..database import Base
 import enum
@@ -56,19 +58,21 @@ class AccountingDocument(Base):
     status: Mapped[DocStatus] = mapped_column(Enum(DocStatus), default=DocStatus.DRAFT)
     source_warehouse_id: Mapped[int | None] = mapped_column(ForeignKey("warehouses.id"), nullable=True)
     target_warehouse_id: Mapped[int | None] = mapped_column(ForeignKey("warehouses.id"), nullable=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     source_warehouse: Mapped["Warehouse | None"] = relationship(foreign_keys=[source_warehouse_id])
     target_warehouse: Mapped["Warehouse | None"] = relationship(foreign_keys=[target_warehouse_id])
     lines: Mapped[list["DocumentLine"]] = relationship(back_populates="document")
+    transitions: Mapped[list["WarehouseTransition"]] = relationship(back_populates="document")
 
 
 class DocumentLine(Base):
     __tablename__ = "document_lines"
     id: Mapped[int] = mapped_column(primary_key=True)
-    document_id: Mapped[int] = mapped_column(ForeignKey("accounting_documents.id"))
+    document_id: Mapped[int] = mapped_column(ForeignKey("accounting_documents.id"), index=True)
     nomenclature_id: Mapped[int] = mapped_column(ForeignKey("nomenclature.id"))
-    quantity: Mapped[float]
+    quantity: Mapped[Decimal] = mapped_column(Numeric(14, 3))
 
     document: Mapped["AccountingDocument"] = relationship(back_populates="lines")
     nomenclature: Mapped["Nomenclature"] = relationship()
@@ -82,4 +86,21 @@ class StockBalance(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     warehouse_id: Mapped[int] = mapped_column(ForeignKey("warehouses.id"))
     nomenclature_id: Mapped[int] = mapped_column(ForeignKey("nomenclature.id"))
-    quantity: Mapped[float] = mapped_column(default=0.0)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(14, 3), default=Decimal("0"))
+
+
+class WarehouseTransition(Base):
+    __tablename__ = "warehouse_document_transitions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("accounting_documents.id", ondelete="CASCADE"), index=True
+    )
+    from_status: Mapped[DocStatus] = mapped_column(Enum(DocStatus))
+    to_status: Mapped[DocStatus] = mapped_column(Enum(DocStatus))
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    timestamp: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    document: Mapped["AccountingDocument"] = relationship(back_populates="transitions")

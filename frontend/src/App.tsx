@@ -8,6 +8,22 @@ import { CalendarPage } from './pages/CalendarPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { KanbanPage } from './pages/KanbanPage';
 import { AuditLogPage } from './pages/AuditLogPage';
+import { useTicketStore } from './store/tickets';
+
+const endOfLocalDayIso = (date: string): string | undefined => (
+  date ? new Date(`${date}T23:59:59`).toISOString() : undefined
+);
+
+const isoToLocalDate = (value: string | null | undefined): string => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+};
 
 async function downloadFile(url: string, filename: string) {
   const resp = await api.get(url, { responseType: 'blob' });
@@ -104,7 +120,6 @@ const AuthPage: React.FC<{ onLogin: (token: string, user: any) => void }> = ({ o
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [patronymic, setPatronymic] = useState('');
-  const [role, setRole] = useState('dispatcher');
   const [consent, setConsent] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
@@ -117,7 +132,7 @@ const AuthPage: React.FC<{ onLogin: (token: string, user: any) => void }> = ({ o
       const url = isLogin ? '/login' : '/signup';
       const body: any = isLogin
         ? { email, password, remember_me: rememberMe }
-        : { email, password, name, patronymic, role, consent_given: consent };
+        : { email, password, name, patronymic, consent_given: consent };
 
       const { data } = await api.post(url, body);
       if (!isLogin && !data.token) {
@@ -149,15 +164,6 @@ const AuthPage: React.FC<{ onLogin: (token: string, user: any) => void }> = ({ o
         {!isLogin && (
           <>
             <input placeholder="ФИО" value={name} onChange={e => setName(e.target.value)} />
-            <select value={role} onChange={e => setRole(e.target.value)}>
-              <option value="dispatcher">{L.dispatcher}</option>
-              <option value="engineer">Инженер</option>
-              <option value="storekeeper">Кладовщик</option>
-              <option value="customer">Заказчик</option>
-              <option value="viewer">Наблюдатель</option>
-              <option value="metrologist">Метролог</option>
-              <option value="accountant">Бухгалтер</option>
-            </select>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer', marginBottom: 12, marginTop: 4 }}>
               <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--primary)' }} />
               Согласен на обработку персональных данных
@@ -223,7 +229,7 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
         customer_id: selected.customer_id,
         location_id: Number(locationId),
         priority,
-        resolution_deadline: resolutionDeadline ? new Date(resolutionDeadline + 'T23:59:59').toISOString() : undefined,
+        resolution_deadline: currentUser?.role === 'customer' ? undefined : endOfLocalDayIso(resolutionDeadline),
         assignee_id: assigneeId ? Number(assigneeId) : undefined,
         site_contact_name: siteContactName || undefined,
         site_contact_phone: siteContactPhone || undefined,
@@ -308,24 +314,28 @@ const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; 
               <option value="critical">Критический</option>
             </select>
           </div>
-          <div>
-            <label>Срок исполнения</label>
-            <input type="date" value={resolutionDeadline} onChange={e => setResolutionDeadline(e.target.value)} />
-          </div>
+          {currentUser?.role !== 'customer' && (
+            <div>
+              <label>Срок исполнения</label>
+              <input type="date" value={resolutionDeadline} onChange={e => setResolutionDeadline(e.target.value)} />
+            </div>
+          )}
           <div></div>
-          <div>
-            <label>Исполнитель</label>
-            {currentUser?.role === 'engineer' ? (
+          {currentUser?.role !== 'customer' && (
+            <div>
+              <label>Исполнитель</label>
+              {currentUser?.role === 'engineer' ? (
               <input value={[currentUser.name, currentUser.patronymic].filter(Boolean).join(' ')} disabled style={{ opacity: 0.7 }} />
-            ) : (
+              ) : (
               <select value={assigneeId} onChange={e => setAssigneeId(Number(e.target.value) || '')}>
                 <option value="">— Назначить позже —</option>
                 {assignables.map(u => (
                   <option key={u.id} value={u.id}>{[u.name, u.patronymic].filter(Boolean).join(' ')}</option>
                 ))}
               </select>
-            )}
-          </div>
+              )}
+            </div>
+          )}
           <div>
             <label>Контактное лицо на объекте</label>
             <input placeholder="ФИО" value={siteContactName} onChange={e => setSiteContactName(e.target.value)} />
@@ -351,7 +361,7 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
   const [body, setBody] = useState(ticket.body);
   const [locationId, setLocationId] = useState<number | ''>(ticket.location_id);
   const [priority, setPriority] = useState(ticket.priority);
-  const [resolutionDeadline, setResolutionDeadline] = useState(ticket.resolution_deadline ? ticket.resolution_deadline.substring(0, 10) : '');
+  const [resolutionDeadline, setResolutionDeadline] = useState(isoToLocalDate(ticket.resolution_deadline));
   const [assigneeId, setAssigneeId] = useState<number | ''>(ticket.assignee_id ?? '');
   const [siteContactName, setSiteContactName] = useState(ticket.site_contact_name || '');
   const [siteContactPhone, setSiteContactPhone] = useState(ticket.site_contact_phone || '');
@@ -387,7 +397,7 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
         customer_id: selected?.customer_id ?? ticket.customer_id,
         location_id: Number(locationId),
         priority,
-        resolution_deadline: resolutionDeadline ? new Date(resolutionDeadline + 'T23:59:59').toISOString() : null,
+        resolution_deadline: endOfLocalDayIso(resolutionDeadline) || null,
         assignee_id: assigneeId ? Number(assigneeId) : null,
         site_contact_name: siteContactName || null,
         site_contact_phone: siteContactPhone || null,
@@ -492,7 +502,7 @@ const TicketDetailModal: React.FC<{
   const [linkUrl, setLinkUrl] = useState('');
   const [linkTitle, setLinkTitle] = useState('');
   const [editingDeadline, setEditingDeadline] = useState(false);
-  const [deadlineValue, setDeadlineValue] = useState(ticket.resolution_deadline ? ticket.resolution_deadline.substring(0, 10) : '');
+  const [deadlineValue, setDeadlineValue] = useState(isoToLocalDate(ticket.resolution_deadline));
 
   const NS: Record<string, string> = { ASSIGNED: 'ACCEPTED', ACCEPTED: 'IN_PROGRESS', IN_PROGRESS: 'COMPLETED' };
   const SL: Record<string, string> = { ASSIGNED: 'Назначена', ACCEPTED: 'Принята', IN_PROGRESS: 'В работе', COMPLETED: 'Завершена' };
@@ -567,7 +577,7 @@ const TicketDetailModal: React.FC<{
 
   const saveDeadline = async () => {
     try {
-      await api.patch(`/tickets/${ticket.id}`, { resolution_deadline: deadlineValue ? deadlineValue + 'T23:59:59' : null });
+      await api.patch(`/tickets/${ticket.id}`, { resolution_deadline: endOfLocalDayIso(deadlineValue) || null });
       setEditingDeadline(false);
       if (onRefresh) onRefresh();
     } catch (e: any) {
@@ -768,7 +778,7 @@ const AddEmployeeModal: React.FC<{ onClose: () => void; onAdded: () => void }> =
     if (!email || !name || !password) { setError('Все поля обязательны'); return; }
     if (!consent) { setError('Требуется согласие на обработку персональных данных'); return; }
     try {
-      await api.post('/signup', { email, name, phone, patronymic, password, role, consent_given: true });
+      await api.post('/admin/users', { email, name, phone, patronymic, password, role, consent_given: true });
       onAdded();
     } catch (e: any) { setError(e.response?.data?.detail || 'Ошибка'); }
   };
@@ -892,7 +902,7 @@ const App: React.FC = () => {
       try {
         const user = JSON.parse(userStr);
         api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        setAuth({ token, user });
+        setAuth({ token, user: { ...user, id: user.user_id || user.id } });
       } catch {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
@@ -920,9 +930,10 @@ const App: React.FC = () => {
 
   const handleLogin = (token: string, user: any) => {
     api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    localStorage.setItem('user', JSON.stringify(user));
-    localStorage.setItem('currentUserId', String(user.user_id || user.id));
-    setAuth({ token, user });
+    const normalized = { ...user, id: user.user_id || user.id };
+    localStorage.setItem('user', JSON.stringify(normalized));
+    localStorage.setItem('currentUserId', String(normalized.id));
+    setAuth({ token, user: normalized });
   };
 
   const handleLogout = () => {
@@ -930,6 +941,16 @@ const App: React.FC = () => {
     localStorage.removeItem('user');
     localStorage.removeItem('currentUserId');
     delete api.defaults.headers.common.Authorization;
+    useTicketStore.setState({
+      tickets: [],
+      loading: false,
+      error: '',
+      total: 0,
+      hasMore: false,
+      lastFilters: {},
+      search: '',
+      colFilter: {},
+    });
     setAuth(null);
   };
 
@@ -1074,7 +1095,7 @@ const App: React.FC = () => {
 
         {page === 'tickets' && (
           <>
-            {(user.role === 'admin' || user.role === 'director' || user.role === 'dispatcher' || user.role === 'engineer') && (
+            {(user.role === 'admin' || user.role === 'director' || user.role === 'dispatcher' || user.role === 'engineer' || user.role === 'customer') && (
               <div style={{ marginBottom: 14 }}>
                 <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
                   + Создать заявку

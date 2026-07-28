@@ -8,7 +8,7 @@ class PersonalTask(Base):
     __tablename__ = "personal_tasks"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     title: Mapped[str] = mapped_column(String(500))
     description: Mapped[str] = mapped_column(String(2000), default="")
     column: Mapped[str] = mapped_column(String(20), default="todo")  # project, todo, in_progress, done

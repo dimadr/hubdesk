@@ -7,8 +7,8 @@ from datetime import datetime
 class Attachment(Base):
     __tablename__ = "attachments"
     id: Mapped[int] = mapped_column(primary_key=True)
-    ticket_id: Mapped[int | None] = mapped_column(ForeignKey("tickets.id"), nullable=True)
-    comment_id: Mapped[int | None] = mapped_column(ForeignKey("comments.id"), nullable=True)
+    ticket_id: Mapped[int | None] = mapped_column(ForeignKey("tickets.id"), nullable=True, index=True)
+    comment_id: Mapped[int | None] = mapped_column(ForeignKey("comments.id"), nullable=True, index=True)
     filename: Mapped[str] = mapped_column(String(255))
     path: Mapped[str] = mapped_column(String(500))
     content_type: Mapped[str] = mapped_column(String(100))

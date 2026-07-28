@@ -9,7 +9,7 @@ interface Stats {
 }
 
 interface CustomerData { id: number; name: string; type: string; locations_count: number; }
-interface UserInfo { id: number; email: string; name: string; phone?: string; patronymic?: string; role: string; status?: string; }
+interface UserInfo { id: number; email: string; name: string; phone?: string; patronymic?: string; role: string; status?: string; customer_id?: number | null; }
 interface PendingUser { id: number; email: string; name: string; role: string; status: string; consent_given: boolean; consent_date: string | null; }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -118,12 +118,20 @@ const DashboardTab: React.FC = () => {
 
 const UsersTab: React.FC = () => {
   const [users, setUsers] = useState<UserInfo[]>([]);
+  const [customers, setCustomers] = useState<CustomerData[]>([]);
   const [editId, setEditId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = () => {
-    api.get('/users/list')
-      .then(r => { setUsers(r.data); setLoading(false); })
+    Promise.all([
+      api.get('/users/list'),
+      api.get('/admin/customers'),
+    ])
+      .then(([usersResponse, customersResponse]) => {
+        setUsers(usersResponse.data);
+        setCustomers(customersResponse.data);
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
   };
 
@@ -162,6 +170,7 @@ const UsersTab: React.FC = () => {
       {editId && (
         <UserEditModal
           user={users.find(u => u.id === editId)!}
+          customers={customers}
           onClose={() => setEditId(null)}
           onSaved={() => { setEditId(null); load(); }}
         />
@@ -170,12 +179,13 @@ const UsersTab: React.FC = () => {
   );
 };
 
-const UserEditModal: React.FC<{ user: UserInfo; onClose: () => void; onSaved: () => void }> = ({ user, onClose, onSaved }) => {
+const UserEditModal: React.FC<{ user: UserInfo; customers: CustomerData[]; onClose: () => void; onSaved: () => void }> = ({ user, customers, onClose, onSaved }) => {
   const [name, setName] = useState('');
   const [patronymic, setPatronymic] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState('');
+  const [customerId, setCustomerId] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -187,6 +197,7 @@ const UserEditModal: React.FC<{ user: UserInfo; onClose: () => void; onSaved: ()
       setEmail(user.email);
       setPhone(user.phone || '');
       setRole(user.role);
+      setCustomerId(user.customer_id ? String(user.customer_id) : '');
       setPassword('');
       setError('');
     }
@@ -203,6 +214,9 @@ const UserEditModal: React.FC<{ user: UserInfo; onClose: () => void; onSaved: ()
       if (email.trim() !== user.email) body.email = email.trim();
       if (phone.trim() !== (user.phone || '')) body.phone = phone.trim();
       if (role !== user.role) body.role = role;
+      const originalCustomerId = user.customer_id || 0;
+      const nextCustomerId = customerId ? Number(customerId) : 0;
+      if (nextCustomerId !== originalCustomerId) body.customer_id = nextCustomerId;
       if (password) body.password = password;
 
       if (Object.keys(body).length === 0) { onClose(); return; }
@@ -231,6 +245,17 @@ const UserEditModal: React.FC<{ user: UserInfo; onClose: () => void; onSaved: ()
         <select value={role} onChange={e => setRole(e.target.value)}>
           {Object.entries(ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
+        {role === 'customer' && (
+          <>
+            <label>Заказчик</label>
+            <select value={customerId} onChange={e => setCustomerId(e.target.value)}>
+              <option value="">— Не привязан —</option>
+              {customers.map(customer => (
+                <option key={customer.id} value={customer.id}>{customer.name}</option>
+              ))}
+            </select>
+          </>
+        )}
         <label>Новый пароль (оставьте пустым, чтобы не менять)</label>
         <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" />
         <div className="modal-actions">

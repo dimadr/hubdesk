@@ -24,7 +24,7 @@ class ReplacementTransaction(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     type: Mapped[str] = mapped_column(String(20))  # incoming, outgoing, return
-    device_id: Mapped[int] = mapped_column(ForeignKey("replacement_devices.id"))
+    device_id: Mapped[int] = mapped_column(ForeignKey("replacement_devices.id"), index=True)
     quantity: Mapped[int] = mapped_column()
     taken_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     location_id: Mapped[int | None] = mapped_column(ForeignKey("asset_locations.id"), nullable=True)

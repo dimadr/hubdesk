@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional
 from src.models.ticket import TicketStatus, TicketPriority, TicketType
 
@@ -179,7 +180,7 @@ class EquipmentResponse(BaseModel):
 
 class DocumentLineCreate(BaseModel):
     nomenclature_id: int
-    quantity: float = Field(..., gt=0)
+    quantity: Decimal = Field(..., gt=0, max_digits=14, decimal_places=3)
 
 
 class DocLineResponse(BaseModel):

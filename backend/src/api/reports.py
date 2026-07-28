@@ -23,7 +23,10 @@ def check_access(user: User):
 
 
 def _parse_date(s: str) -> datetime:
-    dt = datetime.fromisoformat(s)
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        raise HTTPException(422, f"Некорректная дата: {s}")
     if dt.tzinfo is not None:
         dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
     return dt
@@ -49,6 +52,21 @@ def _date_filter(dt_from, dt_to):
     return or_(*parts)
 
 
+def _overdue_condition():
+    return or_(
+        and_(
+            Ticket.response_deadline.isnot(None),
+            Ticket.accepted_at.is_(None),
+            Ticket.response_deadline < func.now(),
+        ),
+        and_(
+            Ticket.resolution_deadline.isnot(None),
+            Ticket.status != TicketStatus.COMPLETED,
+            Ticket.resolution_deadline < func.now(),
+        ),
+    )
+
+
 async def ticket_query(db: AsyncSession, date_from: str | None, date_to: str | None):
     from sqlalchemy.orm import selectinload
     stmt = select(Ticket).options(
@@ -61,13 +79,13 @@ async def ticket_query(db: AsyncSession, date_from: str | None, date_to: str | N
     if date_from:
         try:
             dt_from = _parse_date(date_from)
-        except ValueError:
-            raise HTTPException(400, f"Некорректная дата: {date_from}")
+        except HTTPException:
+            raise
     if date_to:
         try:
             dt_to = _parse_date(date_to)
-        except ValueError:
-            raise HTTPException(400, f"Некорректная дата: {date_to}")
+        except HTTPException:
+            raise
     date_cond = _date_filter(dt_from, dt_to)
     if date_cond is not None:
         stmt = stmt.where(date_cond)
@@ -141,10 +159,7 @@ async def report_objects(
             func.count(Ticket.id).label("total"),
             func.sum(case((Ticket.status != TicketStatus.COMPLETED, 1), else_=0)).label("open"),
             func.sum(case((Ticket.status == TicketStatus.COMPLETED, 1), else_=0)).label("closed"),
-            func.sum(case((
-                and_(Ticket.status != TicketStatus.COMPLETED, Ticket.response_deadline < func.now()),
-                1
-            ), else_=0)).label("overdue"),
+            func.sum(case((_overdue_condition(), 1), else_=0)).label("overdue"),
             func.sum(case((
                 Ticket.status == TicketStatus.COMPLETED,
                 func.extract('epoch', Ticket.completed_at - Ticket.created_at) / 3600
@@ -161,6 +176,23 @@ async def report_objects(
         locs = (await db.execute(select(AssetLocation))).scalars().all()
         custs_q = await db.execute(select(Customer))
         custs = {c.id: c.name for c in custs_q.scalars().all()}
+
+        type_stmt = select(
+            Ticket.location_id,
+            literal_column("tickets.type::text").label("t"),
+            func.count(Ticket.id).label("cnt"),
+        )
+        if date_cond is not None:
+            type_stmt = type_stmt.where(date_cond)
+        type_stmt = type_stmt.group_by(
+            Ticket.location_id,
+            literal_column("tickets.type::text"),
+        )
+        type_rows = (await db.execute(type_stmt)).all()
+        types_by_location: dict[int, dict[str, int]] = {}
+        for location_id, ticket_type, count in type_rows:
+            key = str(ticket_type) if ticket_type is not None else "не указан"
+            types_by_location.setdefault(location_id, {})[key] = int(count)
 
         out = []
         for loc in locs:
@@ -179,20 +211,6 @@ async def report_objects(
                 total_h = 0
             avg_h = round(total_h / resolved, 1) if resolved else 0
 
-            # Get types for this location
-            type_filter = [Ticket.location_id == loc.id]
-            if date_cond is not None:
-                type_filter.append(date_cond)
-            type_q = select(
-                literal_column("tickets.type::text").label("t"),
-                func.count(Ticket.id).label("cnt"),
-            ).where(and_(*type_filter)).group_by(literal_column("tickets.type::text"))
-            type_res = await db.execute(type_q)
-            types = {}
-            for row in type_res.all():
-                key = str(row[0]) if row[0] is not None else 'не указан'
-                types[key] = int(row[1])
-
             out.append({
                 "location_id": loc.id,
                 "location_name": loc.name or "",
@@ -203,7 +221,7 @@ async def report_objects(
                 "closed": closed,
                 "overdue": overdue,
                 "avg_resolution_hours": avg_h,
-                "types": types,
+                "types": types_by_location.get(loc.id, {}),
             })
         return sorted(out, key=lambda x: x["total"], reverse=True)
     except Exception:
@@ -269,7 +287,16 @@ async def report_tickets(
         avg_h = (await db.execute(avg_q)).scalar()
         avg_hours = round(float(avg_h or 0), 1)
 
-        # SLA %
+        # SLA % among completed tickets that have a resolution deadline
+        eligible_q = select(func.count(Ticket.id)).where(
+            Ticket.status == TicketStatus.COMPLETED,
+            Ticket.completed_at.isnot(None),
+            Ticket.resolution_deadline.isnot(None),
+        )
+        if base:
+            eligible_q = eligible_q.where(*base)
+        eligible = int((await db.execute(eligible_q)).scalar() or 0)
+
         sla_q = select(func.count(Ticket.id)).where(
             Ticket.status == TicketStatus.COMPLETED,
             Ticket.completed_at.isnot(None),
@@ -279,7 +306,7 @@ async def report_tickets(
         if base:
             sla_q = sla_q.where(*base)
         on_time = int((await db.execute(sla_q)).scalar() or 0)
-        sla_pct = round(on_time / total * 100, 1) if total else 0
+        sla_pct = round(on_time / eligible * 100, 1) if eligible else 0
 
         return {
             "total": total,
@@ -318,10 +345,7 @@ async def report_engineers(
         func.count(Ticket.id).label("total"),
         func.sum(case((Ticket.status == TicketStatus.COMPLETED, 1), else_=0)).label("completed"),
         func.sum(case((Ticket.status != TicketStatus.COMPLETED, 1), else_=0)).label("in_progress"),
-        func.sum(case((
-            and_(Ticket.status != TicketStatus.COMPLETED, Ticket.response_deadline < func.now()),
-            1
-        ), else_=0)).label("overdue"),
+        func.sum(case((_overdue_condition(), 1), else_=0)).label("overdue"),
         func.avg(case((
             Ticket.status == TicketStatus.COMPLETED,
             func.extract('epoch', Ticket.completed_at - Ticket.created_at) / 3600

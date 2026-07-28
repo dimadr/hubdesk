@@ -1,7 +1,10 @@
+from decimal import Decimal
+
 from src.core.fsm import BaseFSM
 from src.core.fsm.mixins import AuditMixin
 from src.models.warehouse import (
-    AccountingDocument, DocStatus, DocType, StockBalance,
+    AccountingDocument, DocStatus, DocType, NomenclatureType, StockBalance,
+    WarehouseTransition,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
@@ -30,6 +33,12 @@ class WarehouseDocFSM(BaseFSM, AuditMixin):
     async def log_transition(
         self, entity: AccountingDocument, from_status: str, to_status: str, user_id: int, context: dict
     ) -> None:
+        self.session.add(WarehouseTransition(
+            document_id=entity.id,
+            from_status=DocStatus(from_status),
+            to_status=DocStatus(to_status),
+            user_id=user_id,
+        ))
         logger.info(
             "Складской FSM: документ #%d %s → %s (user=%s)",
             entity.id, from_status, to_status, user_id
@@ -37,6 +46,11 @@ class WarehouseDocFSM(BaseFSM, AuditMixin):
 
     async def post_account(self, document: AccountingDocument) -> None:
         for line in document.lines:
+            if line.nomenclature.type not in {
+                NomenclatureType.material,
+                NomenclatureType.product,
+            }:
+                continue
             await self._apply_stock_change(
                 document.doc_type,
                 document.source_warehouse_id,
@@ -47,7 +61,7 @@ class WarehouseDocFSM(BaseFSM, AuditMixin):
 
     async def _apply_stock_change(
         self, doc_type: DocType, source_id: int | None, target_id: int | None,
-        nom_id: int, qty: float
+        nom_id: int, qty: Decimal
     ):
         if doc_type == DocType.INFLOW and target_id:
             await self._delta(target_id, nom_id, +qty)
@@ -57,7 +71,10 @@ class WarehouseDocFSM(BaseFSM, AuditMixin):
             await self._delta(source_id, nom_id, -qty, check_negative=True)
             await self._delta(target_id, nom_id, +qty)
 
-    async def _delta(self, warehouse_id: int, nom_id: int, delta: float, check_negative: bool = False):
+    async def _delta(
+        self, warehouse_id: int, nom_id: int, delta: Decimal,
+        check_negative: bool = False,
+    ):
         await self.session.execute(
             text("""
                 INSERT INTO stock_balances (warehouse_id, nomenclature_id, quantity)
@@ -72,7 +89,7 @@ class WarehouseDocFSM(BaseFSM, AuditMixin):
         ).with_for_update()
         result = await self.session.execute(stmt)
         balance = result.scalar_one()
-        if check_negative and balance.quantity + delta < 0:
+        if check_negative and balance.quantity + delta < Decimal("0"):
             raise ValueError(
                 f"Недостаточно остатка на складе {warehouse_id}: "
                 f"требуется {abs(delta)}, доступно {balance.quantity}"

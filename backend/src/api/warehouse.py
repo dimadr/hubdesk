@@ -341,6 +341,16 @@ async def delete_warehouse(warehouse_id: int, user=Depends(get_current_user), db
     bal = (await db.execute(sa_select(func.sum(StockBalance.quantity)).where(StockBalance.warehouse_id == warehouse_id))).scalar()
     if bal and bal > 0:
         raise HTTPException(400, f"Нельзя удалить склад с остатками (сумма: {bal}). Обнулите остатки.")
+    balance_rows = (await db.execute(
+        sa_select(func.count()).select_from(StockBalance).where(
+            StockBalance.warehouse_id == warehouse_id
+        )
+    )).scalar() or 0
+    if balance_rows > 0:
+        raise HTTPException(
+            409,
+            f"Нельзя удалить склад с записями остатков ({balance_rows}). Архивируйте склад.",
+        )
     doc_count = (await db.execute(
         sa_select(func.count()).select_from(AccountingDocument).where(
             (AccountingDocument.source_warehouse_id == warehouse_id) |

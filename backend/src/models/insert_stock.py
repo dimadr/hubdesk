@@ -1,4 +1,4 @@
-from sqlalchemy import String, ForeignKey, Integer, DateTime, func
+from sqlalchemy import String, ForeignKey, Integer, DateTime, Index, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from ..database import Base
 from datetime import datetime
@@ -18,13 +18,21 @@ class InsertProduct(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
+    __table_args__ = (
+        Index(
+            "uq_insert_products_name_normalized",
+            func.lower(func.trim(name)),
+            unique=True,
+        ),
+    )
+
 
 class InsertTransaction(Base):
     __tablename__ = "insert_transactions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     type: Mapped[str] = mapped_column(String(20))  # incoming, outgoing, return
-    product_id: Mapped[int] = mapped_column(ForeignKey("insert_products.id"))
+    product_id: Mapped[int] = mapped_column(ForeignKey("insert_products.id"), index=True)
     quantity: Mapped[int] = mapped_column()
     taken_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     location_id: Mapped[int | None] = mapped_column(ForeignKey("asset_locations.id"), nullable=True)

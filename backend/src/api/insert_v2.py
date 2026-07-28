@@ -4,6 +4,7 @@ from typing import List, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete as sa_delete, func as sa_func, case, cast, Integer
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -151,7 +152,9 @@ async def create_product(data: ProductCreate, user: User = Depends(get_current_u
     if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper, UserRole.metrologist):
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     existing = await db.execute(
-        select(InsertProduct).where(sa_func.lower(InsertProduct.name) == data.name.strip().lower())
+        select(InsertProduct).where(
+            sa_func.lower(sa_func.trim(InsertProduct.name)) == data.name.strip().lower()
+        )
     )
     dup = existing.scalar_one_or_none()
     if dup:
@@ -196,7 +199,7 @@ async def update_product(product_id: int, data: ProductUpdate, user: User = Depe
         from sqlalchemy import func as sa_func
         dup = await db.execute(
             select(InsertProduct).where(
-                sa_func.lower(InsertProduct.name) == update_data["name"].lower(),
+                sa_func.lower(sa_func.trim(InsertProduct.name)) == update_data["name"].lower(),
                 InsertProduct.id != product_id,
             )
         )
@@ -206,9 +209,14 @@ async def update_product(product_id: int, data: ProductUpdate, user: User = Depe
     for field, value in update_data.items():
         setattr(p, field, value)
 
-    current_bal = await _get_product_balance(db, p.id)
-    await log_audit(db, user, "product_updated", "insert_product", p.id, f"Обновлён продукт «{p.name}»")
-    await db.commit()
+    try:
+        await db.flush()
+        current_bal = await _get_product_balance(db, p.id)
+        await log_audit(db, user, "product_updated", "insert_product", p.id, f"Обновлён продукт «{p.name}»")
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Продукт с таким названием уже существует")
 
     return ProductResponse(
         id=p.id, name=p.name, diameter_inner=p.diameter_inner, diameter_outer=p.diameter_outer,

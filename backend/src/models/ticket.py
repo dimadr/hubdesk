@@ -35,6 +35,9 @@ class Ticket(Base):
         Index("ix_tickets_assignee", "assignee_id"),
         Index("ix_tickets_customer", "customer_id"),
         Index("ix_tickets_archived", "archived_at"),
+        Index("ix_tickets_location_id", "location_id"),
+        Index("ix_tickets_equipment_id", "equipment_id"),
+        Index("ix_tickets_group_id", "group_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -86,7 +89,7 @@ class Ticket(Base):
 class TicketTransition(Base):
     __tablename__ = "ticket_transitions"
     id: Mapped[int] = mapped_column(primary_key=True)
-    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id"))
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id"), index=True)
     from_status: Mapped[TicketStatus] = mapped_column(Enum(TicketStatus))
     to_status: Mapped[TicketStatus] = mapped_column(Enum(TicketStatus))
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))

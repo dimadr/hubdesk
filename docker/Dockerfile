@@ -10,7 +10,10 @@ RUN npm run build
 FROM python:3.12-slim
 WORKDIR /app
 COPY backend/pyproject.toml backend/requirements.lock* ./
-RUN if [ -f requirements.lock ]; then pip install --no-cache-dir -r requirements.lock; fi
+RUN if [ -f requirements.lock ]; then \
+      grep -v '^-e ' requirements.lock > /tmp/requirements.lock && \
+      pip install --no-cache-dir -r /tmp/requirements.lock; \
+    fi
 COPY backend/ .
 RUN pip install --no-cache-dir --no-deps -e .
 COPY --from=frontend-build /build/frontend/dist /frontend/dist

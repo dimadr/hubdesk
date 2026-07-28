@@ -2,6 +2,8 @@ from src.core.fsm import BaseFSM
 from src.core.fsm.mixins import AuditMixin
 from src.models.ticket import Ticket, TicketTransition, TicketStatus
 from src.models.checklist import ChecklistField, FieldType
+from src.models.attachment import Attachment
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -40,6 +42,8 @@ class TicketFSM(BaseFSM, AuditMixin):
         for checklist in ticket.checklists:
             for field in checklist.fields:
                 if field.is_mandatory:
+                    if field.field_type == FieldType.photo:
+                        continue
                     val = (field.value or "").strip()
                     if not val or val.lower() in ("false", "нет", "0", "-"):
                         return False
@@ -47,12 +51,16 @@ class TicketFSM(BaseFSM, AuditMixin):
 
     async def _guard_mandatory_photos(self, ticket: Ticket, ctx: dict) -> bool:
         photo_fields_count = 0
-        photo_fields_filled = 0
         for checklist in ticket.checklists:
             for field in checklist.fields:
                 if field.field_type == FieldType.photo and field.is_mandatory:
                     photo_fields_count += 1
-                    val = (field.value or "").strip()
-                    if val and val.lower() not in ("false", "нет", "0", "-"):
-                        photo_fields_filled += 1
-        return photo_fields_filled >= photo_fields_count
+        if photo_fields_count == 0:
+            return True
+        result = await self.session.execute(
+            select(func.count(Attachment.id)).where(
+                Attachment.ticket_id == ticket.id,
+                Attachment.content_type.ilike("image/%"),
+            )
+        )
+        return int(result.scalar() or 0) >= photo_fields_count

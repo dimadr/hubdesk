@@ -7,7 +7,7 @@ from .attachment import Attachment
 from .checklist import Checklist, ChecklistField, FieldType
 from .warehouse import (
     Warehouse, Nomenclature, AccountingDocument,
-    DocumentLine, StockBalance,
+    DocumentLine, StockBalance, WarehouseTransition,
     WarehouseType, NomenclatureType, DocType, DocStatus,
 )
 from .views import SavedView

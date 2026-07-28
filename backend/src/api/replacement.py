@@ -31,9 +31,9 @@ def _log(action: str, detail: str, user: User):
 class DeviceCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     serial_number: str = Field("", max_length=100)
-    verification_date: str | None = Field(None, max_length=20)
+    verification_date: date | None = None
     verification_interval_months: int | None = None
-    verification_expiry: str | None = Field(None, max_length=20)
+    verification_expiry: date | None = None
     passport_scan: str | None = Field(None, max_length=500)
     accuracy_class: str | None = Field(None, max_length=50)
     mounting: str | None = Field(None, max_length=50)
@@ -42,9 +42,9 @@ class DeviceCreate(BaseModel):
 class DeviceUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     serial_number: str | None = Field(None, max_length=100)
-    verification_date: str | None = Field(None, max_length=20)
+    verification_date: date | None = None
     verification_interval_months: int | None = None
-    verification_expiry: str | None = Field(None, max_length=20)
+    verification_expiry: date | None = None
     passport_scan: str | None = Field(None, max_length=500)
     accuracy_class: str | None = Field(None, max_length=50)
     mounting: str | None = Field(None, max_length=50)
@@ -158,16 +158,11 @@ async def list_devices(user: User = Depends(get_current_user), db: AsyncSession 
 async def create_device(data: DeviceCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
         raise HTTPException(403, "Недостаточно прав")
-    try:
-        vdate = date.fromisoformat(data.verification_date) if data.verification_date else None
-        vexpiry = date.fromisoformat(data.verification_expiry) if data.verification_expiry else None
-    except ValueError:
-        raise HTTPException(422, "Неверный формат даты (ожидается YYYY-MM-DD)")
     d = ReplacementDevice(
         name=data.name.strip(), serial_number=data.serial_number,
-        verification_date=vdate,
+        verification_date=data.verification_date,
         verification_interval_months=data.verification_interval_months,
-        verification_expiry=vexpiry,
+        verification_expiry=data.verification_expiry,
         passport_scan=data.passport_scan,
         accuracy_class=data.accuracy_class,
         mounting=data.mounting,
@@ -190,8 +185,6 @@ async def update_device(device_id: int, data: DeviceUpdate, user: User = Depends
     if "name" in update_data and update_data["name"]:
         update_data["name"] = update_data["name"].strip()
     for field, value in update_data.items():
-        if field in ("verification_date", "verification_expiry") and isinstance(value, str) and value:
-            value = date.fromisoformat(value)
         setattr(d, field, value)
     await db.commit()
     balance = await _get_device_balance(db, d.id)

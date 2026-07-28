@@ -16,6 +16,13 @@ class AttachmentService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
+    @staticmethod
+    def remove_stored_file(path: str) -> None:
+        real_path = os.path.realpath(path)
+        uploads_real = os.path.realpath(UPLOAD_DIR)
+        if real_path.startswith(uploads_real + os.sep) and os.path.isfile(real_path):
+            os.remove(real_path)
+
     async def upload(
         self,
         file: UploadFile,
@@ -28,7 +35,7 @@ class AttachmentService:
             ticket = await self.session.get(Ticket, ticket_id)
             if not ticket:
                 raise HTTPException(404, "Заявка не найдена")
-            if not await RoleChecker.can_view_ticket_async(user, ticket, self.session):
+            if not await RoleChecker.can_modify_ticket_async(user, ticket, self.session):
                 raise HTTPException(403, "Нет доступа к заявке")
 
         is_internal = False
@@ -42,7 +49,7 @@ class AttachmentService:
                 ticket = await self.session.get(Ticket, comment.ticket_id)
                 if not ticket:
                     raise HTTPException(404, "Заявка не найдена")
-                if not await RoleChecker.can_view_ticket_async(user, ticket, self.session):
+                if not await RoleChecker.can_modify_ticket_async(user, ticket, self.session):
                     raise HTTPException(403, "Нет доступа к заявке")
                 if ticket_id and ticket_id != comment.ticket_id:
                     raise HTTPException(400, "ticket_id не совпадает с comment_id")

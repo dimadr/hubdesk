@@ -15,7 +15,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from src.api.router import api_router
 from src.config import settings
@@ -60,8 +60,8 @@ async def mail_worker_loop():
                 cfg = (await session.execute(select(MailboxConfig).limit(1))).scalar_one_or_none()
                 if cfg and cfg.check_interval_min:
                     interval = max(60, cfg.check_interval_min * 60)
-        except:
-            pass
+        except Exception:
+            logger.warning("Не удалось прочитать интервал почтового воркера", exc_info=True)
         await asyncio.sleep(interval)
 
 
@@ -83,6 +83,9 @@ async def lifespan(app: FastAPI):
             "ALTER TYPE tickettype ADD VALUE IF NOT EXISTS 'verification'",
             "ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'director'",
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id)",
+            "CREATE INDEX IF NOT EXISTS ix_users_customer_id ON users(customer_id)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_insert_products_name_normalized ON insert_products(lower(trim(name)))",
             "ALTER TABLE replacement_devices ADD COLUMN IF NOT EXISTS serial_number VARCHAR(100) DEFAULT ''",
             "ALTER TABLE replacement_devices ADD COLUMN IF NOT EXISTS accuracy_class VARCHAR(50)",
             "ALTER TABLE replacement_devices ADD COLUMN IF NOT EXISTS mounting VARCHAR(50)",
@@ -319,7 +322,11 @@ if os.path.exists(FRONTEND_DIR):
                 if user.status != UserStatus.active:
                     return JSONResponse(status_code=403, content={"detail": "User account is not active"})
 
-        return FileResponse(real_path)
+        return FileResponse(
+            real_path,
+            filename=att.filename if att else os.path.basename(real_path),
+            headers={"X-Content-Type-Options": "nosniff"},
+        )
 
     @app.get("/")
     async def root():

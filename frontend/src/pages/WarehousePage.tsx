@@ -494,9 +494,6 @@ const ReplacementTab: React.FC<{ canWrite: boolean }> = ({ canWrite }) => {
   const delDevice = async (id: number) => { if (!confirm('Удалить прибор и все его транзакции?')) return; if (prompt('Введите УДАЛИТЬ для подтверждения:') !== 'УДАЛИТЬ') return; try { await api.delete(`/replacement/devices/${id}`); load(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка удаления'); } };
   const delTx = async (id: number) => { if (!confirm('Удалить транзакцию?')) return; if (prompt('Введите УДАЛИТЬ для подтверждения:') !== 'УДАЛИТЬ') return; try { await api.delete(`/replacement/transactions/${id}`); load(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка удаления'); } };
 
-  if (loading) return <div className="loading">Загрузка...</div>;
-  if (loadError) return <div style={{ padding: 16, color: 'var(--danger)' }}>{loadError}</div>;
-
   const txLabels: Record<string, string> = { incoming: 'Приход', outgoing: 'Выдача', return: 'Возврат' };
   const txColors: Record<string, string> = { incoming: 'var(--success)', outgoing: 'var(--warning)', return: 'var(--info)' };
   const deviceMap = useMemo(() => {
@@ -504,6 +501,9 @@ const ReplacementTab: React.FC<{ canWrite: boolean }> = ({ canWrite }) => {
     devices.forEach(d => { m[d.id] = d; });
     return m;
   }, [devices]);
+
+  if (loading) return <div className="loading">Загрузка...</div>;
+  if (loadError) return <div style={{ padding: 16, color: 'var(--danger)' }}>{loadError}</div>;
 
   return (
     <div>
@@ -881,9 +881,6 @@ const InsertTab: React.FC<{ canWrite: boolean }> = ({ canWrite }) => {
   const delProduct = async (id: number) => { if (!confirm('Удалить продукт и все его транзакции?')) return; if (prompt('Введите УДАЛИТЬ для подтверждения:') !== 'УДАЛИТЬ') return; try { await api.delete(`/insert/products/${id}`); load(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка удаления'); } };
   const delTx = async (id: number) => { if (!confirm('Удалить транзакцию?')) return; if (prompt('Введите УДАЛИТЬ для подтверждения:') !== 'УДАЛИТЬ') return; try { await api.delete(`/insert/transactions/${id}`); load(); } catch (e: any) { alert(e.response?.data?.detail || 'Ошибка удаления'); } };
 
-  if (loading) return <div className="loading">Загрузка...</div>;
-  if (loadError) return <div style={{ padding: 16, color: 'var(--danger)' }}>{loadError}</div>;
-
   const txLabels: Record<string, string> = { incoming: 'Приход', outgoing: 'Выдача', return: 'Возврат' };
   const txColors: Record<string, string> = { incoming: 'var(--success)', outgoing: 'var(--warning)', return: 'var(--info)' };
   const productMap = useMemo(() => {
@@ -891,6 +888,9 @@ const InsertTab: React.FC<{ canWrite: boolean }> = ({ canWrite }) => {
     products.forEach(p => { m[p.id] = p; });
     return m;
   }, [products]);
+
+  if (loading) return <div className="loading">Загрузка...</div>;
+  if (loadError) return <div style={{ padding: 16, color: 'var(--danger)' }}>{loadError}</div>;
 
   return (
     <div>

@@ -4,7 +4,7 @@ import { useTicketStore } from '../../store/tickets';
 
 export const SavedViews: React.FC = () => {
   const [views, setViews] = useState<SavedViewResponse[]>([]);
-  const { setViewType, setActiveTab, setSearch, setColFilter, fetchTickets, setLastFilters } = useTicketStore();
+  const { setViewType, setActiveTab, setSearch, setColFilter, setLastFilters } = useTicketStore();
 
   useEffect(() => {
     api.get('/views').then(({ data }) => setViews(data)).catch(() => {});
@@ -26,12 +26,21 @@ export const SavedViews: React.FC = () => {
     if (f.priority) colF.priority = f.priority;
     setColFilter(colF);
     const filters = { ...f };
-    if (view.sort_by && view.sort_dir) {
-      filters.sort_by = view.sort_by;
-      filters.sort_dir = view.sort_dir;
-    }
-    setLastFilters(filters);
-    fetchTickets(filters);
+      if (view.sort_by && view.sort_dir) {
+        filters.sort_by = view.sort_by;
+        filters.sort_dir = view.sort_dir;
+      }
+      const automaticFilters: Record<string, any> = {};
+      if (f.status) automaticFilters.status = f.status;
+      else if (f.archived) automaticFilters.archived = true;
+      else if (f.overdue) automaticFilters.overdue = true;
+      else automaticFilters.archived = false;
+      if (typeof f.q === 'string' && f.q.trim()) automaticFilters.q = f.q.trim();
+      if (f.priority) automaticFilters.priority = f.priority;
+      setLastFilters(filters);
+      window.dispatchEvent(new CustomEvent('ticket-saved-view-apply', {
+        detail: { filters, automaticFilters },
+      }));
   };
 
   return (

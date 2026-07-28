@@ -30,7 +30,7 @@ def _check_login_rate_limit(ip: str) -> None:
 
 from src.database import get_db
 from src.models.user import User, UserRole, UserStatus, Group
-from src.models.equipment import AssetLocation
+from src.models.equipment import AssetLocation, Equipment
 from src.models.customer import Customer
 from src.models.ticket import Ticket
 from src.core.deps import create_token, get_current_user
@@ -76,7 +76,7 @@ class SignupRequest(BaseModel):
     patronymic: str = ""
     position: str = ""
     password: str = Field(..., min_length=12)
-    role: str = "dispatcher"
+    role: str = "viewer"
     consent_given: bool = False
 
 
@@ -183,17 +183,11 @@ class GroupResponse(BaseModel):
 async def signup(data: SignupRequest, db: AsyncSession = Depends(get_db)):
     if not data.consent_given:
         raise HTTPException(400, "Требуется согласие на обработку персональных данных")
-    if data.role == "admin":
-        raise HTTPException(400, "Роль администратора назначается только другим администратором")
-
     existing = await db.execute(select(User).where(User.email == data.email))
     if existing.scalar_one_or_none():
         raise HTTPException(400, "Email уже зарегистрирован")
 
-    if data.role not in UserRole._value2member_map_:
-        raise HTTPException(400, "Неизвестная роль")
-
-    role_enum = UserRole(data.role)
+    role_enum = UserRole.viewer
     hashed_password = await run_in_threadpool(bcrypt.hash, data.password)
 
     user = User(
@@ -214,7 +208,7 @@ async def signup(data: SignupRequest, db: AsyncSession = Depends(get_db)):
         await db.flush()
         await log_audit(
             db, None, "user_signup_requested", "user", user.id,
-            f"Заявка на регистрацию: {user.name} ({user.email}), роль: {data.role}. Ожидает утверждения."
+            f"Заявка на регистрацию: {user.name} ({user.email}), роль: {role_enum.value}. Ожидает утверждения."
         )
         await db.commit()
     except IntegrityError:
@@ -317,6 +311,13 @@ async def create_location(
 ):
     if user.role not in (UserRole.admin, UserRole.director, UserRole.dispatcher, UserRole.accountant, UserRole.engineer):
         raise HTTPException(403, "Недостаточно прав")
+    can_manage_customer = user.role in (UserRole.admin, UserRole.director, UserRole.dispatcher)
+    if user.role == UserRole.engineer:
+        if data.assigned_engineer_id not in (None, user.id):
+            raise HTTPException(403, "Инженер может назначить на объект только себя")
+        data.assigned_engineer_id = user.id
+    elif data.assigned_engineer_id and not can_manage_customer:
+        raise HTTPException(403, "Недостаточно прав для назначения инженера")
     if data.assigned_engineer_id:
         eng = await db.get(User, data.assigned_engineer_id)
         if not eng or eng.role != UserRole.engineer:
@@ -326,6 +327,8 @@ async def create_location(
         if not cust:
             raise HTTPException(400, "Клиент не найден")
     elif data.customer_name:
+        if not can_manage_customer:
+            raise HTTPException(403, "Создавать клиентов может только диспетчер, директор или администратор")
         cust = Customer(name=data.customer_name.strip(), type="company")
         db.add(cust)
         await db.flush()
@@ -404,6 +407,10 @@ async def update_location(
 
     update_data = data.model_dump(exclude_unset=True)
     contacts_data = update_data.pop('contacts_list', None)
+    if user.role in (UserRole.engineer, UserRole.accountant):
+        protected_fields = {"customer_id", "assigned_engineer_id"} & update_data.keys()
+        if protected_fields:
+            raise HTTPException(403, "Недостаточно прав для смены клиента или назначенного инженера")
 
     if "assigned_engineer_id" in update_data and update_data["assigned_engineer_id"]:
         eng = await db.get(User, update_data["assigned_engineer_id"])
@@ -498,6 +505,17 @@ async def delete_location(location_id: int, user=Depends(get_current_user), db: 
             409,
             "Нельзя удалить объект со складскими движениями "
             f"(вставки: {insert_count}, подменный фонд: {replacement_count})",
+        )
+
+    equipment_count = (await db.execute(
+        select(func.count()).select_from(Equipment).where(
+            Equipment.location_id == location_id
+        )
+    )).scalar() or 0
+    if equipment_count:
+        raise HTTPException(
+            409,
+            f"Нельзя удалить объект с оборудованием ({equipment_count})",
         )
 
     await db.delete(loc)

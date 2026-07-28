@@ -125,8 +125,7 @@ class TicketService:
                 400, f"У вашей роли нет прав для перевода заявки в статус {target}"
             )
 
-        bypass = (user.role == UserRole.admin)
-        await self.fsm.transition(ticket, target, user.id, bypass_guards=bypass)
+        await self.fsm.transition(ticket, target, user.id)
 
         now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
         if target == "ACCEPTED" and ticket.accepted_at is None:
@@ -134,6 +133,9 @@ class TicketService:
         elif target == "COMPLETED":
             ticket.completed_at = now_utc
             ticket.archived_at = now_utc
+        elif from_status == "COMPLETED":
+            ticket.completed_at = None
+            ticket.archived_at = None
 
         await self.session.flush()
         await log_audit(

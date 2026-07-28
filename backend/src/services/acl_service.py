@@ -43,6 +43,14 @@ class RoleChecker:
         return False
 
     @staticmethod
+    async def can_modify_ticket_async(user: User, ticket: Ticket, db: AsyncSession) -> bool:
+        if user.role in (UserRole.admin, UserRole.director, UserRole.dispatcher):
+            return True
+        if user.role == UserRole.engineer:
+            return ticket.assignee_id == user.id
+        return False
+
+    @staticmethod
     def can_change_status(user: User, ticket: Ticket, target: str) -> bool:
         if user.role in (UserRole.admin, UserRole.director):
             return True
