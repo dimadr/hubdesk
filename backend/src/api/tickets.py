@@ -260,15 +260,15 @@ def create_ticket_router() -> APIRouter:
         for field, value in requested_updates.items():
             if field in ('status', 'assigned_at', 'completed_at'):
                 continue
+            if user.role == UserRole.engineer:
+                if field not in ('subject', 'source_description', 'body', 'site_contact_name', 'site_contact_phone'):
+                    continue
             if field == 'assignee_id' and value is not None:
                 if user.role not in (UserRole.admin, UserRole.director, UserRole.dispatcher):
                     raise HTTPException(403, "Только диспетчер или администратор может назначать исполнителя")
                 eng = await db.get(User, value)
                 if not eng or eng.role != UserRole.engineer:
                     raise HTTPException(400, "Исполнитель должен иметь роль engineer")
-            if user.role == UserRole.engineer:
-                if field not in ('subject', 'source_description', 'body', 'site_contact_name', 'site_contact_phone'):
-                    continue
             if isinstance(value, datetime):
                 if value.tzinfo is not None:
                     value = value.astimezone(timezone.utc).replace(tzinfo=None)
