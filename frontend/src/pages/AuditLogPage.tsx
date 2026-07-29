@@ -16,6 +16,7 @@ interface AuditLog {
 
 const ACTION_LABELS: Record<string, string> = {
   ticket_created: 'Заявка создана',
+  ticket_updated: 'Заявка изменена',
   ticket_status_changed: 'Смена статуса',
   ticket_assigned: 'Назначение инженера',
   user_updated: 'Пользователь изменён',

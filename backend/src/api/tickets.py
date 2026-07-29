@@ -257,11 +257,12 @@ def create_ticket_router() -> APIRouter:
             raise HTTPException(404)
         requested_updates = data.model_dump(exclude_unset=True)
         changed_fields: list[str] = []
+        deadline_change: tuple[datetime | None, datetime | None] | None = None
         for field, value in requested_updates.items():
             if field in ('status', 'assigned_at', 'completed_at'):
                 continue
             if user.role == UserRole.engineer:
-                if field not in ('subject', 'source_description', 'body', 'site_contact_name', 'site_contact_phone'):
+                if field not in ('subject', 'source_description', 'body', 'site_contact_name', 'site_contact_phone', 'resolution_deadline'):
                     continue
             if field == 'assignee_id' and value is not None:
                 if user.role not in (UserRole.admin, UserRole.director, UserRole.dispatcher):
@@ -273,6 +274,8 @@ def create_ticket_router() -> APIRouter:
                 if value.tzinfo is not None:
                     value = value.astimezone(timezone.utc).replace(tzinfo=None)
             if getattr(ticket, field) != value:
+                if field == 'resolution_deadline':
+                    deadline_change = (getattr(ticket, field), value)
                 setattr(ticket, field, value)
                 changed_fields.append(field)
         update_fields = set(requested_updates.keys())
@@ -296,13 +299,18 @@ def create_ticket_router() -> APIRouter:
             if eq.location_id != ticket.location_id:
                 raise HTTPException(400, "Оборудование не принадлежит указанному объекту")
         if changed_fields:
+            detail = f"Изменена заявка №{ticket.number}; поля: {', '.join(sorted(changed_fields))}"
+            if deadline_change:
+                old_s = deadline_change[0].strftime('%d.%m.%Y %H:%M') if deadline_change[0] else '—'
+                new_s = deadline_change[1].strftime('%d.%m.%Y %H:%M') if deadline_change[1] else '—'
+                detail += f"; срок решения: {old_s} → {new_s}"
             await log_audit(
                 db,
                 user,
                 "ticket_updated",
                 "ticket",
                 ticket.id,
-                f"Изменена заявка №{ticket.number}; поля: {', '.join(sorted(changed_fields))}",
+                detail,
             )
         await db.commit()
         # Отправка email инженеру при смене исполнителя
