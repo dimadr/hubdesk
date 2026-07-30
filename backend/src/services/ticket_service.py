@@ -24,7 +24,15 @@ class TicketService:
         self.session = session
         self.fsm = TicketFSM(session)
 
+    @staticmethod
+    def _normalize_create_data(data: dict, user: User | None) -> dict:
+        normalized = dict(data)
+        if user and user.role == UserRole.engineer:
+            normalized["assignee_id"] = user.id
+        return normalized
+
     async def create(self, data: dict, user: User | None = None) -> Ticket:
+        data = self._normalize_create_data(data, user)
         now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
 
         location = await self.session.get(AssetLocation, data["location_id"])

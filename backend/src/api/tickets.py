@@ -199,9 +199,7 @@ def create_ticket_router() -> APIRouter:
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
-        if user.role == UserRole.engineer:
-            data.assignee_id = user.id
-        elif user.role == UserRole.customer:
+        if user.role == UserRole.customer:
             if user.customer_id is None:
                 raise HTTPException(403, "Пользователь не привязан к заказчику")
             data.customer_id = user.customer_id
@@ -209,7 +207,9 @@ def create_ticket_router() -> APIRouter:
             data.group_id = None
             data.is_internal = False
             data.resolution_deadline = None
-        elif user.role not in (UserRole.admin, UserRole.director, UserRole.dispatcher):
+        elif user.role not in (
+            UserRole.admin, UserRole.director, UserRole.dispatcher, UserRole.engineer
+        ):
             raise HTTPException(403, "Только диспетчер, администратор или инженер может создавать заявки")
         svc = TicketService(db)
         ticket = await svc.create(data.model_dump(), user)

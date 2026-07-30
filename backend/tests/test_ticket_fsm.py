@@ -142,6 +142,19 @@ def test_acl_admin_can_change_any_status():
     assert RoleChecker.can_change_status(u, t, "COMPLETED") is True
 
 
+def test_engineer_create_overrides_client_assignee():
+    from src.models.user import UserRole
+    from src.services.ticket_service import TicketService
+
+    user = MagicMock(id=7, role=UserRole.engineer)
+    normalized = TicketService._normalize_create_data(
+        {"subject": "Test", "assignee_id": 99},
+        user,
+    )
+
+    assert normalized["assignee_id"] == 7
+
+
 @pytest.mark.asyncio
 async def test_viewer_cannot_modify_ticket():
     from src.models.user import UserRole

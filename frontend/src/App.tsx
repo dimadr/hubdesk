@@ -179,14 +179,20 @@ const AuthPage: React.FC<{ onLogin: (token: string, user: any) => void }> = ({ o
   );
 };
 
-const CreateTicketModal: React.FC<{ onClose: () => void; onCreated: () => void; users: UserInfo[]; currentUser?: UserInfo }> = ({ onClose, onCreated, users, currentUser }) => {
+const CreateTicketModal: React.FC<{
+  onClose: () => void;
+  onCreated: () => void;
+  users: UserInfo[];
+  currentUser?: UserInfo;
+  initialResolutionDeadline?: string;
+}> = ({ onClose, onCreated, users, currentUser, initialResolutionDeadline }) => {
   const [subject, setSubject] = useState('');
   const [ticketType, setTicketType] = useState('');
   const [sourceDesc, setSourceDesc] = useState('');
   const [body, setBody] = useState('');
   const [locationId, setLocationId] = useState<number | ''>('');
   const [priority, setPriority] = useState('medium');
-  const [resolutionDeadline, setResolutionDeadline] = useState('');
+  const [resolutionDeadline, setResolutionDeadline] = useState(initialResolutionDeadline || '');
   const [assigneeId, setAssigneeId] = useState<number | ''>(currentUser?.role === 'engineer' ? currentUser.id : '');
   const [siteContactName, setSiteContactName] = useState('');
   const [siteContactPhone, setSiteContactPhone] = useState('');
@@ -493,8 +499,8 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
 const TicketDetailModal: React.FC<{
   ticket: TicketResponse; onClose: () => void;
   onStatusChange?: (ticket: TicketResponse, target: string) => Promise<void>;
-  onRefresh?: () => void; role?: string; currentUserId?: number;
-}> = ({ ticket, onClose, onStatusChange, onRefresh, role, currentUserId }) => {
+  onRefresh?: () => void; role?: string; currentUserId?: number; readOnly?: boolean;
+}> = ({ ticket, onClose, onStatusChange, onRefresh, role, currentUserId, readOnly = false }) => {
   const [comments, setComments] = useState<any[]>([]);
   const [attachments, setAttachments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState('');
@@ -509,7 +515,10 @@ const TicketDetailModal: React.FC<{
   const PL: Record<string, string> = { low: 'Низкий', medium: 'Средний', high: 'Высокий', critical: 'Критичный' };
   const TL: Record<string, string> = { repair: 'Ремонт', installation: 'Монтаж', maintenance: 'ТО', inspection: 'Инспекция', emergency: 'Авария', verification: 'Поверка' };
 
-  const canStatus = role === 'admin' || role === 'director' || (role === 'engineer' && ticket.assignee_id === currentUserId);
+  const canStatus = !readOnly && (
+    role === 'admin' || role === 'director' ||
+    (role === 'engineer' && ticket.assignee_id === currentUserId)
+  );
   const next = NS[ticket.status];
 
   const load = async () => {
@@ -676,22 +685,24 @@ const TicketDetailModal: React.FC<{
             ))}
           </div>
         </div>
-        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 8 }}>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <textarea value={newComment} onChange={e => setNewComment(e.target.value)} placeholder="Комментарий..." rows={2}
-              style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 7, fontSize: 13, background: 'var(--bg-surface)', color: 'var(--text)', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
-            <button className="btn btn-primary" onClick={handleSendComment} disabled={sending || (!newComment.trim() && !linkUrl.trim())} style={{ padding: '8px 16px', fontSize: 13, alignSelf: 'flex-end' }}>
-              {sending ? '...' : 'Добавить'}
-            </button>
+        {!readOnly && (
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 8 }}>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <textarea value={newComment} onChange={e => setNewComment(e.target.value)} placeholder="Комментарий..." rows={2}
+                style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 7, fontSize: 13, background: 'var(--bg-surface)', color: 'var(--text)', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+              <button className="btn btn-primary" onClick={handleSendComment} disabled={sending || (!newComment.trim() && !linkUrl.trim())} style={{ padding: '8px 16px', fontSize: 13, alignSelf: 'flex-end' }}>
+                {sending ? '...' : 'Добавить'}
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input type="text" placeholder="Ссылка URL" value={linkUrl} onChange={e => setLinkUrl(e.target.value)} style={{ flex: 1, minWidth: 120, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, background: 'var(--bg-surface)', color: 'var(--text)' }} />
+              <input type="text" placeholder="Название ссылки" value={linkTitle} onChange={e => setLinkTitle(e.target.value)} style={{ width: 140, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, background: 'var(--bg-surface)', color: 'var(--text)' }} />
+              <label className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 12, cursor: 'pointer' }}>
+                Файл<input type="file" onChange={handleFileUpload} style={{ display: 'none' }} />
+              </label>
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input type="text" placeholder="Ссылка URL" value={linkUrl} onChange={e => setLinkUrl(e.target.value)} style={{ flex: 1, minWidth: 120, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, background: 'var(--bg-surface)', color: 'var(--text)' }} />
-            <input type="text" placeholder="Название ссылки" value={linkTitle} onChange={e => setLinkTitle(e.target.value)} style={{ width: 140, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, background: 'var(--bg-surface)', color: 'var(--text)' }} />
-            <label className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 12, cursor: 'pointer' }}>
-              Файл<input type="file" onChange={handleFileUpload} style={{ display: 'none' }} />
-            </label>
-          </div>
-        </div>
+        )}
         <div className="modal-actions" style={{ marginTop: 12 }}>
           <button className="btn btn-secondary" onClick={onClose}>Закрыть</button>
         </div>
@@ -875,9 +886,11 @@ const App: React.FC = () => {
   const [auth, setAuth] = useState<{ token: string; user: any } | null>(null);
   const [page, setPage] = useState<Page>('tickets');
   const [showCreate, setShowCreate] = useState(false);
+  const [createDeadline, setCreateDeadline] = useState<string | undefined>();
   const [showAddEmployee, setShowAddEmployee] = useState(false);
   const [editTicket, setEditTicket] = useState<TicketResponse | null>(null);
   const [detailTicket, setDetailTicket] = useState<TicketResponse | null>(null);
+  const [detailReadOnly, setDetailReadOnly] = useState(false);
   const [confirmStatusTicket, setConfirmStatusTicket] = useState<{ ticket: TicketResponse; target: string } | null>(null);
   const [deleteTicketConfirm, setDeleteTicketConfirm] = useState<TicketResponse | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -966,6 +979,21 @@ const App: React.FC = () => {
 
   const handleDeleteTicket = async (ticket: TicketResponse) => {
     setDeleteTicketConfirm(ticket);
+  };
+
+  const openCreateTicket = (deadline?: string) => {
+    setCreateDeadline(deadline);
+    setShowCreate(true);
+  };
+
+  const closeCreateTicket = () => {
+    setShowCreate(false);
+    setCreateDeadline(undefined);
+  };
+
+  const openTicketDetail = (ticket: TicketResponse, readOnly = false) => {
+    setDetailReadOnly(readOnly);
+    setDetailTicket(ticket);
   };
 
   const executeDeleteTicket = async () => {
@@ -1097,7 +1125,7 @@ const App: React.FC = () => {
           <>
             {(user.role === 'admin' || user.role === 'director' || user.role === 'dispatcher' || user.role === 'engineer' || user.role === 'customer') && (
               <div style={{ marginBottom: 14 }}>
-                <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+                <button className="btn btn-primary" onClick={() => openCreateTicket()}>
                   + Создать заявку
                 </button>
               </div>
@@ -1106,7 +1134,7 @@ const App: React.FC = () => {
               key={refreshKey}
               users={users}
               onEdit={setEditTicket}
-              onDetail={setDetailTicket}
+              onDetail={ticket => openTicketDetail(ticket)}
               onStatusChange={handleStatusChange}
               onDelete={handleDeleteTicket}
               currentUserId={user.user_id || user.id}
@@ -1114,9 +1142,16 @@ const App: React.FC = () => {
             />
           </>
         )}
-        {page === 'calendar' && <CalendarPage onOpenTicket={setDetailTicket} />}
-        {page === 'kanban' && <KanbanPage key={refreshKey} role={user.role} users={users} onDetail={setDetailTicket} onStatusChange={handleStatusChange} currentUserId={viewingEngineerId || user.user_id || user.id} viewingEngineerId={viewingEngineerId} refreshKey={refreshKey} />}
-        {page === 'reports' && <ReportsPage onOpenTicket={setDetailTicket} />}
+        {page === 'calendar' && (
+          <CalendarPage
+            key={refreshKey}
+            role={user.role}
+            onCreateTicket={openCreateTicket}
+            onOpenTicket={ticket => openTicketDetail(ticket, true)}
+          />
+        )}
+        {page === 'kanban' && <KanbanPage key={refreshKey} role={user.role} users={users} onDetail={ticket => openTicketDetail(ticket)} onStatusChange={handleStatusChange} currentUserId={viewingEngineerId || user.user_id || user.id} viewingEngineerId={viewingEngineerId} refreshKey={refreshKey} />}
+        {page === 'reports' && <ReportsPage onOpenTicket={ticket => openTicketDetail(ticket)} />}
         {page === 'warehouse' && <WarehousePage />}
         {page === 'locations' && <LocationsPage />}
         {page === 'employees' && (
@@ -1131,10 +1166,11 @@ const App: React.FC = () => {
 
         {showCreate && (
           <CreateTicketModal
-            onClose={() => setShowCreate(false)}
+            onClose={closeCreateTicket}
             onCreated={() => setRefreshKey(k => k + 1)}
             users={users}
             currentUser={user}
+            initialResolutionDeadline={createDeadline}
           />
         )}
         {editTicket && (
@@ -1148,11 +1184,12 @@ const App: React.FC = () => {
         {detailTicket && (
           <TicketDetailModal
             ticket={detailTicket}
-            onClose={() => setDetailTicket(null)}
+            onClose={() => { setDetailTicket(null); setDetailReadOnly(false); }}
             onStatusChange={handleStatusChange}
             onRefresh={() => setRefreshKey(k => k + 1)}
             role={user.role}
             currentUserId={user.user_id || user.id}
+            readOnly={detailReadOnly}
           />
         )}
         {confirmStatusTicket && (
