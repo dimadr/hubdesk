@@ -24,7 +24,7 @@ export interface TicketResponse {
   status: string; priority: string; type: string | null; is_internal: boolean;
   customer_id: number; customer_name?: string | null; location_id: number;
   location_name?: string | null; location_address?: string | null;
-  equipment_id: number | null; assignee_id: number | null; group_id: number | null;
+  equipment_id: number | null; assignee_id: number | null; assignee_name?: string | null; group_id: number | null;
   site_contact_name: string | null; site_contact_phone: string | null;
   scheduled_start: string | null; scheduled_end: string | null;
   source_description: string | null;

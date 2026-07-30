@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../api/client';
+import { api, TicketResponse } from '../api/client';
 
 interface ContactItem {
   id?: number;
@@ -32,7 +32,11 @@ interface Location {
 interface UserInfo { id: number; email: string; name: string; role: string; }
 interface CustomerInfo { id: number; name: string; }
 
-export const LocationsPage: React.FC = () => {
+interface LocationsPageProps {
+  onOpenTicket?: (ticket: TicketResponse) => void;
+}
+
+export const LocationsPage: React.FC<LocationsPageProps> = ({ onOpenTicket }) => {
   const role = (() => { try { return JSON.parse(localStorage.getItem('user') || '{}').role || ''; } catch { return ''; } })();
   const isAdmin = role === 'admin';
   const [locations, setLocations] = useState<Location[]>([]);
@@ -44,6 +48,7 @@ export const LocationsPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [worksLocation, setWorksLocation] = useState<Location | null>(null);
 
   const refreshLocations = async () => {
     try {
@@ -131,7 +136,16 @@ export const LocationsPage: React.FC = () => {
               return (
                 <tr key={l.id}>
                   <td className="mono" style={{ color: 'var(--text-muted)' }}>#{l.id}</td>
-                  <td style={{ fontWeight: 600 }}>{l.name}</td>
+                  <td style={{ fontWeight: 600 }}>
+                    <button
+                      type="button"
+                      onClick={() => setWorksLocation(l)}
+                      title="Открыть работы по объекту"
+                      style={{ background: 'none', border: 0, padding: 0, color: 'inherit', font: 'inherit', fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}
+                    >
+                      {l.name}
+                    </button>
+                  </td>
                   <td style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{l.customer_name}</td>
                   <td style={{ color: 'var(--text-secondary)' }}>{l.address}</td>
                   <td className="mono" style={{ fontSize: 12 }}>{l.inn || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
@@ -187,6 +201,168 @@ export const LocationsPage: React.FC = () => {
           loc={locations.find(l => l.id === editId)}
         />
       )}
+
+      {worksLocation && (
+        <LocationWorksModal
+          location={worksLocation}
+          onClose={() => setWorksLocation(null)}
+          onOpenTicket={onOpenTicket}
+        />
+      )}
+    </div>
+  );
+};
+
+const WORK_STATUS_LABELS: Record<string, string> = {
+  ASSIGNED: 'Назначена',
+  ACCEPTED: 'Принята',
+  IN_PROGRESS: 'В работе',
+  COMPLETED: 'Завершена',
+};
+
+const formatDate = (value: string | null | undefined): string => {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('ru-RU');
+};
+
+const LocationWorksModal: React.FC<{
+  location: Location;
+  onClose: () => void;
+  onOpenTicket?: (ticket: TicketResponse) => void;
+}> = ({ location, onClose, onOpenTicket }) => {
+  const [tickets, setTickets] = useState<TicketResponse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const loadTickets = async () => {
+      const all: TicketResponse[] = [];
+      const limit = 200;
+      setLoading(true);
+      setError('');
+
+      try {
+        for (let offset = 0; ; offset += limit) {
+          const response = await api.get<TicketResponse[]>('/tickets', {
+            params: {
+              location_id: location.id,
+              limit,
+              offset,
+              sort_by: 'created_at',
+              sort_dir: 'desc',
+            },
+            signal: controller.signal,
+          });
+          all.push(...response.data);
+          setTickets([...all]);
+          if (response.data.length < limit) break;
+        }
+      } catch (err: any) {
+        if (!controller.signal.aborted) {
+          setError(err.response?.data?.detail || 'Не удалось загрузить работы по объекту');
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    };
+
+    loadTickets();
+    return () => controller.abort();
+  }, [location.id]);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="modal-card"
+        onClick={event => event.stopPropagation()}
+        style={{ width: 'min(1100px, 95vw)', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 14 }}>
+          <div style={{ minWidth: 0 }}>
+            <h3 style={{ margin: 0 }}>Работы по объекту: {location.name}</h3>
+            <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 4 }}>
+              {[location.customer_name, location.address].filter(Boolean).join(' — ')}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={onClose}
+            title="Закрыть"
+            aria-label="Закрыть"
+            style={{ marginLeft: 'auto', padding: '4px 9px', flexShrink: 0 }}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="table-wrapper" style={{ overflow: 'auto', flex: 1 }}>
+          <table>
+            <thead>
+              <tr>
+                <th>№</th>
+                <th>Работа</th>
+                <th>Статус</th>
+                <th>Исполнитель</th>
+                <th>Создана</th>
+                <th>Дедлайн</th>
+                <th>Завершена</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tickets.map(ticket => (
+                <tr
+                  key={ticket.id}
+                  onClick={() => onOpenTicket?.(ticket)}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onOpenTicket?.(ticket);
+                    }
+                  }}
+                  tabIndex={0}
+                  style={{ cursor: onOpenTicket ? 'pointer' : 'default' }}
+                >
+                  <td className="mono">#{ticket.number}</td>
+                  <td>{ticket.subject}</td>
+                  <td>
+                    <span className={`status-pill st-${ticket.status.toLowerCase()}`}>
+                      {WORK_STATUS_LABELS[ticket.status] || ticket.status}
+                    </span>
+                    {ticket.is_archived && <div style={{ color: 'var(--text-muted)', fontSize: 10, marginTop: 2 }}>Архив</div>}
+                  </td>
+                  <td>{ticket.assignee_name || '—'}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{formatDate(ticket.created_at)}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{formatDate(ticket.resolution_deadline)}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{formatDate(ticket.completed_at)}</td>
+                </tr>
+              ))}
+              {!loading && !error && tickets.length === 0 && (
+                <tr>
+                  <td colSpan={7} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)' }}>
+                    По объекту нет доступных заявок
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {loading && (
+          <div style={{ padding: '10px 0 0', color: 'var(--text-muted)', fontSize: 12 }}>
+            Загрузка работ... {tickets.length > 0 ? `Получено: ${tickets.length}` : ''}
+          </div>
+        )}
+        {error && <div className="modal-error" style={{ marginTop: 12, marginBottom: 0 }}>{error}</div>}
+        {!loading && !error && tickets.length > 0 && (
+          <div style={{ paddingTop: 10, color: 'var(--text-muted)', fontSize: 12 }}>
+            Всего работ: {tickets.length}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

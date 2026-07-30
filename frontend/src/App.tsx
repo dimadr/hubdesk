@@ -1153,7 +1153,7 @@ const App: React.FC = () => {
         {page === 'kanban' && <KanbanPage key={refreshKey} role={user.role} users={users} onDetail={ticket => openTicketDetail(ticket)} onStatusChange={handleStatusChange} currentUserId={viewingEngineerId || user.user_id || user.id} viewingEngineerId={viewingEngineerId} refreshKey={refreshKey} />}
         {page === 'reports' && <ReportsPage onOpenTicket={ticket => openTicketDetail(ticket)} />}
         {page === 'warehouse' && <WarehousePage />}
-        {page === 'locations' && <LocationsPage />}
+        {page === 'locations' && <LocationsPage onOpenTicket={ticket => openTicketDetail(ticket)} />}
         {page === 'employees' && (
           <EmployeesPage
             onAdd={() => setShowAddEmployee(true)}
