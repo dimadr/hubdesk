@@ -1033,8 +1033,8 @@ const App: React.FC = () => {
       {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
       <aside className={`sidebar${sidebarOpen ? ' sidebar-open' : ''}`}>
         <div className="sidebar-logo">
-          <div className="logo-mark">H</div>
-          HUB<span> Desk</span>
+          <div className="logo-mark" aria-label="Абие">А</div>
+          Абие
         </div>
         <nav className="sidebar-nav">
           <div className="nav-section">Навигация</div>

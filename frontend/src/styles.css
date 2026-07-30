@@ -97,16 +97,15 @@ body {
   display: flex; align-items: center; gap: 10px;
   padding: 0 8px 20px; margin-bottom: 16px;
   border-bottom: 1px solid var(--border);
-  font-weight: 800; font-size: 16px; letter-spacing: -0.02em;
+  font-weight: 800; font-size: 16px; letter-spacing: 0;
 }
 .sidebar-logo .logo-mark {
   width: 30px; height: 30px; border-radius: 7px;
   background: linear-gradient(135deg, var(--primary), #7c3aed);
   display: flex; align-items: center; justify-content: center;
   color: #fff; font-weight: 900;
-  font-family: 'JetBrains Mono', monospace; font-size: 14px;
+  font-family: Georgia, 'Times New Roman', serif; font-size: 21px; line-height: 1;
 }
-.sidebar-logo span { color: var(--primary) }
 
 .sidebar-nav { display: flex; flex-direction: column; gap: 2px; flex: 1 }
 .sidebar-nav .nav-section {
