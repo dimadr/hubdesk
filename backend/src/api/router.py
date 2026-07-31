@@ -311,7 +311,9 @@ async def create_location(
 ):
     if user.role not in (UserRole.admin, UserRole.director, UserRole.dispatcher, UserRole.accountant, UserRole.engineer):
         raise HTTPException(403, "Недостаточно прав")
-    can_manage_customer = user.role in (UserRole.admin, UserRole.director, UserRole.dispatcher)
+    can_manage_customer = user.role in (
+        UserRole.admin, UserRole.director, UserRole.dispatcher, UserRole.accountant
+    )
     can_assign_engineer = user.role in (
         UserRole.admin, UserRole.director, UserRole.dispatcher, UserRole.accountant
     )
@@ -331,7 +333,7 @@ async def create_location(
             raise HTTPException(400, "Клиент не найден")
     elif data.customer_name:
         if not can_manage_customer:
-            raise HTTPException(403, "Создавать клиентов может только диспетчер, директор или администратор")
+            raise HTTPException(403, "Недостаточно прав для создания клиента")
         cust = Customer(name=data.customer_name.strip(), type="company")
         db.add(cust)
         await db.flush()
