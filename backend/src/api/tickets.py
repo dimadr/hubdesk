@@ -44,7 +44,7 @@ def create_ticket_router() -> APIRouter:
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
-        if user.role in (UserRole.storekeeper, UserRole.metrologist, UserRole.accountant):
+        if user.role in (UserRole.storekeeper, UserRole.metrologist):
             raise HTTPException(403, "Недостаточно прав для просмотра заявок")
         stmt = select(Ticket).options(selectinload(Ticket.customer), selectinload(Ticket.location), selectinload(Ticket.assignee))
         if filters.status:
@@ -208,7 +208,8 @@ def create_ticket_router() -> APIRouter:
             data.is_internal = False
             data.resolution_deadline = None
         elif user.role not in (
-            UserRole.admin, UserRole.director, UserRole.dispatcher, UserRole.engineer
+            UserRole.admin, UserRole.director, UserRole.dispatcher,
+            UserRole.engineer, UserRole.accountant,
         ):
             raise HTTPException(403, "Только диспетчер, администратор или инженер может создавать заявки")
         svc = TicketService(db)
@@ -239,7 +240,10 @@ def create_ticket_router() -> APIRouter:
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
-        if user.role not in (UserRole.admin, UserRole.director, UserRole.dispatcher, UserRole.engineer):
+        if user.role not in (
+            UserRole.admin, UserRole.director, UserRole.dispatcher,
+            UserRole.engineer, UserRole.accountant,
+        ):
             raise HTTPException(403, "Недостаточно прав для редактирования заявки")
         stmt = (
             select(Ticket)
@@ -265,7 +269,10 @@ def create_ticket_router() -> APIRouter:
                 if field not in ('subject', 'source_description', 'body', 'site_contact_name', 'site_contact_phone', 'resolution_deadline'):
                     continue
             if field == 'assignee_id' and value is not None:
-                if user.role not in (UserRole.admin, UserRole.director, UserRole.dispatcher):
+                if user.role not in (
+                    UserRole.admin, UserRole.director,
+                    UserRole.dispatcher, UserRole.accountant,
+                ):
                     raise HTTPException(403, "Только диспетчер или администратор может назначать исполнителя")
                 eng = await db.get(User, value)
                 if not eng or eng.role != UserRole.engineer:
@@ -375,7 +382,10 @@ def create_ticket_router() -> APIRouter:
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
-        if user.role not in (UserRole.admin, UserRole.director, UserRole.dispatcher, UserRole.engineer, UserRole.customer):
+        if user.role not in (
+            UserRole.admin, UserRole.director, UserRole.dispatcher,
+            UserRole.engineer, UserRole.customer, UserRole.accountant,
+        ):
             raise HTTPException(403, "Недостаточно прав для добавления комментариев")
         svc = CommentService(db)
         try:

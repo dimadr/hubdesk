@@ -516,7 +516,7 @@ const TicketDetailModal: React.FC<{
   const TL: Record<string, string> = { repair: 'Ремонт', installation: 'Монтаж', maintenance: 'ТО', inspection: 'Инспекция', emergency: 'Авария', verification: 'Поверка' };
 
   const canStatus = !readOnly && (
-    role === 'admin' || role === 'director' ||
+    role === 'admin' || role === 'director' || role === 'accountant' ||
     (role === 'engineer' && ticket.assignee_id === currentUserId)
   );
   const next = NS[ticket.status];
@@ -1123,7 +1123,7 @@ const App: React.FC = () => {
 
         {page === 'tickets' && (
           <>
-            {(user.role === 'admin' || user.role === 'director' || user.role === 'dispatcher' || user.role === 'engineer' || user.role === 'customer') && (
+            {(user.role === 'admin' || user.role === 'director' || user.role === 'dispatcher' || user.role === 'engineer' || user.role === 'customer' || user.role === 'accountant') && (
               <div style={{ marginBottom: 14 }}>
                 <button className="btn btn-primary" onClick={() => openCreateTicket()}>
                   + Создать заявку

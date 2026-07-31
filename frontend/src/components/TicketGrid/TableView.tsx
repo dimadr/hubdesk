@@ -147,7 +147,7 @@ function renderCellContent(ticket: TicketResponse, col: ColumnDef, userMap: Map<
   }
   if (col.key === 'customer') return ticket.customer_name || ticket.customer_id;
   if (col.key === 'assignee') {
-    const canAssign = role === 'admin' || role === 'director' || role === 'dispatcher';
+    const canAssign = role === 'admin' || role === 'director' || role === 'dispatcher' || role === 'accountant';
     if (!canAssign) return <span>{userMap.get(ticket.assignee_id!) || ticket.assignee_id || '—'}</span>;
     return (
     <select
@@ -195,7 +195,7 @@ function renderCellContent(ticket: TicketResponse, col: ColumnDef, userMap: Map<
           title={`Перевести в ${NEXT_STATUS[ticket.status]}`}
         >→ {STATUS_BUTTON_LABELS[NEXT_STATUS[ticket.status]]}</button>
       )}
-      {(role === 'admin' || role === 'director' || role === 'dispatcher' || role === 'engineer') && (
+      {(role === 'admin' || role === 'director' || role === 'dispatcher' || role === 'engineer' || role === 'accountant') && (
         <button
           className="btn btn-secondary"
           style={{ padding: '2px 6px', fontSize: 11, lineHeight: 1 }}

@@ -178,6 +178,22 @@ async def test_assigned_engineer_can_modify_ticket():
 
 
 @pytest.mark.asyncio
+async def test_accountant_has_full_ticket_permissions():
+    from src.models.user import UserRole
+    from src.services.acl_service import RoleChecker
+
+    user = MagicMock(role=UserRole.accountant, id=10)
+    ticket = MagicMock(assignee_id=None)
+    ticket.status.value = "ASSIGNED"
+
+    assert RoleChecker.can_view_ticket(user, ticket) is True
+    assert await RoleChecker.can_view_ticket_async(user, ticket, AsyncMock()) is True
+    assert await RoleChecker.can_modify_ticket_async(user, ticket, AsyncMock()) is True
+    assert RoleChecker.can_assign(user) is True
+    assert RoleChecker.can_change_status(user, ticket, "ACCEPTED") is True
+
+
+@pytest.mark.asyncio
 async def test_reopen_clears_completion_timestamps(monkeypatch):
     from datetime import datetime
     from src.models.user import UserRole
