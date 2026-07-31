@@ -312,11 +312,14 @@ async def create_location(
     if user.role not in (UserRole.admin, UserRole.director, UserRole.dispatcher, UserRole.accountant, UserRole.engineer):
         raise HTTPException(403, "Недостаточно прав")
     can_manage_customer = user.role in (UserRole.admin, UserRole.director, UserRole.dispatcher)
+    can_assign_engineer = user.role in (
+        UserRole.admin, UserRole.director, UserRole.dispatcher, UserRole.accountant
+    )
     if user.role == UserRole.engineer:
         if data.assigned_engineer_id not in (None, user.id):
             raise HTTPException(403, "Инженер может назначить на объект только себя")
         data.assigned_engineer_id = user.id
-    elif data.assigned_engineer_id and not can_manage_customer:
+    elif data.assigned_engineer_id and not can_assign_engineer:
         raise HTTPException(403, "Недостаточно прав для назначения инженера")
     if data.assigned_engineer_id:
         eng = await db.get(User, data.assigned_engineer_id)
@@ -408,7 +411,9 @@ async def update_location(
     update_data = data.model_dump(exclude_unset=True)
     contacts_data = update_data.pop('contacts_list', None)
     if user.role in (UserRole.engineer, UserRole.accountant):
-        protected_fields = {"customer_id", "assigned_engineer_id"} & update_data.keys()
+        protected_fields = {"customer_id"} & update_data.keys()
+        if user.role == UserRole.engineer:
+            protected_fields |= {"assigned_engineer_id"} & update_data.keys()
         if protected_fields:
             raise HTTPException(403, "Недостаточно прав для смены клиента или назначенного инженера")
 
