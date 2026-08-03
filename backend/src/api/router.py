@@ -413,11 +413,23 @@ async def update_location(
     update_data = data.model_dump(exclude_unset=True)
     contacts_data = update_data.pop('contacts_list', None)
     if user.role in (UserRole.engineer, UserRole.accountant):
-        protected_fields = {"customer_id"} & update_data.keys()
-        if user.role == UserRole.engineer:
-            protected_fields |= {"assigned_engineer_id"} & update_data.keys()
+        protected_fields = set()
+        if (
+            "customer_id" in update_data
+            and update_data["customer_id"] != loc.customer_id
+        ):
+            protected_fields.add("customer_id")
+        if (
+            user.role == UserRole.engineer
+            and "assigned_engineer_id" in update_data
+            and update_data["assigned_engineer_id"] != loc.assigned_engineer_id
+        ):
+            protected_fields.add("assigned_engineer_id")
         if protected_fields:
             raise HTTPException(403, "Недостаточно прав для смены клиента или назначенного инженера")
+        update_data.pop("customer_id", None)
+        if user.role == UserRole.engineer:
+            update_data.pop("assigned_engineer_id", None)
 
     if "assigned_engineer_id" in update_data and update_data["assigned_engineer_id"]:
         eng = await db.get(User, update_data["assigned_engineer_id"])
