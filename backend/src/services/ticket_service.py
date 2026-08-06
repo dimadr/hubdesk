@@ -29,33 +29,92 @@ class TicketService:
         normalized = dict(data)
         if user and user.role == UserRole.engineer:
             normalized["assignee_id"] = user.id
+        if normalized.get("is_internal"):
+            body = str(normalized.get("body") or "").strip()
+            addition = str(normalized.get("source_description") or "").strip()
+            if not body:
+                raise HTTPException(422, "Описание внутренней заявки обязательно")
+            if not addition:
+                raise HTTPException(422, "Дополнение по работам обязательно")
+            if not normalized.get("resolution_deadline"):
+                raise HTTPException(422, "Дедлайн внутренней заявки обязателен")
+            if not normalized.get("assignee_id"):
+                raise HTTPException(422, "Исполнитель внутренней заявки обязателен")
+            normalized.update({
+                "subject": TicketService.internal_subject(body),
+                "body": body,
+                "source_description": addition,
+                "customer_id": None,
+                "location_id": None,
+                "equipment_id": None,
+                "type": None,
+                "priority": "medium",
+                "group_id": None,
+                "site_contact_name": None,
+                "site_contact_phone": None,
+                "scheduled_start": None,
+                "scheduled_end": None,
+            })
         return normalized
+
+    @staticmethod
+    def internal_subject(body: str) -> str:
+        return next(line.strip() for line in body.splitlines() if line.strip())[:500]
+
+    @staticmethod
+    def validate_internal_fields(
+        body: str | None,
+        addition: str | None,
+        resolution_deadline,
+        assignee_id: int | None,
+    ) -> None:
+        if not body or not body.strip():
+            raise HTTPException(422, "Описание внутренней заявки обязательно")
+        if not addition or not addition.strip():
+            raise HTTPException(422, "Дополнение по работам обязательно")
+        if not resolution_deadline:
+            raise HTTPException(422, "Дедлайн внутренней заявки обязателен")
+        if not assignee_id:
+            raise HTTPException(422, "Исполнитель внутренней заявки обязателен")
 
     async def create(self, data: dict, user: User | None = None) -> Ticket:
         data = self._normalize_create_data(data, user)
         now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        is_internal = bool(data.get("is_internal"))
 
-        location = await self.session.get(AssetLocation, data["location_id"])
-        if not location:
-            raise HTTPException(400, "Объект не найден")
-        if location.customer_id != data["customer_id"]:
-            raise HTTPException(400, "Объект не принадлежит указанному заказчику")
-        if user and user.role == UserRole.engineer and location.assigned_engineer_id != user.id:
-            raise HTTPException(403, "Вы можете создавать заявки только на своих объектах")
+        if is_internal:
+            if user and user.role == UserRole.customer:
+                raise HTTPException(403, "Заказчик не может создавать внутренние заявки")
+            if not await self._is_engineer(data["assignee_id"]):
+                raise HTTPException(400, "Исполнитель должен иметь роль engineer")
+        else:
+            subject = str(data.get("subject") or "").strip()
+            if not subject:
+                raise HTTPException(422, "Тема заявки обязательна")
+            if not data.get("customer_id") or not data.get("location_id"):
+                raise HTTPException(422, "Выберите клиента и объект")
+            data["subject"] = subject
+            location = await self.session.get(AssetLocation, data["location_id"])
+            if not location:
+                raise HTTPException(400, "Объект не найден")
+            if location.customer_id != data["customer_id"]:
+                raise HTTPException(400, "Объект не принадлежит указанному заказчику")
+            if user and user.role == UserRole.engineer and location.assigned_engineer_id != user.id:
+                raise HTTPException(403, "Вы можете создавать заявки только на своих объектах")
 
-        if data.get("equipment_id"):
-            equip = await self.session.get(Equipment, data["equipment_id"])
-            if not equip:
-                raise HTTPException(400, "Оборудование не найдено")
-            if equip.location_id != data["location_id"]:
-                raise HTTPException(400, "Оборудование не принадлежит указанному объекту")
+            if data.get("equipment_id"):
+                equip = await self.session.get(Equipment, data["equipment_id"])
+                if not equip:
+                    raise HTTPException(400, "Оборудование не найдено")
+                if equip.location_id != data["location_id"]:
+                    raise HTTPException(400, "Оборудование не принадлежит указанному объекту")
 
         ticket = Ticket(
             number=await self._secure_next_number(),
             subject=data["subject"],
             body=data.get("body", ""),
-            customer_id=data["customer_id"],
-            location_id=data["location_id"],
+            customer_id=data.get("customer_id"),
+            location_id=data.get("location_id"),
             equipment_id=data.get("equipment_id"),
             type=data.get("type"),
             priority=data.get("priority", "medium"),
@@ -71,7 +130,9 @@ class TicketService:
             created_by=user.id if user else None,
         )
 
-        contract = await self._get_active_contract(ticket.customer_id, now_utc.date())
+        contract = None
+        if not is_internal:
+            contract = await self._get_active_contract(ticket.customer_id, now_utc.date())
         if contract:
             ticket.response_deadline = now_utc + timedelta(hours=contract.sla_hours)
             ticket.resolution_deadline = now_utc + timedelta(hours=contract.resolution_sla_hours)

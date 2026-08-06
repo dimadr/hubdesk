@@ -260,8 +260,37 @@ def create_ticket_router() -> APIRouter:
         if not await RoleChecker.can_view_ticket_async(user, ticket, db):
             raise HTTPException(404)
         requested_updates = data.model_dump(exclude_unset=True)
+        requested_mode = requested_updates.pop('is_internal', None)
+        if requested_mode is not None and requested_mode != ticket.is_internal:
+            raise HTTPException(400, "Тип заявки нельзя изменить после создания")
+        if ticket.is_internal:
+            allowed_internal_fields = {
+                'body', 'source_description', 'resolution_deadline', 'assignee_id',
+            }
+            forbidden_fields = set(requested_updates) - allowed_internal_fields
+            if forbidden_fields:
+                raise HTTPException(400, "Внутренняя заявка не содержит объектные поля")
+            if user.role == UserRole.engineer:
+                requested_updates.pop('assignee_id', None)
+            next_body = requested_updates.get('body', ticket.body)
+            next_addition = requested_updates.get(
+                'source_description', ticket.source_description
+            )
+            next_deadline = requested_updates.get(
+                'resolution_deadline', ticket.resolution_deadline
+            )
+            next_assignee = requested_updates.get('assignee_id', ticket.assignee_id)
+            TicketService.validate_internal_fields(
+                next_body, next_addition, next_deadline, next_assignee
+            )
         changed_fields: list[str] = []
+        assignee_changed = False
         deadline_change: tuple[datetime | None, datetime | None] | None = None
+        if ticket.is_internal and 'body' in requested_updates:
+            next_subject = TicketService.internal_subject(next_body)
+            if ticket.subject != next_subject:
+                ticket.subject = next_subject
+                changed_fields.append('subject')
         for field, value in requested_updates.items():
             if field in ('status', 'assigned_at', 'completed_at'):
                 continue
@@ -283,6 +312,8 @@ def create_ticket_router() -> APIRouter:
             if getattr(ticket, field) != value:
                 if field == 'resolution_deadline':
                     deadline_change = (getattr(ticket, field), value)
+                elif field == 'assignee_id':
+                    assignee_changed = True
                 setattr(ticket, field, value)
                 changed_fields.append(field)
         update_fields = set(requested_updates.keys())
@@ -321,7 +352,7 @@ def create_ticket_router() -> APIRouter:
             )
         await db.commit()
         # Отправка email инженеру при смене исполнителя
-        if 'assignee_id' in data.model_dump(exclude_unset=True) and ticket.assignee_id:
+        if assignee_changed and ticket.assignee_id:
             eng = await db.get(User, ticket.assignee_id)
             if eng:
                 await db.refresh(ticket, ['customer', 'location'])

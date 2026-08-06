@@ -55,7 +55,7 @@ class Ticket(Base):
     )
     is_internal: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"))
+    customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), nullable=True)
     location_id: Mapped[int | None] = mapped_column(ForeignKey("asset_locations.id"), nullable=True)
     equipment_id: Mapped[int | None] = mapped_column(ForeignKey("equipment.id"), nullable=True)
     assignee_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
@@ -75,8 +75,8 @@ class Ticket(Base):
     response_deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     resolution_deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    customer: Mapped["Customer"] = relationship(back_populates="tickets")
-    location: Mapped["AssetLocation"] = relationship(back_populates="tickets")
+    customer: Mapped["Customer | None"] = relationship(back_populates="tickets")
+    location: Mapped["AssetLocation | None"] = relationship(back_populates="tickets")
     equipment: Mapped["Equipment | None"] = relationship(back_populates="tickets")
     assignee: Mapped["User | None"] = relationship(back_populates="assigned_tickets", foreign_keys=[assignee_id])
     group: Mapped["Group | None"] = relationship(back_populates="tickets")

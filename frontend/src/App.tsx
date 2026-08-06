@@ -196,6 +196,7 @@ const CreateTicketModal: React.FC<{
   const [assigneeId, setAssigneeId] = useState<number | ''>(currentUser?.role === 'engineer' ? currentUser.id : '');
   const [siteContactName, setSiteContactName] = useState('');
   const [siteContactPhone, setSiteContactPhone] = useState('');
+  const [isInternal, setIsInternal] = useState(false);
   const [locations, setLocations] = useState<Location[]>([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -217,29 +218,47 @@ const CreateTicketModal: React.FC<{
   }, [locationId, locations]);
 
   const submit = async () => {
-    if (!subject || !locationId) { setError('Заполните тему и выберите объект'); return; }
+    if (isInternal) {
+      if (!body.trim()) { setError('Заполните описание'); return; }
+      if (!sourceDesc.trim()) { setError('Заполните дополнение по работам'); return; }
+      if (!resolutionDeadline) { setError('Укажите дедлайн'); return; }
+      if (!assigneeId) { setError('Выберите исполнителя'); return; }
+    } else if (!subject || !locationId) {
+      setError('Заполните тему и выберите объект');
+      return;
+    }
     if (saving) return;
     setSaving(true);
     try {
-      const selected = locations.find(l => l.id === Number(locationId));
-      if (!selected) {
-        setError('Выбранный объект не найден. Обновите список объектов.');
-        setSaving(false);
-        return;
+      if (isInternal) {
+        await api.post('/tickets', {
+          is_internal: true,
+          body: body.trim(),
+          source_description: sourceDesc.trim(),
+          resolution_deadline: endOfLocalDayIso(resolutionDeadline),
+          assignee_id: Number(assigneeId),
+        });
+      } else {
+        const selected = locations.find(l => l.id === Number(locationId));
+        if (!selected) {
+          setError('Выбранный объект не найден. Обновите список объектов.');
+          setSaving(false);
+          return;
+        }
+        await api.post('/tickets', {
+          subject,
+          body,
+          type: ticketType || undefined,
+          source_description: sourceDesc || undefined,
+          customer_id: selected.customer_id,
+          location_id: Number(locationId),
+          priority,
+          resolution_deadline: currentUser?.role === 'customer' ? undefined : endOfLocalDayIso(resolutionDeadline),
+          assignee_id: assigneeId ? Number(assigneeId) : undefined,
+          site_contact_name: siteContactName || undefined,
+          site_contact_phone: siteContactPhone || undefined,
+        });
       }
-      await api.post('/tickets', {
-        subject,
-        body,
-        type: ticketType || undefined,
-        source_description: sourceDesc || undefined,
-        customer_id: selected.customer_id,
-        location_id: Number(locationId),
-        priority,
-        resolution_deadline: currentUser?.role === 'customer' ? undefined : endOfLocalDayIso(resolutionDeadline),
-        assignee_id: assigneeId ? Number(assigneeId) : undefined,
-        site_contact_name: siteContactName || undefined,
-        site_contact_phone: siteContactPhone || undefined,
-      });
       onCreated();
       onClose();
     } catch (e: any) {
@@ -248,18 +267,30 @@ const CreateTicketModal: React.FC<{
   };
 
   const assignables = users.filter(u => u.role === 'engineer');
+  const canCreateInternal = currentUser && ['admin', 'director', 'dispatcher', 'accountant', 'engineer'].includes(currentUser.role);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card modal-card-wide" onClick={e => e.stopPropagation()}>
         <h3>Создать заявку</h3>
         {error && <p className="modal-error">{error}</p>}
+        {canCreateInternal && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={isInternal}
+              onChange={e => { setIsInternal(e.target.checked); setError(''); }}
+              style={{ width: 16, height: 16, accentColor: 'var(--primary)' }}
+            />
+            Внутренняя заявка
+          </label>
+        )}
         <div className="modal-form-grid">
-          <div>
+          {!isInternal && <div>
             <label>Тема заявки <span className="required">*</span></label>
             <input placeholder="Введите тему" value={subject} onChange={e => setSubject(e.target.value)} />
-          </div>
-          <div>
+          </div>}
+          {!isInternal && <div>
             <label>Тип заявки</label>
             <select value={ticketType} onChange={e => setTicketType(e.target.value)}>
               <option value="">— Не выбрано —</option>
@@ -267,12 +298,12 @@ const CreateTicketModal: React.FC<{
                 <option key={k} value={k}>{v}</option>
               ))}
             </select>
-          </div>
+          </div>}
           <div className="span-2">
-            <label>Примечание</label>
-            <textarea placeholder="Дополнительная информация" value={sourceDesc} onChange={e => setSourceDesc(e.target.value)} rows={2} />
+            <label>{isInternal ? 'Дополнение по работам' : 'Примечание'} {isInternal && <span className="required">*</span>}</label>
+            <textarea placeholder={isInternal ? 'Укажите возможные дополнения по работам' : 'Дополнительная информация'} value={sourceDesc} onChange={e => setSourceDesc(e.target.value)} rows={2} />
           </div>
-          <div style={{ position: 'relative' }}>
+          {!isInternal && <div style={{ position: 'relative' }}>
             <label>Объект <span className="required">*</span></label>
             {locationId ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -306,12 +337,12 @@ const CreateTicketModal: React.FC<{
                 )}
               </>
             )}
-          </div>
+          </div>}
           <div className="span-2">
-            <label>Описание проблемы</label>
-            <textarea placeholder="Опишите проблему детально" value={body} onChange={e => setBody(e.target.value)} rows={3} />
+            <label>{isInternal ? 'Описание' : 'Описание проблемы'} {isInternal && <span className="required">*</span>}</label>
+            <textarea placeholder={isInternal ? 'Опишите внутреннюю работу' : 'Опишите проблему детально'} value={body} onChange={e => setBody(e.target.value)} rows={3} />
           </div>
-          <div>
+          {!isInternal && <div>
             <label>Приоритет</label>
             <select value={priority} onChange={e => setPriority(e.target.value)}>
               <option value="low">Низкий</option>
@@ -319,22 +350,22 @@ const CreateTicketModal: React.FC<{
               <option value="high">Высокий</option>
               <option value="critical">Критический</option>
             </select>
-          </div>
+          </div>}
           {currentUser?.role !== 'customer' && (
             <div>
-              <label>Срок исполнения</label>
+              <label>Срок исполнения {isInternal && <span className="required">*</span>}</label>
               <input type="date" value={resolutionDeadline} onChange={e => setResolutionDeadline(e.target.value)} />
             </div>
           )}
-          <div></div>
+          {!isInternal && <div></div>}
           {currentUser?.role !== 'customer' && (
             <div>
-              <label>Исполнитель</label>
+              <label>Исполнитель {isInternal && <span className="required">*</span>}</label>
               {currentUser?.role === 'engineer' ? (
               <input value={[currentUser.name, currentUser.patronymic].filter(Boolean).join(' ')} disabled style={{ opacity: 0.7 }} />
               ) : (
               <select value={assigneeId} onChange={e => setAssigneeId(Number(e.target.value) || '')}>
-                <option value="">— Назначить позже —</option>
+                <option value="">{isInternal ? '— Выберите исполнителя —' : '— Назначить позже —'}</option>
                 {assignables.map(u => (
                   <option key={u.id} value={u.id}>{[u.name, u.patronymic].filter(Boolean).join(' ')}</option>
                 ))}
@@ -342,14 +373,14 @@ const CreateTicketModal: React.FC<{
               )}
             </div>
           )}
-          <div>
+          {!isInternal && <div>
             <label>Контактное лицо на объекте</label>
             <input placeholder="ФИО" value={siteContactName} onChange={e => setSiteContactName(e.target.value)} />
-          </div>
-          <div>
+          </div>}
+          {!isInternal && <div>
             <label>Телефон на объекте</label>
             <input placeholder="+7 (___) ___-__-__" value={siteContactPhone} onChange={e => setSiteContactPhone(e.target.value)} />
-          </div>
+          </div>}
         </div>
         <div className="modal-actions">
           <button className="btn btn-primary" onClick={submit}>Создать</button>
@@ -360,12 +391,12 @@ const CreateTicketModal: React.FC<{
   );
 };
 
-const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; onSaved: () => void; users: UserInfo[] }> = ({ ticket, onClose, onSaved, users }) => {
+const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; onSaved: () => void; users: UserInfo[]; currentUser?: UserInfo }> = ({ ticket, onClose, onSaved, users, currentUser }) => {
   const [subject, setSubject] = useState(ticket.subject);
   const [ticketType, setTicketType] = useState(ticket.type || '');
   const [sourceDesc, setSourceDesc] = useState(ticket.source_description || '');
   const [body, setBody] = useState(ticket.body);
-  const [locationId, setLocationId] = useState<number | ''>(ticket.location_id);
+  const [locationId, setLocationId] = useState<number | ''>(ticket.location_id ?? '');
   const [priority, setPriority] = useState(ticket.priority);
   const [resolutionDeadline, setResolutionDeadline] = useState(isoToLocalDate(ticket.resolution_deadline));
   const [assigneeId, setAssigneeId] = useState<number | ''>(ticket.assignee_id ?? '');
@@ -391,23 +422,40 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
   }, [locationId, locations]);
 
   const submit = async () => {
-    if (!subject || !locationId) { setError('Заполните тему и выберите объект'); return; }
+    if (ticket.is_internal) {
+      if (!body.trim()) { setError('Заполните описание'); return; }
+      if (!sourceDesc.trim()) { setError('Заполните дополнение по работам'); return; }
+      if (!resolutionDeadline) { setError('Укажите дедлайн'); return; }
+      if (!assigneeId) { setError('Выберите исполнителя'); return; }
+    } else if (!subject || !locationId) {
+      setError('Заполните тему и выберите объект');
+      return;
+    }
     setSaving(true);
     try {
-      const selected = locations.find(l => l.id === Number(locationId));
-      await api.patch(`/tickets/${ticket.id}`, {
-        subject,
-        body,
-        type: ticketType || null,
-        source_description: sourceDesc || null,
-        customer_id: selected?.customer_id ?? ticket.customer_id,
-        location_id: Number(locationId),
-        priority,
-        resolution_deadline: endOfLocalDayIso(resolutionDeadline) || null,
-        assignee_id: assigneeId ? Number(assigneeId) : null,
-        site_contact_name: siteContactName || null,
-        site_contact_phone: siteContactPhone || null,
-      });
+      if (ticket.is_internal) {
+        await api.patch(`/tickets/${ticket.id}`, {
+          body: body.trim(),
+          source_description: sourceDesc.trim(),
+          resolution_deadline: endOfLocalDayIso(resolutionDeadline),
+          ...(currentUser?.role === 'engineer' ? {} : { assignee_id: Number(assigneeId) }),
+        });
+      } else {
+        const selected = locations.find(l => l.id === Number(locationId));
+        await api.patch(`/tickets/${ticket.id}`, {
+          subject,
+          body,
+          type: ticketType || null,
+          source_description: sourceDesc || null,
+          customer_id: selected?.customer_id ?? ticket.customer_id,
+          location_id: Number(locationId),
+          priority,
+          resolution_deadline: endOfLocalDayIso(resolutionDeadline) || null,
+          assignee_id: assigneeId ? Number(assigneeId) : null,
+          site_contact_name: siteContactName || null,
+          site_contact_phone: siteContactPhone || null,
+        });
+      }
       onSaved();
     } catch (e: any) {
       const msg = e.response?.data?.detail || e.message || 'Ошибка сохранения';
@@ -423,11 +471,11 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
         <h3>Редактировать заявку #{ticket.number}</h3>
         {error && <p className="modal-error">{error}</p>}
         <div className="modal-form-grid">
-          <div>
+          {!ticket.is_internal && <div>
             <label>Тема заявки <span className="required">*</span></label>
             <input value={subject} onChange={e => setSubject(e.target.value)} />
-          </div>
-          <div>
+          </div>}
+          {!ticket.is_internal && <div>
             <label>Тип заявки</label>
             <select value={ticketType} onChange={e => setTicketType(e.target.value)}>
               <option value="">— Не выбрано —</option>
@@ -435,12 +483,12 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
                 <option key={k} value={k}>{v}</option>
               ))}
             </select>
-          </div>
+          </div>}
           <div className="span-2">
-            <label>Примечание</label>
+            <label>{ticket.is_internal ? 'Дополнение по работам' : 'Примечание'} {ticket.is_internal && <span className="required">*</span>}</label>
             <textarea value={sourceDesc} onChange={e => setSourceDesc(e.target.value)} rows={2} />
           </div>
-          <div>
+          {!ticket.is_internal && <div>
             <label>Объект <span className="required">*</span></label>
             <select value={locationId} onChange={e => setLocationId(Number(e.target.value) || '')}>
               <option value="">— Выберите объект —</option>
@@ -448,12 +496,12 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
                 <option key={l.id} value={l.id}>{l.name} ({l.customer_name})</option>
               ))}
             </select>
-          </div>
+          </div>}
           <div className="span-2">
-            <label>Описание проблемы</label>
+            <label>{ticket.is_internal ? 'Описание' : 'Описание проблемы'} {ticket.is_internal && <span className="required">*</span>}</label>
             <textarea value={body} onChange={e => setBody(e.target.value)} rows={3} />
           </div>
-          <div>
+          {!ticket.is_internal && <div>
             <label>Приоритет</label>
             <select value={priority} onChange={e => setPriority(e.target.value)}>
               <option value="low">Низкий</option>
@@ -461,29 +509,33 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
               <option value="high">Высокий</option>
               <option value="critical">Критический</option>
             </select>
-          </div>
+          </div>}
           <div>
-            <label>Срок исполнения</label>
+            <label>Срок исполнения {ticket.is_internal && <span className="required">*</span>}</label>
             <input type="date" value={resolutionDeadline} onChange={e => setResolutionDeadline(e.target.value)} />
           </div>
-          <div></div>
+          {!ticket.is_internal && <div></div>}
           <div>
-            <label>Исполнитель</label>
-            <select value={assigneeId} onChange={e => setAssigneeId(Number(e.target.value) || '')}>
-              <option value="">— Назначить позже —</option>
-              {assignables.map(u => (
-                <option key={u.id} value={u.id}>{[u.name, u.patronymic].filter(Boolean).join(' ')}</option>
-              ))}
-            </select>
+            <label>Исполнитель {ticket.is_internal && <span className="required">*</span>}</label>
+            {ticket.is_internal && currentUser?.role === 'engineer' ? (
+              <input value={[currentUser.name, currentUser.patronymic].filter(Boolean).join(' ')} disabled style={{ opacity: 0.7 }} />
+            ) : (
+              <select value={assigneeId} onChange={e => setAssigneeId(Number(e.target.value) || '')}>
+                <option value="">{ticket.is_internal ? '— Выберите исполнителя —' : '— Назначить позже —'}</option>
+                {assignables.map(u => (
+                  <option key={u.id} value={u.id}>{[u.name, u.patronymic].filter(Boolean).join(' ')}</option>
+                ))}
+              </select>
+            )}
           </div>
-          <div>
+          {!ticket.is_internal && <div>
             <label>Контактное лицо на объекте</label>
             <input value={siteContactName} onChange={e => setSiteContactName(e.target.value)} />
-          </div>
-          <div>
+          </div>}
+          {!ticket.is_internal && <div>
             <label>Телефон на объекте</label>
             <input value={siteContactPhone} onChange={e => setSiteContactPhone(e.target.value)} />
-          </div>
+          </div>}
         </div>
         <div className="modal-actions">
           <button className="btn btn-primary" onClick={submit} disabled={saving}>
@@ -642,7 +694,7 @@ const TicketDetailModal: React.FC<{
             )}
             {ticket.site_contact_name && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Контакт</span><div>{ticket.site_contact_name}{ticket.site_contact_phone ? `, ${ticket.site_contact_phone}` : ''}</div></div>}
             {ticket.scheduled_end && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Выезд по</span><div>{new Date(ticket.scheduled_end).toLocaleString('ru-RU')}</div></div>}
-            {ticket.source_description && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Источник</span><div>{ticket.source_description}</div></div>}
+            {ticket.source_description && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{ticket.is_internal ? 'Дополнение по работам' : 'Источник'}</span><div>{ticket.source_description}</div></div>}
             {ticket.location_name && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Объект</span><div>{ticket.location_name}</div></div>}
             {ticket.location_address && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Адрес</span><div>{ticket.location_address}</div></div>}
             {ticket.customer_name && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Заказчик</span><div>{ticket.customer_name}</div></div>}
@@ -1179,6 +1231,7 @@ const App: React.FC = () => {
             onClose={() => setEditTicket(null)}
             onSaved={() => { setEditTicket(null); setRefreshKey(k => k + 1); }}
             users={users}
+            currentUser={user}
           />
         )}
         {detailTicket && (

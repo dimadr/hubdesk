@@ -155,6 +155,51 @@ def test_engineer_create_overrides_client_assignee():
     assert normalized["assignee_id"] == 7
 
 
+def test_internal_ticket_normalization_clears_object_fields():
+    from datetime import datetime
+    from src.models.user import UserRole
+    from src.services.ticket_service import TicketService
+
+    user = MagicMock(id=7, role=UserRole.engineer)
+    normalized = TicketService._normalize_create_data(
+        {
+            "is_internal": True,
+            "body": "Проверить внутреннюю сеть\nв серверной",
+            "source_description": "Проверить резервный канал",
+            "resolution_deadline": datetime(2026, 8, 10, 23, 59, 59),
+            "assignee_id": 99,
+            "customer_id": 1,
+            "location_id": 2,
+            "site_contact_name": "Не должен сохраниться",
+        },
+        user,
+    )
+
+    assert normalized["subject"] == "Проверить внутреннюю сеть"
+    assert normalized["assignee_id"] == 7
+    assert normalized["customer_id"] is None
+    assert normalized["location_id"] is None
+    assert normalized["site_contact_name"] is None
+
+
+def test_internal_ticket_requires_addition():
+    from datetime import datetime
+    from fastapi import HTTPException
+    from src.services.ticket_service import TicketService
+
+    with pytest.raises(HTTPException, match="Дополнение по работам обязательно"):
+        TicketService._normalize_create_data(
+            {
+                "is_internal": True,
+                "body": "Описание",
+                "source_description": "",
+                "resolution_deadline": datetime(2026, 8, 10, 23, 59, 59),
+                "assignee_id": 7,
+            },
+            None,
+        )
+
+
 @pytest.mark.asyncio
 async def test_viewer_cannot_modify_ticket():
     from src.models.user import UserRole

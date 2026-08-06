@@ -54,10 +54,10 @@ class UserResponse(BaseModel):
 
 
 class TicketCreate(BaseModel):
-    subject: str = Field(..., max_length=500)
+    subject: Optional[str] = Field(None, max_length=500)
     body: str = Field(default="", max_length=5000)
-    customer_id: int
-    location_id: int
+    customer_id: Optional[int] = None
+    location_id: Optional[int] = None
     equipment_id: Optional[int] = None
     type: Optional[TicketType] = None
     priority: TicketPriority = TicketPriority.medium
@@ -104,7 +104,7 @@ class TicketResponse(BaseModel):
     priority: str
     type: Optional[str] = None
     is_internal: bool
-    customer_id: int
+    customer_id: Optional[int] = None
     customer_name: Optional[str] = None
     location_id: Optional[int] = None
     location_name: Optional[str] = None
