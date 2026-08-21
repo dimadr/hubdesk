@@ -1,8 +1,18 @@
-from pydantic import BaseModel, Field
-from datetime import datetime
+from pydantic import BaseModel, Field, field_serializer
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 from src.models.ticket import TicketStatus, TicketPriority, TicketType
+
+
+def _utc_iso(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    else:
+        value = value.astimezone(timezone.utc)
+    return value.isoformat().replace("+00:00", "Z")
 
 
 class TicketStatusEnum:
@@ -127,6 +137,14 @@ class TicketResponse(BaseModel):
     resolution_overdue: bool = False
     is_archived: bool = False
 
+    @field_serializer(
+        "scheduled_start", "scheduled_end", "created_at", "accepted_at",
+        "completed_at", "response_deadline", "resolution_deadline",
+        when_used="json",
+    )
+    def serialize_utc_datetime(self, value: datetime | None) -> str | None:
+        return _utc_iso(value)
+
     model_config = {"from_attributes": True}
 
 
@@ -144,6 +162,10 @@ class CommentResponse(BaseModel):
     is_internal: bool
     created_at: datetime
 
+    @field_serializer("created_at", when_used="json")
+    def serialize_created_at(self, value: datetime) -> str:
+        return _utc_iso(value)
+
     model_config = {"from_attributes": True}
 
 
@@ -157,6 +179,10 @@ class AttachmentResponse(BaseModel):
     size: int
     is_internal: bool
     created_at: datetime
+
+    @field_serializer("created_at", when_used="json")
+    def serialize_created_at(self, value: datetime) -> str:
+        return _utc_iso(value)
 
     model_config = {"from_attributes": True}
 

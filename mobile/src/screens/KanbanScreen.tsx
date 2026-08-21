@@ -1,130 +1,103 @@
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator, RefreshControl } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { api } from '../api/client';
-import { TicketResponse, STATUS_LABELS, PRIORITY_LABELS } from '../api/types';
+import { api, getApiError } from '../api/client';
+import { PRIORITY_LABELS, TicketResponse, UserInfo } from '../api/types';
+import { ThemeColors, useAppTheme } from '../theme/ThemeContext';
 
 const COLUMNS = [
-  { key: 'project', label: 'В проекте', color: '#34d399', bg: 'rgba(52,211,153,.08)' },
-  { key: 'todo', label: 'Дела', color: '#fbbf24', bg: 'rgba(251,191,36,.08)' },
-  { key: 'in_progress', label: 'В работе', color: '#ec4899', bg: 'rgba(236,72,153,.08)' },
-  { key: 'done', label: 'Завершённые', color: '#60a5fa', bg: 'rgba(96,165,250,.08)' },
-];
+  { key: 'ASSIGNED', label: 'Назначены', color: '#60a5fa' },
+  { key: 'ACCEPTED', label: 'Приняты', color: '#a78bfa' },
+  { key: 'IN_PROGRESS', label: 'В работе', color: '#fbbf24' },
+  { key: 'COMPLETED', label: 'Завершены', color: '#34d399' },
+] as const;
 
-const STATUS_MAP: Record<string, string> = {
-  ASSIGNED: 'project', ACCEPTED: 'todo',
-  ON_THE_WAY: 'in_progress', ARRIVED: 'in_progress', IN_PROGRESS: 'in_progress',
-  REVIEW: 'done', COMPLETED: 'done',
-};
+const ZOOM_LEVELS = [1, 1.6, 2.4, 3.2];
 
-export const KanbanScreen: React.FC = () => {
+export const KanbanScreen: React.FC<{ user: UserInfo; onOpen: (ticket: TicketResponse) => void }> = ({ user, onOpen }) => {
+  const { width } = useWindowDimensions();
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [tickets, setTickets] = useState<TicketResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
-  const isMountedRef = useRef(true);
-
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => { isMountedRef.current = false; };
-  }, []);
+  const [error, setError] = useState('');
+  const [zoomIndex, setZoomIndex] = useState(0);
 
   const load = useCallback(async () => {
+    setError('');
     try {
-      const user = await AsyncStorage.getItem('user');
-      if (!user) return;
-      let userId = 0;
-      try {
-        userId = JSON.parse(user).user_id;
-      } catch {
-        return;
+      const active: TicketResponse[] = [];
+      let offset = 0;
+      while (true) {
+        const { data } = await api.get<TicketResponse[]>('/tickets', { params: { assignee_id: user.user_id, archived: false, limit: 100, offset } });
+        active.push(...data);
+        if (data.length < 100) break;
+        offset += data.length;
       }
-      const { data } = await api.get('/tickets', { params: { assignee_id: userId, limit: 50 } });
-      if (isMountedRef.current) setTickets(data);
+      const { data: completed } = await api.get<TicketResponse[]>('/tickets', { params: { assignee_id: user.user_id, status: 'COMPLETED', archived: true, limit: 50 } });
+      setTickets([...active, ...completed]);
     } catch (e) {
-      console.error(e);
+      setError(getApiError(e, 'Не удалось загрузить доску'));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-  }, []);
+  }, [user.user_id]);
 
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-      load().then(() => { if (active && isMountedRef.current) setLoading(false); });
-      return () => { active = false; };
-    }, [load])
-  );
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await load();
-    if (isMountedRef.current) setRefreshing(false);
-  };
+  const groups = useMemo(() => Object.fromEntries(COLUMNS.map((column) => [column.key, tickets.filter((ticket) => ticket.status === column.key)])), [tickets]);
+  const fitColumnWidth = Math.max(76, (width - 28 - 18) / 4);
+  const zoom = ZOOM_LEVELS[zoomIndex];
+  const columnWidth = fitColumnWidth * zoom;
+  const compact = zoomIndex === 0;
 
-  const groupedTickets = useMemo(() => {
-    const groups: Record<string, TicketResponse[]> = { project: [], todo: [], in_progress: [], done: [] };
-    tickets.forEach(t => {
-      const k = STATUS_MAP[t.status];
-      if (groups[k]) groups[k].push(t);
-    });
-    return groups;
-  }, [tickets]);
-
-  if (loading) {
-    return <SafeAreaView style={styles.container}><ActivityIndicator color="#8b5cf6" size="large" style={{ marginTop: 40 }} /></SafeAreaView>;
-  }
+  if (loading) return <SafeAreaView style={styles.container}><ActivityIndicator color={colors.primary} size="large" style={styles.loader} /></SafeAreaView>;
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.title}>Моя доска</Text>
-      <ScrollView
-        horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.kanbanScroll}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#8b5cf6" colors={['#8b5cf6']} />}
-      >
-        {COLUMNS.map((col) => {
-          const items = groupedTickets[col.key] || [];
-          return (
-            <View key={col.key} style={[styles.column, { backgroundColor: col.bg }]}>
-              <Text style={[styles.columnTitle, { color: col.color }]}>{col.label} ({items.length})</Text>
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.columnCardsScroll}>
-                {items.length === 0 ? (
-                  <Text style={styles.emptyText}>Нет задач</Text>
-                ) : (
-                  items.map(t => (
-                    <View key={t.id} style={styles.card}>
-                      <Text style={styles.cardNumber}>#{t.number}</Text>
-                      <Text style={styles.cardSubject} numberOfLines={2}>{t.subject}</Text>
-                      <View style={styles.cardFooter}>
-                        <Text style={[styles.cardPriority, { color: t.priority === 'critical' ? '#f87171' : t.priority === 'high' ? '#fbbf24' : '#9097b8' }]}>
-                          {PRIORITY_LABELS[t.priority] || t.priority}
-                        </Text>
-                        <Text style={styles.cardStatus}>{STATUS_LABELS[t.status] || t.status}</Text>
-                      </View>
-                    </View>
-                  ))
-                )}
-              </ScrollView>
-            </View>
-          );
-        })}
+      <View style={styles.header}>
+        <Text style={styles.title}>Моя доска</Text>
+        <View style={styles.zoomControls}>
+          <TouchableOpacity style={[styles.zoomButton, zoomIndex === 0 && styles.zoomDisabled]} onPress={() => setZoomIndex((value) => Math.max(0, value - 1))} disabled={zoomIndex === 0}><Text style={styles.zoomText}>−</Text></TouchableOpacity>
+          <Text style={styles.zoomValue}>{Math.round(zoom * 100)}%</Text>
+          <TouchableOpacity style={[styles.zoomButton, zoomIndex === ZOOM_LEVELS.length - 1 && styles.zoomDisabled]} onPress={() => setZoomIndex((value) => Math.min(ZOOM_LEVELS.length - 1, value + 1))} disabled={zoomIndex === ZOOM_LEVELS.length - 1}><Text style={styles.zoomText}>＋</Text></TouchableOpacity>
+        </View>
+      </View>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+      <ScrollView horizontal showsHorizontalScrollIndicator={zoomIndex > 0} contentContainerStyle={styles.board} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} colors={[colors.primary]} />}>
+        {COLUMNS.map((column) => (
+          <View key={column.key} style={[styles.column, { width: columnWidth }, compact && styles.columnCompact]}>
+            <View style={[styles.columnHeader, compact && styles.columnHeaderCompact]}><View style={[styles.dot, { backgroundColor: column.color }]} /><Text style={[styles.columnTitle, compact && styles.columnTitleCompact]} numberOfLines={2}>{column.label}</Text><Text style={[styles.count, compact && styles.countCompact]}>{groups[column.key].length}</Text></View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.cards} nestedScrollEnabled>
+              {groups[column.key].map((ticket) => (
+                <TouchableOpacity key={ticket.id} style={[styles.card, compact && styles.cardCompact]} onPress={() => onOpen(ticket)} activeOpacity={0.75}>
+                  <Text style={[styles.number, compact && styles.numberCompact]}>#{ticket.number}</Text>
+                  <Text style={[styles.subject, compact && styles.subjectCompact]} numberOfLines={compact ? 3 : 4}>{ticket.subject}</Text>
+                  {!compact && ticket.location_name ? <Text style={styles.location} numberOfLines={2}>{ticket.location_name}</Text> : null}
+                  {!compact ? <Text style={[styles.priority, ticket.priority === 'critical' && styles.critical]}>{PRIORITY_LABELS[ticket.priority]}</Text> : null}
+                </TouchableOpacity>
+              ))}
+              {!groups[column.key].length && <Text style={[styles.empty, compact && styles.emptyCompact]}>—</Text>}
+            </ScrollView>
+          </View>
+        ))}
       </ScrollView>
     </SafeAreaView>
   );
 };
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#080a12' },
-  title: { fontSize: 22, fontWeight: '800', color: '#eaf0ff', margin: 14, marginBottom: 10 },
-  kanbanScroll: { paddingHorizontal: 14, paddingBottom: 20, gap: 12 },
-  column: { width: 260, borderRadius: 14, padding: 12, maxHeight: '98%', backgroundColor: '#0d1020' },
-  columnTitle: { fontSize: 14, fontWeight: '700', marginBottom: 12, letterSpacing: 0.3 },
-  columnCardsScroll: { paddingBottom: 16 },
-  card: { backgroundColor: '#111527', borderRadius: 10, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,.05)' },
-  cardNumber: { fontSize: 10, color: '#5f6690', fontWeight: '700' },
-  cardSubject: { fontSize: 13, fontWeight: '600', color: '#eaf0ff', marginVertical: 6, lineHeight: 18 },
-  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
-  cardPriority: { fontSize: 11, fontWeight: '600' },
-  cardStatus: { fontSize: 10, color: '#6b7280', fontWeight: '500' },
-  emptyText: { color: '#475569', fontSize: 12, textAlign: 'center', marginTop: 20, fontStyle: 'italic' }
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background }, loader: { marginTop: 44 }, error: { color: colors.danger, marginHorizontal: 14, marginBottom: 8 },
+  header: { height: 52, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center' }, title: { flex: 1, color: colors.text, fontSize: 23, fontWeight: '800' },
+  zoomControls: { height: 34, flexDirection: 'row', alignItems: 'center', backgroundColor: colors.input, borderRadius: 7, borderWidth: 1, borderColor: colors.border },
+  zoomButton: { width: 34, height: 32, alignItems: 'center', justifyContent: 'center' }, zoomDisabled: { opacity: 0.3 }, zoomText: { color: colors.primary, fontSize: 21, fontWeight: '800' }, zoomValue: { minWidth: 43, color: colors.muted, fontSize: 10, fontWeight: '700', textAlign: 'center' },
+  board: { paddingHorizontal: 14, paddingBottom: 16, gap: 6 }, column: { backgroundColor: colors.input, borderRadius: 8, padding: 9, borderWidth: 1, borderColor: colors.border }, columnCompact: { padding: 4, borderRadius: 6 },
+  columnHeader: { minHeight: 34, flexDirection: 'row', alignItems: 'center' }, columnHeaderCompact: { minHeight: 31, alignItems: 'flex-start', paddingTop: 4 }, dot: { width: 7, height: 7, borderRadius: 4, marginRight: 5, marginTop: 3 },
+  columnTitle: { flex: 1, color: colors.text, fontSize: 13, fontWeight: '800' }, columnTitleCompact: { fontSize: 8, lineHeight: 10 }, count: { marginLeft: 4, color: colors.muted, fontSize: 11 }, countCompact: { fontSize: 8 }, cards: { paddingBottom: 12 },
+  card: { backgroundColor: colors.surface, borderRadius: 7, padding: 10, marginBottom: 7, borderWidth: 1, borderColor: colors.border }, cardCompact: { borderRadius: 5, padding: 4, marginBottom: 4 }, number: { color: colors.subtle, fontSize: 10, fontWeight: '700' }, numberCompact: { fontSize: 7 },
+  subject: { color: colors.text, fontSize: 13, fontWeight: '700', lineHeight: 18, marginTop: 4 }, subjectCompact: { fontSize: 8, lineHeight: 10, marginTop: 2 }, location: { color: colors.muted, fontSize: 11, marginTop: 5 }, priority: { color: colors.muted, fontSize: 10, marginTop: 7 }, critical: { color: colors.danger, fontWeight: '800' },
+  empty: { color: colors.subtle, textAlign: 'center', marginTop: 24 }, emptyCompact: { fontSize: 9, marginTop: 10 },
 });

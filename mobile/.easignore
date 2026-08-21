@@ -1,0 +1,7 @@
+node_modules
+.expo
+dist
+pnpm-lock.yaml
+/android
+/ios
+MOBILE_IMPLEMENTATION_PLAN.md

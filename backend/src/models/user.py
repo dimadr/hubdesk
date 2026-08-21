@@ -53,6 +53,9 @@ class User(Base):
     groups: Mapped[list["Group"]] = relationship(secondary=user_group, back_populates="members")
     accessible_warehouses: Mapped[list["Warehouse"]] = relationship(secondary=warehouse_access, back_populates="authorized_users")
     assigned_locations: Mapped[list["AssetLocation"]] = relationship(back_populates="assigned_engineer", foreign_keys="AssetLocation.assigned_engineer_id")
+    device_sessions: Mapped[list["DeviceSession"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class Group(Base):

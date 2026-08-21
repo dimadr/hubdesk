@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, Alert, ActivityIndicator } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { api } from '../api/client';
-import { TicketResponse } from '../api/types';
 import * as ImagePicker from 'expo-image-picker';
+import { api, getApiError } from '../api/client';
+import { uploadTicketPhoto } from '../api/uploads';
+import { AttachmentResponse, ChecklistResponse, TicketResponse } from '../api/types';
+import { ThemeColors, useAppTheme } from '../theme/ThemeContext';
 
 interface Props {
   ticket: TicketResponse;
@@ -12,121 +14,90 @@ interface Props {
 }
 
 export const CompleteTicketScreen: React.FC<Props> = ({ ticket, onBack, onSubmitted }) => {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [comment, setComment] = useState('');
   const [imageUri, setImageUri] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [checklists, setChecklists] = useState<ChecklistResponse[]>([]);
+  const [attachments, setAttachments] = useState<AttachmentResponse[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    Promise.all([
+      api.get<ChecklistResponse[]>(`/tickets/${ticket.id}/checklists`),
+      api.get<AttachmentResponse[]>('/attachments', { params: { ticket_id: ticket.id } }),
+    ]).then(([checklistResult, attachmentResult]) => {
+      setChecklists(checklistResult.data);
+      setAttachments(attachmentResult.data);
+    }).catch((e) => Alert.alert('Не удалось проверить заявку', getApiError(e))).finally(() => setLoadingData(false));
+  }, [ticket.id]);
 
   const pickImage = async () => {
-    if (loading) return; 
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Нет доступа', 'Разрешите приложению использовать камеру');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.75 });
+    if (!result.canceled && result.assets[0]) setImageUri(result.assets[0].uri);
+  };
 
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') { 
-      Alert.alert('Доступ запрещен', 'Нет доступа к камере для создания снимка.'); 
-      return; 
-    }
-    
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
-    if (!result.canceled && result.assets[0]) {
-      setImageUri(result.assets[0].uri);
-    }
+  const getChecklistProblem = () => {
+    const missing = checklists.flatMap((checklist) => checklist.fields.filter((field) => {
+      if (!field.is_mandatory || field.field_type === 'photo') return false;
+      const value = (field.value || '').trim().toLowerCase();
+      return !value || ['false', 'нет', '0', '-'].includes(value);
+    }).map((field) => field.label));
+    if (missing.length) return `Заполните обязательные поля: ${missing.join(', ')}`;
+    const requiredPhotos = checklists.flatMap((checklist) => checklist.fields).filter((field) => field.is_mandatory && field.field_type === 'photo').length;
+    const availablePhotos = attachments.filter((attachment) => attachment.content_type.startsWith('image/')).length + (imageUri ? 1 : 0);
+    if (availablePhotos < requiredPhotos) return `Не хватает обязательных фотографий: ${requiredPhotos - availablePhotos}`;
+    return '';
   };
 
   const submit = async () => {
-    if (loading) return;
-    setLoading(true);
-
+    if (submitting) return;
+    const checklistProblem = getChecklistProblem();
+    if (checklistProblem) {
+      Alert.alert('Заявку нельзя завершить', checklistProblem);
+      return;
+    }
+    setSubmitting(true);
     try {
-      let photoUrl = '';
-      
-      if (imageUri) {
-        const form = new FormData();
-        
-        const fileData = {
-          uri: imageUri,
-          type: 'image/jpeg',
-          name: 'photo.jpg',
-        };
-        form.append('file', fileData as unknown as Blob);
-        form.append('ticket_id', String(ticket.id));
-
-        const resp = await api.post('/attachments', form);
-        photoUrl = resp.data?.file_url || '(фото)';
-      }
-
-      const fullComment = [comment, photoUrl ? `Фото: ${photoUrl}` : ''].filter(Boolean).join('\n\n');
-      
-      if (fullComment) {
-        await api.post(`/tickets/${ticket.id}/comments`, { body: fullComment, is_internal: true });
-      }
-
-      await api.patch(`/tickets/${ticket.id}/status`, { status: 'COMPLETED' });
+      if (imageUri) await uploadTicketPhoto(ticket.id, imageUri);
+      await api.post(`/tickets/${ticket.id}/complete`, { comment: comment.trim() });
       onSubmitted();
-    } catch (e: any) {
-      console.error(e);
-      Alert.alert('Ошибка', e.response?.data?.detail || 'Не удалось завершить операцию. Проверьте сеть.');
-    } finally { 
-      setLoading(false); 
+    } catch (e) {
+      Alert.alert('Заявка не завершена', getApiError(e));
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <TouchableOpacity 
-        onPress={onBack} 
-        style={[styles.back, loading && { opacity: 0.5 }]} 
-        disabled={loading}
-      >
-        <Text style={styles.backText}>← Назад</Text>
-      </TouchableOpacity>
-
-      <Text style={styles.title}>Завершить #{ticket.number}</Text>
-      <Text style={styles.subtitle}>{ticket.subject}</Text>
-
-      <Text style={styles.label}>Комментарий</Text>
-      <TextInput 
-        style={styles.textarea} 
-        placeholder="Что сделано..." 
-        placeholderTextColor="#5f6690"
-        value={comment} 
-        onChangeText={setComment} 
-        multiline 
-        numberOfLines={5}
-        editable={!loading}
-      />
-
-      <TouchableOpacity 
-        style={[styles.photoBtn, loading && { opacity: 0.7 }]} 
-        onPress={pickImage}
-        disabled={loading}
-      >
-        <Text style={styles.photoBtnText}>{imageUri ? '📷 Переснять' : '📷 Сделать фото'}</Text>
-      </TouchableOpacity>
-      
-      {imageUri && <Image source={{ uri: imageUri }} style={styles.preview} />}
-
-      <TouchableOpacity 
-        style={[styles.submitBtn, loading && styles.submitBtnDisabled]} 
-        onPress={submit} 
-        disabled={loading}
-      >
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>✓ Завершить</Text>}
-      </TouchableOpacity>
+      <View style={styles.header}><TouchableOpacity onPress={onBack} disabled={submitting}><Text style={styles.back}>Назад</Text></TouchableOpacity><Text style={styles.headerTitle}>Завершение</Text><View style={styles.spacer} /></View>
+      {loadingData ? <ActivityIndicator color={colors.primary} size="large" style={styles.loader} /> : (
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <Text style={styles.number}>Заявка #{ticket.number}</Text>
+          <Text style={styles.subject}>{ticket.subject}</Text>
+          <Text style={styles.label}>Отчет о выполненной работе</Text>
+          <TextInput style={styles.textarea} value={comment} onChangeText={setComment} placeholder="Что выполнено" placeholderTextColor={colors.subtle} multiline editable={!submitting} />
+          <Text style={styles.label}>Фотография</Text>
+          <TouchableOpacity style={styles.photoButton} onPress={pickImage} disabled={submitting}><Text style={styles.photoText}>{imageUri ? 'Переснять' : 'Сделать фото'}</Text></TouchableOpacity>
+          {imageUri && <Image source={{ uri: imageUri }} style={styles.preview} />}
+          <TouchableOpacity style={[styles.submit, submitting && styles.disabled]} onPress={submit} disabled={submitting}>
+            {submitting ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.submitText}>Завершить заявку</Text>}
+          </TouchableOpacity>
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 };
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#080a12', paddingHorizontal: 14 },
-  back: { marginTop: 10, marginBottom: 10 }, 
-  backText: { color: '#8b5cf6', fontSize: 15, fontWeight: '600' },
-  title: { fontSize: 22, fontWeight: '700', color: '#eaf0ff' },
-  subtitle: { fontSize: 14, color: '#9097b8', marginBottom: 20 },
-  label: { fontSize: 13, fontWeight: '700', color: '#9097b8', marginBottom: 6 },
-  textarea: { backgroundColor: '#0d1020', borderRadius: 10, padding: 12, fontSize: 14, color: '#eaf0ff', minHeight: 100, borderWidth: 1, borderColor: 'rgba(255,255,255,.07)', textAlignVertical: 'top' },
-  photoBtn: { backgroundColor: '#111527', borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,.07)' },
-  photoBtnText: { color: '#eaf0ff', fontSize: 15, fontWeight: '600' },
-  preview: { width: '100%', height: 200, borderRadius: 10, marginTop: 10, backgroundColor: '#0d1020' },
-  submitBtn: { backgroundColor: '#34d399', borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 20 },
-  submitBtnDisabled: { backgroundColor: '#10b981', opacity: 0.6 },
-  submitText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background }, header: { height: 52, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: colors.border }, back: { color: colors.primary, width: 70, fontWeight: '700' }, headerTitle: { flex: 1, color: colors.text, fontSize: 17, fontWeight: '800', textAlign: 'center' }, spacer: { width: 70 }, loader: { marginTop: 44 },
+  content: { padding: 14, paddingBottom: 32 }, number: { color: colors.subtle, fontSize: 12, fontWeight: '700' }, subject: { color: colors.text, fontSize: 21, fontWeight: '800', lineHeight: 27, marginTop: 4, marginBottom: 22 }, label: { color: colors.muted, fontSize: 12, fontWeight: '800', marginBottom: 6, marginTop: 12 }, textarea: { minHeight: 120, backgroundColor: colors.input, borderRadius: 8, padding: 12, color: colors.text, textAlignVertical: 'top', borderWidth: 1, borderColor: colors.border },
+  photoButton: { height: 46, backgroundColor: colors.surface, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.primary }, photoText: { color: colors.primarySoft, fontWeight: '700' }, preview: { width: '100%', height: 220, borderRadius: 8, marginTop: 9 }, submit: { height: 52, backgroundColor: colors.success, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginTop: 24 }, submitText: { color: colors.onPrimary, fontSize: 16, fontWeight: '800' }, disabled: { opacity: 0.55 },
 });

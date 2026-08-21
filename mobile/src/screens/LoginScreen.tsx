@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -12,9 +12,13 @@ import {
   Platform
 } from 'react-native';
 import { useAuthStore } from '../store/authStore';
+import { getApiError } from '../api/client';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { ThemeColors, useAppTheme } from '../theme/ThemeContext';
 
 export const LoginScreen: React.FC = () => {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -35,7 +39,7 @@ export const LoginScreen: React.FC = () => {
       await login(cleanEmail, password);
     } catch (e: any) {
       console.error(e);
-      Alert.alert('Ошибка', e.response?.data?.detail || 'Неверный email или пароль');
+      Alert.alert('Ошибка', getApiError(e, 'Неверный email или пароль'));
     } finally {
       setLoading(false);
     }
@@ -53,12 +57,12 @@ export const LoginScreen: React.FC = () => {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.card}>
-            <Text style={styles.title}>HUB Desk</Text>
+            <Text style={styles.title}>Абие</Text>
             
             <TextInput 
               style={styles.input} 
               placeholder="Email" 
-              placeholderTextColor="#5f6690"
+              placeholderTextColor={colors.subtle}
               value={email} 
               onChangeText={setEmail} 
               autoCapitalize="none" 
@@ -74,7 +78,7 @@ export const LoginScreen: React.FC = () => {
               ref={passwordInputRef}
               style={styles.input} 
               placeholder="Пароль" 
-              placeholderTextColor="#5f6690"
+              placeholderTextColor={colors.subtle}
               value={password} 
               onChangeText={setPassword} 
               secureTextEntry 
@@ -88,7 +92,7 @@ export const LoginScreen: React.FC = () => {
               onPress={handleLogin} 
               disabled={loading}
             >
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Войти</Text>}
+              {loading ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.btnText}>Войти</Text>}
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -97,14 +101,14 @@ export const LoginScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#080a12' },
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   keyboardView: { flex: 1 },
   scrollContainer: { flexGrow: 1, justifyContent: 'center', padding: 24 },
-  card: { backgroundColor: '#111527', borderRadius: 16, padding: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,.07)' },
-  title: { fontSize: 28, fontWeight: '800', color: '#eaf0ff', textAlign: 'center', marginBottom: 32, letterSpacing: -0.5 },
-  input: { backgroundColor: '#0d1020', borderRadius: 10, padding: 14, fontSize: 16, color: '#eaf0ff', marginBottom: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,.07)' },
-  button: { backgroundColor: '#8b5cf6', borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 8 },
-  buttonDisabled: { backgroundColor: '#6d28d9', opacity: 0.7 },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  card: { backgroundColor: colors.surface, borderRadius: 8, padding: 24, borderWidth: 1, borderColor: colors.border },
+  title: { fontSize: 28, fontWeight: '800', color: colors.text, textAlign: 'center', marginBottom: 32 },
+  input: { backgroundColor: colors.input, borderRadius: 8, padding: 14, fontSize: 16, color: colors.text, marginBottom: 12, borderWidth: 1, borderColor: colors.border },
+  button: { backgroundColor: colors.primary, borderRadius: 8, padding: 14, alignItems: 'center', marginTop: 8 },
+  buttonDisabled: { opacity: 0.7 },
+  btnText: { color: colors.onPrimary, fontSize: 16, fontWeight: '700' },
 });

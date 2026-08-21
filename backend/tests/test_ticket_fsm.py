@@ -270,3 +270,34 @@ async def test_reopen_clears_completion_timestamps(monkeypatch):
 
     assert ticket.completed_at is None
     assert ticket.archived_at is None
+
+
+@pytest.mark.asyncio
+async def test_invalid_transition_returns_conflict(monkeypatch):
+    from fastapi import HTTPException
+    from src.core.fsm.exceptions import InvalidTransitionError
+    from src.models.user import UserRole
+    from src.services import ticket_service
+    from src.services.acl_service import RoleChecker
+    from src.services.ticket_service import TicketService
+
+    service = TicketService(AsyncMock())
+    ticket = MagicMock(id=1, number=1001, created_by=None)
+    ticket.status.value = "ASSIGNED"
+    user = MagicMock(id=2, role=UserRole.admin)
+    service._get = AsyncMock(return_value=ticket)
+    service.fsm.transition = AsyncMock(
+        side_effect=InvalidTransitionError("ASSIGNED", "COMPLETED", 1)
+    )
+    monkeypatch.setattr(
+        RoleChecker, "can_view_ticket_async", AsyncMock(return_value=True)
+    )
+    monkeypatch.setattr(RoleChecker, "can_change_status", lambda *_args: True)
+    monkeypatch.setattr(ticket_service, "log_audit", AsyncMock())
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.change_status(ticket.id, "COMPLETED", user)
+
+    assert exc_info.value.status_code == 409
+    assert "ASSIGNED" in exc_info.value.detail
+    assert "COMPLETED" in exc_info.value.detail

@@ -1,9 +1,12 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '../api/client';
+import { ThemeColors, useAppTheme } from '../theme/ThemeContext';
 
 export const WarehouseScreen: React.FC = () => {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [tab, setTab] = useState<'devices' | 'inserts'>('devices');
   const [devices, setDevices] = useState<any[]>([]);
   const [inserts, setInserts] = useState<any[]>([]);
@@ -51,7 +54,7 @@ export const WarehouseScreen: React.FC = () => {
         <Text style={styles.cardTitle}>{item.name}</Text>
         {item.verification_expiry && (
           <Text style={styles.cardRow}>
-            Поверка до: <Text style={{ color: expiry.isOverdue ? '#f87171' : '#eaf0ff' }}>{expiry.formatted}</Text>
+            Поверка до: <Text style={{ color: expiry.isOverdue ? colors.danger : colors.text }}>{expiry.formatted}</Text>
           </Text>
         )}
         {item.taken_by_name && <Text style={styles.cardRow}>У кого: {item.taken_by_name}</Text>}
@@ -59,7 +62,7 @@ export const WarehouseScreen: React.FC = () => {
         {item.return_date && <Text style={styles.cardRow}>Возврат: {returnDate.formatted}</Text>}
       </View>
     );
-  }, []);
+  }, [colors.danger, colors.text, styles]);
 
   const renderInsert = useCallback(({ item }: { item: any }) => (
     <View style={styles.card}>
@@ -72,13 +75,13 @@ export const WarehouseScreen: React.FC = () => {
       {item.length && <Text style={styles.cardRow}>Длина: {item.length}</Text>}
       {item.flange_type && <Text style={styles.cardRow}>Тип: {item.flange_type}</Text>}
       <Text style={styles.cardRow}>
-        Остаток: <Text style={{ color: item.balance > 0 ? '#34d399' : '#5f6690', fontWeight: '700' }}>{item.balance} шт</Text>
+        Остаток: <Text style={{ color: item.balance > 0 ? colors.successBright : colors.subtle, fontWeight: '700' }}>{item.balance} шт</Text>
       </Text>
     </View>
-  ), []);
+  ), [colors.subtle, colors.successBright, styles]);
 
   if (loading) {
-    return <SafeAreaView style={styles.container}><ActivityIndicator color="#8b5cf6" size="large" style={{ marginTop: 40 }} /></SafeAreaView>;
+    return <SafeAreaView style={styles.container}><ActivityIndicator color={colors.primary} size="large" style={{ marginTop: 40 }} /></SafeAreaView>;
   }
 
   return (
@@ -103,17 +106,17 @@ export const WarehouseScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#080a12', paddingHorizontal: 14 },
-  title: { fontSize: 22, fontWeight: '800', color: '#eaf0ff', marginTop: 10, marginBottom: 10 },
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background, paddingHorizontal: 14 },
+  title: { fontSize: 22, fontWeight: '800', color: colors.text, marginTop: 10, marginBottom: 10 },
   tabs: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  tab: { flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: '#0d1020', alignItems: 'center' },
-  tabActive: { backgroundColor: '#8b5cf6' },
-  tabText: { fontSize: 13, fontWeight: '600', color: '#9097b8' },
-  tabTextActive: { color: '#fff' },
+  tab: { flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: colors.input, alignItems: 'center' },
+  tabActive: { backgroundColor: colors.primary },
+  tabText: { fontSize: 13, fontWeight: '600', color: colors.muted },
+  tabTextActive: { color: colors.onPrimary },
   listContent: { paddingBottom: 20 },
-  card: { backgroundColor: '#111527', borderRadius: 10, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,.07)' },
-  cardTitle: { fontSize: 15, fontWeight: '700', color: '#eaf0ff', marginBottom: 6 },
-  cardRow: { fontSize: 12, color: '#9097b8', marginBottom: 2 },
-  empty: { color: '#5f6690', textAlign: 'center', marginTop: 40, fontSize: 14 },
+  card: { backgroundColor: colors.surface, borderRadius: 8, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: colors.border },
+  cardTitle: { fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 6 },
+  cardRow: { fontSize: 12, color: colors.muted, marginBottom: 2 },
+  empty: { color: colors.subtle, textAlign: 'center', marginTop: 40, fontSize: 14 },
 });

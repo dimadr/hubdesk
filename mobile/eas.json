@@ -2,7 +2,18 @@
   "cli": { "version": ">= 4.0.0" },
   "build": {
     "development": { "developmentClient": true, "distribution": "internal" },
-    "production": {
+    "production-arm64": {
+      "env": {
+        "ANDROID_ARCHS": "arm64-v8a"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "production-universal": {
+      "env": {
+        "ANDROID_ARCHS": "armeabi-v7a,arm64-v8a,x86,x86_64"
+      },
       "android": {
         "buildType": "apk"
       }

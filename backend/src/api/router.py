@@ -2,14 +2,14 @@ import os
 import time
 import logging
 from datetime import datetime, date, timezone
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 from passlib.hash import bcrypt
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_serializer
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,8 @@ def _check_login_rate_limit(ip: str) -> None:
     attempts.append(now)
 
 from src.database import get_db
+from src.config import settings
+from src.models.device_session import DeviceSession
 from src.models.user import User, UserRole, UserStatus, Group
 from src.models.equipment import AssetLocation, Equipment
 from src.models.customer import Customer
@@ -36,6 +38,7 @@ from src.models.ticket import Ticket
 from src.core.deps import create_token, get_current_user
 from src.services.audit_service import log_audit
 from src.services.inn_service import lookup_inn as do_lookup
+from src.services.device_session_service import DeviceSessionService
 
 from .tickets import create_ticket_router
 from .attachments import attachment_router
@@ -84,6 +87,8 @@ class LoginRequest(BaseModel):
     email: str
     password: str
     remember_me: bool = False
+    create_device_session: bool = False
+    device_name: str | None = Field(None, max_length=255)
 
 
 class AuthResponse(BaseModel):
@@ -93,6 +98,53 @@ class AuthResponse(BaseModel):
     name: str
     role: str
     status: str
+    refresh_token: str | None = None
+    session_id: int | None = None
+    access_token_expires_in: int | None = None
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str = Field(..., min_length=32, max_length=512)
+
+
+class DeviceSessionResponse(BaseModel):
+    id: int
+    device_name: str
+    created_at: datetime
+    last_used_at: datetime
+    expires_at: datetime
+
+    @field_serializer("created_at", "last_used_at", "expires_at", when_used="json")
+    def serialize_utc_datetime(self, value: datetime) -> str:
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        else:
+            value = value.astimezone(timezone.utc)
+        return value.isoformat().replace("+00:00", "Z")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+def _device_auth_response(
+    user: User,
+    session: DeviceSession,
+    refresh_token: str,
+) -> AuthResponse:
+    return AuthResponse(
+        token=create_token(
+            user.id,
+            settings.mobile_access_token_ttl,
+            session_id=session.id,
+        ),
+        user_id=user.id,
+        email=user.email,
+        name=user.name,
+        role=user.role.value,
+        status=user.status.value,
+        refresh_token=refresh_token,
+        session_id=session.id,
+        access_token_expires_in=settings.mobile_access_token_ttl,
+    )
 
 
 class ContactItem(BaseModel):
@@ -245,6 +297,11 @@ async def login(data: LoginRequest, request: Request, db: AsyncSession = Depends
     if user.status == UserStatus.rejected:
         raise HTTPException(403, "Учётная запись отклонена администратором")
 
+    if data.create_device_session:
+        session, refresh_token = await DeviceSessionService(db).create(user, data.device_name)
+        await db.commit()
+        return _device_auth_response(user, session, refresh_token)
+
     ttl = 604800 if data.remember_me else 14400
     return AuthResponse(
         token=create_token(user.id, ttl),
@@ -254,6 +311,65 @@ async def login(data: LoginRequest, request: Request, db: AsyncSession = Depends
         role=user.role.value,
         status=user.status.value,
     )
+
+
+@api_router.post("/auth/device-session", response_model=AuthResponse, tags=["Auth"])
+async def create_device_session(
+    data: LoginRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    client_ip = request.client.host if request.client else "unknown"
+    rate_limit_key = f"device-session:{user.id}:{client_ip}"
+    _check_login_rate_limit(rate_limit_key)
+    if data.email.strip().lower() != user.email.strip().lower():
+        raise HTTPException(403, "Учётная запись не совпадает с текущей сессией")
+    if not await run_in_threadpool(bcrypt.verify, data.password, user.password_hash):
+        raise HTTPException(401, "Неверный пароль")
+    _login_attempts.pop(rate_limit_key, None)
+    session, refresh_token = await DeviceSessionService(db).create(user, data.device_name)
+    await db.commit()
+    return _device_auth_response(user, session, refresh_token)
+
+
+@api_router.post("/auth/refresh", response_model=AuthResponse, tags=["Auth"])
+async def refresh_device_session(
+    data: RefreshRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    session, user = await DeviceSessionService(db).refresh(data.refresh_token)
+    await db.commit()
+    return _device_auth_response(user, session, data.refresh_token)
+
+
+@api_router.post("/auth/logout", status_code=204, tags=["Auth"])
+async def revoke_current_device_session(
+    data: RefreshRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    await DeviceSessionService(db).revoke_by_token(data.refresh_token)
+    await db.commit()
+    return Response(status_code=204)
+
+
+@api_router.get("/auth/sessions", response_model=list[DeviceSessionResponse], tags=["Auth"])
+async def list_device_sessions(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await DeviceSessionService(db).list_active(user)
+
+
+@api_router.delete("/auth/sessions/{session_id}", status_code=204, tags=["Auth"])
+async def revoke_device_session(
+    session_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await DeviceSessionService(db).revoke(session_id, user)
+    await db.commit()
+    return Response(status_code=204)
 
 
 @api_router.get("/locations", response_model=list[LocationResponse], tags=["Locations"])

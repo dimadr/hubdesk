@@ -15,6 +15,7 @@ from src.services.acl_service import RoleChecker
 from src.services.audit_service import log_audit
 from src.services.mail_service import MailService
 from src.services.comment_service import CommentService
+from src.core.fsm.exceptions import GuardFailedError, InvalidTransitionError
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +177,7 @@ class TicketService:
         if ticket.status.value == "COMPLETED":
             return ticket
         if comment.strip():
-            await CommentService(self.session).add(ticket_id, comment.strip(), True, user)
+            await CommentService(self.session).add(ticket_id, comment.strip(), False, user)
         return await self.change_status(ticket_id, "COMPLETED", user)
 
     async def change_status(self, ticket_id: int, target: str, user: User) -> Ticket:
@@ -194,7 +195,19 @@ class TicketService:
                 400, f"У вашей роли нет прав для перевода заявки в статус {target}"
             )
 
-        await self.fsm.transition(ticket, target, user.id)
+        try:
+            await self.fsm.transition(ticket, target, user.id)
+        except InvalidTransitionError as exc:
+            raise HTTPException(
+                409,
+                f"Переход из статуса {exc.current} в {exc.target} недопустим",
+            ) from exc
+        except GuardFailedError as exc:
+            detail = {
+                "checklist_complete": "Заполните обязательные поля чек-листа",
+                "mandatory_photos": "Добавьте обязательные фотографии",
+            }.get(exc.guard_name, "Условия перехода заявки не выполнены")
+            raise HTTPException(409, detail) from exc
 
         now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
         if target == "ACCEPTED" and ticket.accepted_at is None:

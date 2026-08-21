@@ -1,26 +1,117 @@
+export type TicketStatus = 'ASSIGNED' | 'ACCEPTED' | 'IN_PROGRESS' | 'COMPLETED';
+export type TicketPriority = 'low' | 'medium' | 'high' | 'critical';
+
 export interface TicketResponse {
-  id: number; number: number; subject: string; body: string;
-  status: string; priority: string; type: string | null; is_internal: boolean;
-  customer_id: number; location_id: number | null;
-  equipment_id: number | null; assignee_id: number | null;
-  site_contact_name: string | null; site_contact_phone: string | null;
+  id: number;
+  number: number;
+  subject: string;
+  body: string;
+  status: TicketStatus;
+  priority: TicketPriority;
+  type: string | null;
+  is_internal: boolean;
+  customer_id: number | null;
+  customer_name: string | null;
+  location_id: number | null;
+  location_name: string | null;
+  location_address: string | null;
+  equipment_id: number | null;
+  assignee_id: number | null;
+  assignee_name: string | null;
+  group_id: number | null;
+  site_contact_name: string | null;
+  site_contact_phone: string | null;
+  scheduled_start: string | null;
   scheduled_end: string | null;
   source_description: string | null;
-  created_at: string; resolution_deadline: string | null;
-  response_overdue: boolean; resolution_overdue: boolean;
+  created_at: string;
+  accepted_at: string | null;
+  completed_at: string | null;
+  response_deadline: string | null;
+  resolution_deadline: string | null;
+  response_overdue: boolean;
+  resolution_overdue: boolean;
   is_archived: boolean;
 }
 
 export interface UserInfo {
-  id: number; email: string; name: string; phone?: string; role: string;
+  user_id: number;
+  email: string;
+  name: string;
+  role: string;
+  status: string;
 }
 
-export const STATUS_LABELS: Record<string, string> = {
-  ASSIGNED: 'Назначена', ACCEPTED: 'Принята', ON_THE_WAY: 'В пути',
-  ARRIVED: 'На месте', IN_PROGRESS: 'В работе', REVIEW: 'Проверка', COMPLETED: 'Завершена',
+export interface AuthResponse extends UserInfo {
+  token: string;
+  refresh_token: string | null;
+  session_id: number | null;
+  access_token_expires_in: number | null;
+}
+
+export interface DeviceSessionResponse {
+  id: number;
+  device_name: string;
+  created_at: string;
+  last_used_at: string;
+  expires_at: string;
+}
+
+export interface LocationResponse {
+  id: number;
+  name: string;
+  address: string;
+  customer_id: number;
+  customer_name: string;
+  contact_name: string | null;
+  contact_phone: string | null;
+  contacts: string | null;
+}
+
+export interface CommentResponse {
+  id: number;
+  ticket_id: number;
+  user_id: number;
+  user_name: string | null;
+  body: string;
+  is_internal: boolean;
+  created_at: string;
+}
+
+export interface AttachmentResponse {
+  id: number;
+  ticket_id: number | null;
+  comment_id: number | null;
+  filename: string;
+  download_url: string | null;
+  content_type: string;
+  size: number;
+  is_internal: boolean;
+  created_at: string;
+}
+
+export interface ChecklistField {
+  id: number;
+  label: string;
+  field_type: 'checkbox' | 'text' | 'number' | 'photo' | 'signature';
+  is_mandatory: boolean;
+  value: string | null;
+}
+
+export interface ChecklistResponse {
+  id: number;
+  name: string;
+  fields: ChecklistField[];
+}
+
+export const STATUS_LABELS: Record<TicketStatus, string> = {
+  ASSIGNED: 'Назначена',
+  ACCEPTED: 'Принята',
+  IN_PROGRESS: 'В работе',
+  COMPLETED: 'Завершена',
 };
 
-export const PRIORITY_LABELS: Record<string, string> = {
+export const PRIORITY_LABELS: Record<TicketPriority, string> = {
   low: 'Низкий', medium: 'Средний', high: 'Высокий', critical: 'Критический',
 };
 
@@ -29,14 +120,16 @@ export const TYPE_LABELS: Record<string, string> = {
   verification: 'Поверка', emergency: 'Авария',
 };
 
-export const NEXT_STATUS: Record<string, string> = {
-  ASSIGNED: 'ACCEPTED', ACCEPTED: 'ON_THE_WAY', ON_THE_WAY: 'ARRIVED',
-  ARRIVED: 'IN_PROGRESS', IN_PROGRESS: 'REVIEW', REVIEW: 'COMPLETED',
+export const NEXT_STATUS: Partial<Record<TicketStatus, TicketStatus>> = {
+  ASSIGNED: 'ACCEPTED',
+  ACCEPTED: 'IN_PROGRESS',
+  IN_PROGRESS: 'COMPLETED',
 };
 
-export const BTN_LABELS: Record<string, string> = {
-  ACCEPTED: 'Принять', ON_THE_WAY: 'Выехал', ARRIVED: 'На месте',
-  IN_PROGRESS: 'Начать работу', REVIEW: 'На проверку', COMPLETED: 'Завершить',
+export const BTN_LABELS: Partial<Record<TicketStatus, string>> = {
+  ACCEPTED: 'Принять',
+  IN_PROGRESS: 'Начать работу',
+  COMPLETED: 'Завершить',
 };
 
 export const FILTER_TABS = [

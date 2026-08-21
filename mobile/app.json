@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "HubDesk",
+    "name": "Абие",
     "slug": "hubdesk",
-    "version": "2.0.0",
+    "version": "3.0.0-rc.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "splash": {
       "backgroundColor": "#080a12"
     },
@@ -15,27 +15,35 @@
     },
     "android": {
       "package": "com.hubdesk.app",
-      "versionCode": 2,
-      "softwareKeyboardLayoutMode": "adjustResize",
+      "versionCode": 8,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "CAMERA",
         "INTERNET"
       ]
     },
     "plugins": [
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "Разрешение на использование камеры для фото заявок"
-        }
-      ],
       "expo-asset",
       "expo-font",
+      "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Разрешить Абие использовать Face ID для разблокировки"
+        }
+      ],
       [
         "expo-build-properties",
         {
           "android": {
-            "usesCleartextTraffic": true
+            "usesCleartextTraffic": true,
+            "targetSdkVersion": 35,
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
           }
         }
       ]

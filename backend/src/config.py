@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     secret_key: str = ""
     access_token_ttl: int = 86400
+    mobile_access_token_ttl: int = 900
+    device_session_ttl_days: int = 730
     mailbox_email: str = ""
     mailbox_password: str = ""
     mailbox_imap_server: str = "imap.timeweb.ru"
