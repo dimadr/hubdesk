@@ -1,6 +1,6 @@
 {
   "name": "hubdesk-mobile",
-  "version": "3.0.0-rc.3",
+  "version": "3.0.0-rc.4",
   "main": "expo/AppEntry.js",
   "scripts": {
     "start": "expo start",

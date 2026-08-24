@@ -22,6 +22,7 @@ import { ServerSetupScreen } from './src/screens/ServerSetupScreen';
 import { TicketDetailScreen } from './src/screens/TicketDetailScreen';
 import { TicketFormScreen } from './src/screens/TicketFormScreen';
 import { TicketsScreen } from './src/screens/TicketsScreen';
+import { WarehouseScreen } from './src/screens/WarehouseScreen';
 import { ThemeProvider, useAppTheme } from './src/theme/ThemeContext';
 
 const Stack = createNativeStackNavigator();
@@ -47,7 +48,7 @@ function MainTabs({ navigation }: any) {
         {() => <KanbanScreen user={user} onOpen={openTicket} />}
       </Tab.Screen>
       <Tab.Screen name="MoreTab" options={{ tabBarLabel: 'Ещё', tabBarIcon: ({ color }) => <Text style={{ fontSize: 19, color }}>•••</Text> }}>
-        {() => <MoreScreen user={user} onAdmin={() => navigation.navigate('AdminOverview')} onLocations={() => navigation.navigate('Locations')} onReports={() => navigation.navigate('Reports')} onDeviceSessions={() => navigation.navigate('DeviceSessions')} onServerSettings={() => navigation.navigate('ServerSettings')} />}
+        {() => <MoreScreen user={user} onAdmin={() => navigation.navigate('AdminOverview')} onLocations={() => navigation.navigate('Locations')} onReports={() => navigation.navigate('Reports')} onWarehouse={() => navigation.navigate('Warehouse')} onDeviceSessions={() => navigation.navigate('DeviceSessions')} onServerSettings={() => navigation.navigate('ServerSettings')} />}
       </Tab.Screen>
     </Tab.Navigator>
   );
@@ -132,6 +133,7 @@ function AppContent() {
               <Stack.Screen name="AdminOverview">{({ navigation }: any) => <AdminOverviewScreen onBack={() => navigation.goBack()} />}</Stack.Screen>
               <Stack.Screen name="Locations">{({ navigation }: any) => <LocationsScreen user={user} onBack={() => navigation.goBack()} onOpenTicket={(ticket) => navigation.navigate('TicketDetail', { ticketId: ticket.id })} />}</Stack.Screen>
               <Stack.Screen name="Reports">{({ navigation }: any) => <ReportsScreen onBack={() => navigation.goBack()} />}</Stack.Screen>
+              <Stack.Screen name="Warehouse">{({ navigation }: any) => <WarehouseScreen user={user} onBack={() => navigation.goBack()} />}</Stack.Screen>
               <Stack.Screen name="DeviceSessions">{({ navigation }: any) => <DeviceSessionsScreen onBack={() => navigation.goBack()} />}</Stack.Screen>
               <Stack.Screen name="ServerSettings">{({ navigation }: any) => <ServerSetupScreen onCancel={() => navigation.goBack()} onBeforeSave={logout} onDone={() => {}} onLogout={logout} />}</Stack.Screen>
             </>

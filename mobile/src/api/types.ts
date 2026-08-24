@@ -78,6 +78,75 @@ export interface DeviceSessionResponse {
   expires_at: string;
 }
 
+export type PersonalTaskColumn = 'project' | 'todo' | 'in_progress' | 'done';
+
+export interface PersonalTaskResponse {
+  id: number;
+  title: string;
+  description: string;
+  column: PersonalTaskColumn;
+  position: number;
+  ticket_id: number | null;
+  ticket_subject: string | null;
+  ticket_status: string | null;
+  created_at: string;
+}
+
+export interface WarehouseResponse {
+  id: number;
+  name: string;
+  type: 'physical' | 'personal';
+}
+
+export interface NomenclatureResponse {
+  id: number;
+  name: string;
+  type: string;
+  unit: string;
+}
+
+export interface WarehouseDocumentLine {
+  id: number;
+  nomenclature_id: number;
+  quantity: number;
+}
+
+export interface WarehouseDocumentResponse {
+  id: number;
+  doc_type: 'INFLOW' | 'TRANSFER' | 'WRITE_OFF';
+  status: 'DRAFT' | 'APPROVAL' | 'DELIVERY' | 'ACCOUNTED';
+  source_warehouse_id: number | null;
+  target_warehouse_id: number | null;
+  created_at: string;
+  lines: WarehouseDocumentLine[];
+}
+
+export interface WarehouseBalanceResponse {
+  warehouse_id: number;
+  nomenclature_id: number;
+  quantity: number;
+}
+
+export interface ReplacementDeviceResponse {
+  id: number;
+  name: string;
+  serial_number: string;
+  verification_expiry: string | null;
+  balance: number;
+}
+
+export interface InsertProductResponse {
+  id: number;
+  name: string;
+  diameter_inner: string | null;
+  diameter_outer: string | null;
+  length: string | null;
+  flange_type: string | null;
+  notes: string | null;
+  cell?: string | null;
+  balance: number;
+}
+
 export interface LocationResponse {
   id: number;
   name: string;
