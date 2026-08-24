@@ -130,7 +130,7 @@ function AppContent() {
                 {({ route, navigation }: any) => <CompleteTicketScreen ticket={route.params.ticket} onBack={() => navigation.goBack()} onSubmitted={() => navigation.popToTop()} />}
               </Stack.Screen>
               <Stack.Screen name="AdminOverview">{({ navigation }: any) => <AdminOverviewScreen onBack={() => navigation.goBack()} />}</Stack.Screen>
-              <Stack.Screen name="Locations">{({ navigation }: any) => <LocationsScreen onBack={() => navigation.goBack()} onOpenTicket={(ticket) => navigation.navigate('TicketDetail', { ticketId: ticket.id })} />}</Stack.Screen>
+              <Stack.Screen name="Locations">{({ navigation }: any) => <LocationsScreen user={user} onBack={() => navigation.goBack()} onOpenTicket={(ticket) => navigation.navigate('TicketDetail', { ticketId: ticket.id })} />}</Stack.Screen>
               <Stack.Screen name="Reports">{({ navigation }: any) => <ReportsScreen onBack={() => navigation.goBack()} />}</Stack.Screen>
               <Stack.Screen name="DeviceSessions">{({ navigation }: any) => <DeviceSessionsScreen onBack={() => navigation.goBack()} />}</Stack.Screen>
               <Stack.Screen name="ServerSettings">{({ navigation }: any) => <ServerSetupScreen onCancel={() => navigation.goBack()} onBeforeSave={logout} onDone={() => {}} onLogout={logout} />}</Stack.Screen>

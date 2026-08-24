@@ -42,6 +42,27 @@ export interface UserInfo {
   status: string;
 }
 
+export interface UserListItem {
+  id: number;
+  email: string;
+  name: string;
+  phone: string | null;
+  patronymic: string | null;
+  position: string | null;
+  role: string;
+  status: string;
+  customer_id: number | null;
+}
+
+export interface LocationContact {
+  id?: number | null;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  position: string | null;
+  is_primary: boolean;
+}
+
 export interface AuthResponse extends UserInfo {
   token: string;
   refresh_token: string | null;
@@ -65,7 +86,15 @@ export interface LocationResponse {
   customer_name: string;
   contact_name: string | null;
   contact_phone: string | null;
+  contact_email: string | null;
   contacts: string | null;
+  contacts_list: LocationContact[];
+  assigned_engineer_id: number | null;
+  assigned_engineer_name: string | null;
+  contract_number: string | null;
+  contract_valid_from: string | null;
+  contract_valid_to: string | null;
+  inn: string | null;
 }
 
 export interface CommentResponse {

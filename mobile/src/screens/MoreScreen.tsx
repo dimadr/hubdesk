@@ -18,6 +18,7 @@ export const MoreScreen: React.FC<Props> = ({ user, onAdmin, onLocations, onRepo
   const { colors, mode, toggleMode } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { quickUnlockEnabled, lockTimeoutSeconds, setLockTimeoutSeconds, lock, logout } = useAuthStore();
+  const canManageLocations = ['admin', 'director', 'dispatcher', 'accountant', 'engineer'].includes(user.role);
 
   const disableQuickUnlock = () => {
     Alert.alert('Отключить быструю разблокировку?', 'Сессия этого устройства будет отозвана. Для следующего входа потребуется пароль.', [
@@ -67,12 +68,12 @@ export const MoreScreen: React.FC<Props> = ({ user, onAdmin, onLocations, onRepo
           </>
         ) : null}
 
-        {user.role === 'admin' && (
+        {(user.role === 'admin' || canManageLocations) && (
           <>
             <Text style={styles.sectionTitle}>Управление</Text>
-            <MenuRow label="Админка" detail="Сводка и пользователи" onPress={onAdmin} styles={styles} />
-            <MenuRow label="Объекты" detail="Карточки и выполненные работы" onPress={onLocations} styles={styles} />
-            <MenuRow label="Отчёты" detail="Заявки, объекты и инженеры" onPress={onReports} styles={styles} />
+            {user.role === 'admin' ? <MenuRow label="Админка" detail="Сводка и пользователи" onPress={onAdmin} styles={styles} /> : null}
+            {canManageLocations ? <MenuRow label="Объекты" detail="Карточки и выполненные работы" onPress={onLocations} styles={styles} /> : null}
+            {user.role === 'admin' ? <MenuRow label="Отчёты" detail="Заявки, объекты и инженеры" onPress={onReports} styles={styles} /> : null}
           </>
         )}
 

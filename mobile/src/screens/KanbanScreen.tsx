@@ -67,11 +67,12 @@ export const KanbanScreen: React.FC<{ user: UserInfo; onOpen: (ticket: TicketRes
         </View>
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      <ScrollView horizontal showsHorizontalScrollIndicator={zoomIndex > 0} contentContainerStyle={styles.board} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} colors={[colors.primary]} />}>
-        {COLUMNS.map((column) => (
-          <View key={column.key} style={[styles.column, { width: columnWidth }, compact && styles.columnCompact]}>
-            <View style={[styles.columnHeader, compact && styles.columnHeaderCompact]}><View style={[styles.dot, { backgroundColor: column.color }]} /><Text style={[styles.columnTitle, compact && styles.columnTitleCompact]} numberOfLines={2}>{column.label}</Text><Text style={[styles.count, compact && styles.countCompact]}>{groups[column.key].length}</Text></View>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.cards} nestedScrollEnabled>
+      <ScrollView style={styles.verticalScroll} contentContainerStyle={styles.verticalContent} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} colors={[colors.primary]} />}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={zoomIndex > 0} contentContainerStyle={styles.board} nestedScrollEnabled>
+          {COLUMNS.map((column) => (
+            <View key={column.key} style={[styles.column, { width: columnWidth }, compact && styles.columnCompact]}>
+              <View style={[styles.columnHeader, compact && styles.columnHeaderCompact]}><View style={[styles.dot, { backgroundColor: column.color }]} /><Text style={[styles.columnTitle, compact && styles.columnTitleCompact]} numberOfLines={2}>{column.label}</Text><Text style={[styles.count, compact && styles.countCompact]}>{groups[column.key].length}</Text></View>
+              <View style={styles.cards}>
               {groups[column.key].map((ticket) => (
                 <TouchableOpacity key={ticket.id} style={[styles.card, compact && styles.cardCompact]} onPress={() => onOpen(ticket)} activeOpacity={0.75}>
                   <Text style={[styles.number, compact && styles.numberCompact]}>#{ticket.number}</Text>
@@ -81,9 +82,10 @@ export const KanbanScreen: React.FC<{ user: UserInfo; onOpen: (ticket: TicketRes
                 </TouchableOpacity>
               ))}
               {!groups[column.key].length && <Text style={[styles.empty, compact && styles.emptyCompact]}>—</Text>}
-            </ScrollView>
-          </View>
-        ))}
+              </View>
+            </View>
+          ))}
+        </ScrollView>
       </ScrollView>
     </SafeAreaView>
   );
@@ -94,7 +96,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   header: { height: 52, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center' }, title: { flex: 1, color: colors.text, fontSize: 23, fontWeight: '800' },
   zoomControls: { height: 34, flexDirection: 'row', alignItems: 'center', backgroundColor: colors.input, borderRadius: 7, borderWidth: 1, borderColor: colors.border },
   zoomButton: { width: 34, height: 32, alignItems: 'center', justifyContent: 'center' }, zoomDisabled: { opacity: 0.3 }, zoomText: { color: colors.primary, fontSize: 21, fontWeight: '800' }, zoomValue: { minWidth: 43, color: colors.muted, fontSize: 10, fontWeight: '700', textAlign: 'center' },
-  board: { paddingHorizontal: 14, paddingBottom: 16, gap: 6 }, column: { backgroundColor: colors.input, borderRadius: 8, padding: 9, borderWidth: 1, borderColor: colors.border }, columnCompact: { padding: 4, borderRadius: 6 },
+  verticalScroll: { flex: 1 }, verticalContent: { paddingBottom: 16 },
+  board: { paddingHorizontal: 14, gap: 6, alignItems: 'flex-start' }, column: { backgroundColor: colors.input, borderRadius: 8, padding: 9, borderWidth: 1, borderColor: colors.border, alignSelf: 'flex-start' }, columnCompact: { padding: 4, borderRadius: 6 },
   columnHeader: { minHeight: 34, flexDirection: 'row', alignItems: 'center' }, columnHeaderCompact: { minHeight: 31, alignItems: 'flex-start', paddingTop: 4 }, dot: { width: 7, height: 7, borderRadius: 4, marginRight: 5, marginTop: 3 },
   columnTitle: { flex: 1, color: colors.text, fontSize: 13, fontWeight: '800' }, columnTitleCompact: { fontSize: 8, lineHeight: 10 }, count: { marginLeft: 4, color: colors.muted, fontSize: 11 }, countCompact: { fontSize: 8 }, cards: { paddingBottom: 12 },
   card: { backgroundColor: colors.surface, borderRadius: 7, padding: 10, marginBottom: 7, borderWidth: 1, borderColor: colors.border }, cardCompact: { borderRadius: 5, padding: 4, marginBottom: 4 }, number: { color: colors.subtle, fontSize: 10, fontWeight: '700' }, numberCompact: { fontSize: 7 },

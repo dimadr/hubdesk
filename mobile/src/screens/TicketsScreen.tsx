@@ -116,7 +116,7 @@ export const TicketsScreen: React.FC<Props> = ({ user, onOpen, onCreate, onSetti
       <View style={styles.header}>
         <Text style={styles.title}>Заявки</Text>
         <TouchableOpacity style={styles.iconButton} onPress={onSettings} accessibilityLabel="Настройки сервера"><Text style={styles.icon}>⚙</Text></TouchableOpacity>
-        {user.role === 'engineer' && <TouchableOpacity style={styles.createButton} onPress={onCreate}><Text style={styles.createText}>＋</Text></TouchableOpacity>}
+        {['admin', 'director', 'dispatcher', 'engineer', 'accountant'].includes(user.role) && <TouchableOpacity style={styles.createButton} onPress={onCreate}><Text style={styles.createText}>＋</Text></TouchableOpacity>}
       </View>
       <View style={styles.tabsContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContent}>

@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api, getApiError } from '../api/client';
-import { LocationResponse, TicketPriority, TicketResponse, UserInfo } from '../api/types';
+import { LocationResponse, TicketPriority, TicketResponse, UserInfo, UserListItem } from '../api/types';
 import { ThemeColors, useAppTheme } from '../theme/ThemeContext';
 
 interface Props {
@@ -40,6 +40,7 @@ export const TicketFormScreen: React.FC<Props> = ({ ticket, user, onBack, onSave
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const editing = Boolean(ticket);
+  const canAssign = ['admin', 'director', 'dispatcher', 'accountant'].includes(user.role);
   const [isInternal, setIsInternal] = useState(ticket?.is_internal || false);
   const [subject, setSubject] = useState(ticket?.subject || '');
   const [body, setBody] = useState(ticket?.body || '');
@@ -50,19 +51,25 @@ export const TicketFormScreen: React.FC<Props> = ({ ticket, user, onBack, onSave
   const [contactName, setContactName] = useState(ticket?.site_contact_name || '');
   const [contactPhone, setContactPhone] = useState(ticket?.site_contact_phone || '');
   const [locations, setLocations] = useState<LocationResponse[]>([]);
+  const [engineers, setEngineers] = useState<UserListItem[]>([]);
   const [locationId, setLocationId] = useState<number | null>(ticket?.location_id || null);
+  const [assigneeId, setAssigneeId] = useState<number | null>(ticket?.assignee_id || (user.role === 'engineer' ? user.user_id : null));
   const [locationQuery, setLocationQuery] = useState('');
-  const [loadingLocations, setLoadingLocations] = useState(!editing);
+  const [loadingLocations, setLoadingLocations] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (editing) return;
-    api.get<LocationResponse[]>('/locations')
-      .then(({ data }) => setLocations(data))
-      .catch((e) => setError(getApiError(e, 'Не удалось загрузить объекты')))
-      .finally(() => setLoadingLocations(false));
-  }, [editing]);
+    Promise.allSettled([
+      api.get<LocationResponse[]>('/locations'),
+      canAssign ? api.get<UserListItem[]>('/users/list') : Promise.resolve({ data: [] as UserListItem[] }),
+    ]).then(([locationsResult, usersResult]) => {
+      if (locationsResult.status === 'fulfilled') setLocations(locationsResult.value.data);
+      else setError(getApiError(locationsResult.reason, 'Не удалось загрузить объекты'));
+      if (usersResult.status === 'fulfilled') setEngineers(usersResult.value.data.filter((item) => item.role === 'engineer'));
+      setLoadingLocations(false);
+    });
+  }, [canAssign]);
 
   const filteredLocations = useMemo(() => {
     const query = locationQuery.trim().toLowerCase();
@@ -89,8 +96,8 @@ export const TicketFormScreen: React.FC<Props> = ({ ticket, user, onBack, onSave
       return;
     }
     if (isInternal) {
-      if (!body.trim() || !addition.trim() || !deadlineValue) {
-        setError('Заполните описание, дополнение по работам и дедлайн');
+      if (!body.trim() || !addition.trim() || !deadlineValue || !assigneeId) {
+        setError('Заполните описание, дополнение по работам, дедлайн и исполнителя');
         return;
       }
     } else if (!subject.trim() || (!editing && !locationId)) {
@@ -107,10 +114,9 @@ export const TicketFormScreen: React.FC<Props> = ({ ticket, user, onBack, onSave
           source_description: addition.trim(),
           resolution_deadline: deadlineValue,
         };
-        if (!editing) {
-          payload.is_internal = true;
-          payload.assignee_id = user.user_id;
-        }
+        if (!editing) payload.is_internal = true;
+        if (canAssign) payload.assignee_id = assigneeId;
+        else if (!editing) payload.assignee_id = user.user_id;
       } else if (editing) {
         payload = {
           subject: subject.trim(),
@@ -120,6 +126,14 @@ export const TicketFormScreen: React.FC<Props> = ({ ticket, user, onBack, onSave
           site_contact_name: contactName || null,
           site_contact_phone: contactPhone || null,
         };
+        if (canAssign) {
+          const location = locations.find((item) => item.id === locationId);
+          payload.location_id = locationId;
+          payload.customer_id = location?.customer_id || ticket!.customer_id;
+          payload.type = type || null;
+          payload.priority = priority;
+          payload.assignee_id = assigneeId;
+        }
       } else {
         const location = locations.find((item) => item.id === locationId);
         if (!location) throw new Error('Выбранный объект не найден');
@@ -132,7 +146,7 @@ export const TicketFormScreen: React.FC<Props> = ({ ticket, user, onBack, onSave
           type: type || undefined,
           priority,
           resolution_deadline: deadlineValue || undefined,
-          assignee_id: user.user_id,
+          assignee_id: canAssign ? assigneeId : user.user_id,
           site_contact_name: contactName || undefined,
           site_contact_phone: contactPhone || undefined,
         };
@@ -173,7 +187,7 @@ export const TicketFormScreen: React.FC<Props> = ({ ticket, user, onBack, onSave
           {!isInternal && (
             <>
               <Field label="Тема *" value={subject} onChangeText={setSubject} placeholder="Что необходимо сделать" />
-              {editing ? (
+              {editing && !canAssign ? (
                 <ReadOnly label="Объект" value={[ticket?.location_name, ticket?.location_address].filter(Boolean).join(', ') || '—'} />
               ) : (
                 <View>
@@ -208,7 +222,7 @@ export const TicketFormScreen: React.FC<Props> = ({ ticket, user, onBack, onSave
           <Field label={isInternal ? 'Описание *' : 'Описание'} value={body} onChangeText={setBody} multiline placeholder="Описание работ" />
           <Field label={isInternal ? 'Дополнение по работам *' : 'Примечание'} value={addition} onChangeText={setAddition} multiline placeholder="Дополнительная информация" />
 
-          {!isInternal && !editing && (
+          {!isInternal && (!editing || canAssign) && (
             <>
               <Text style={styles.label}>Тип</Text>
               <View style={styles.chips}>{TYPES.map(([value, label]) => <Chip key={value} label={label} active={type === value} onPress={() => setType(type === value ? '' : value)} />)}</View>
@@ -218,7 +232,9 @@ export const TicketFormScreen: React.FC<Props> = ({ ticket, user, onBack, onSave
           )}
 
           <Field label={isInternal ? 'Дедлайн *' : 'Дедлайн'} value={deadline} onChangeText={setDeadline} placeholder="ГГГГ-ММ-ДД" keyboardType="numbers-and-punctuation" />
-          <ReadOnly label="Исполнитель" value={user.name} />
+          {canAssign ? (
+            <View><Text style={styles.label}>Исполнитель {isInternal ? '*' : ''}</Text><View style={styles.choiceList}><Choice label="Не назначен" active={!assigneeId} onPress={() => setAssigneeId(null)} styles={styles} />{engineers.map((engineer) => <Choice key={engineer.id} label={[engineer.name, engineer.patronymic].filter(Boolean).join(' ')} active={assigneeId === engineer.id} onPress={() => setAssigneeId(engineer.id)} styles={styles} />)}</View></View>
+          ) : <ReadOnly label="Исполнитель" value={ticket?.assignee_name || user.name} />}
 
           {!isInternal && (
             <>
@@ -252,6 +268,7 @@ const Chip = ({ label, active, onPress }: { label: string; active: boolean; onPr
   const styles = useMemo(() => createStyles(colors), [colors]);
   return <TouchableOpacity style={[styles.chip, active && styles.chipActive]} onPress={onPress}><Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text></TouchableOpacity>;
 };
+const Choice = ({ label, active, onPress, styles }: { label: string; active: boolean; onPress: () => void; styles: ReturnType<typeof createStyles> }) => <TouchableOpacity style={[styles.choice, active && styles.choiceActive]} onPress={onPress}><Text style={[styles.choiceText, active && styles.choiceTextActive]}>{label}</Text></TouchableOpacity>;
 
 const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background }, flex: { flex: 1 },
@@ -265,5 +282,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 }, chip: { backgroundColor: colors.surface, borderRadius: 6, paddingHorizontal: 11, paddingVertical: 8, borderWidth: 1, borderColor: colors.border }, chipActive: { backgroundColor: colors.primary, borderColor: colors.primary }, chipText: { color: colors.muted, fontSize: 12, fontWeight: '600' }, chipTextActive: { color: colors.onPrimary },
   selected: { backgroundColor: colors.surface, borderRadius: 8, padding: 12, borderWidth: 1, borderColor: colors.primary }, selectedTitle: { color: colors.text, fontWeight: '700' }, selectedText: { color: colors.muted, fontSize: 12, marginTop: 3 }, changeText: { color: colors.primary, fontSize: 12, fontWeight: '700', marginTop: 7 },
   locationList: { maxHeight: 220, backgroundColor: colors.surface, borderRadius: 8, overflow: 'hidden', marginTop: 6 }, locationRow: { padding: 11, borderBottomWidth: 1, borderBottomColor: colors.border }, locationName: { color: colors.text, fontSize: 13, fontWeight: '700' }, locationMeta: { color: colors.muted, fontSize: 11, marginTop: 3 }, empty: { color: colors.subtle, textAlign: 'center', padding: 16 },
+  choiceList: { gap: 7 }, choice: { minHeight: 40, justifyContent: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 7, paddingHorizontal: 11 }, choiceActive: { backgroundColor: colors.primary, borderColor: colors.primary }, choiceText: { color: colors.secondary, fontSize: 12, fontWeight: '700' }, choiceTextActive: { color: colors.onPrimary },
   error: { color: colors.danger, fontSize: 13 }, save: { height: 50, backgroundColor: colors.success, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }, saveText: { color: colors.onPrimary, fontWeight: '800', fontSize: 15 }, disabled: { opacity: 0.6 },
 });

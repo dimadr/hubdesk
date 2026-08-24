@@ -2,7 +2,7 @@
   "expo": {
     "name": "Абие",
     "slug": "hubdesk",
-    "version": "3.0.0-rc.2",
+    "version": "3.0.0-rc.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -15,7 +15,7 @@
     },
     "android": {
       "package": "com.hubdesk.app",
-      "versionCode": 8,
+      "versionCode": 9,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"

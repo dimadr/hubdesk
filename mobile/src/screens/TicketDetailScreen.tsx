@@ -139,7 +139,11 @@ export const TicketDetailScreen: React.FC<Props> = ({ ticketId, user, onBack, on
   if (loading) return <SafeAreaView style={styles.container}><ActivityIndicator color={colors.primary} size="large" style={styles.loader} /></SafeAreaView>;
   if (!ticket) return <SafeAreaView style={styles.container}><View style={styles.center}><Text style={styles.error}>{error || 'Заявка не найдена'}</Text><TouchableOpacity onPress={load}><Text style={styles.retry}>Повторить</Text></TouchableOpacity></View></SafeAreaView>;
 
-  const canModify = user.role === 'engineer' && ticket.assignee_id === user.user_id;
+  const canModify = ['admin', 'director', 'dispatcher', 'accountant'].includes(user.role)
+    || (user.role === 'engineer' && ticket.assignee_id === user.user_id);
+  const canChangeStatus = ['admin', 'director', 'accountant'].includes(user.role)
+    || (user.role === 'engineer' && ticket.assignee_id === user.user_id)
+    || (user.role === 'dispatcher' && ticket.status === 'IN_PROGRESS');
   const next = NEXT_STATUS[ticket.status];
 
   return (
@@ -215,7 +219,7 @@ export const TicketDetailScreen: React.FC<Props> = ({ ticketId, user, onBack, on
           )}
         </Section>
       </ScrollView>
-      {canModify && next && (
+      {canChangeStatus && next && (
         <TouchableOpacity style={[styles.action, busy && styles.disabled]} onPress={changeStatus} disabled={busy}>
           {busy ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.actionText}>{BTN_LABELS[next]}</Text>}
         </TouchableOpacity>
