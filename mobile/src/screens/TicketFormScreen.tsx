@@ -96,8 +96,8 @@ export const TicketFormScreen: React.FC<Props> = ({ ticket, user, onBack, onSave
       return;
     }
     if (isInternal) {
-      if (!body.trim() || !addition.trim() || !deadlineValue || !assigneeId) {
-        setError('Заполните описание, дополнение по работам, дедлайн и исполнителя');
+      if (!body.trim() || !deadlineValue || !assigneeId) {
+        setError('Заполните описание, дедлайн и исполнителя');
         return;
       }
     } else if (!subject.trim() || (!editing && !locationId)) {
@@ -111,7 +111,6 @@ export const TicketFormScreen: React.FC<Props> = ({ ticket, user, onBack, onSave
       if (isInternal) {
         payload = {
           body: body.trim(),
-          source_description: addition.trim(),
           resolution_deadline: deadlineValue,
         };
         if (!editing) payload.is_internal = true;
@@ -220,7 +219,7 @@ export const TicketFormScreen: React.FC<Props> = ({ ticket, user, onBack, onSave
           )}
 
           <Field label={isInternal ? 'Описание *' : 'Описание'} value={body} onChangeText={setBody} multiline placeholder="Описание работ" />
-          <Field label={isInternal ? 'Дополнение по работам *' : 'Примечание'} value={addition} onChangeText={setAddition} multiline placeholder="Дополнительная информация" />
+          {!isInternal && <Field label="Примечание" value={addition} onChangeText={setAddition} multiline placeholder="Дополнительная информация" />}
 
           {!isInternal && (!editing || canAssign) && (
             <>

@@ -265,7 +265,7 @@ def create_ticket_router() -> APIRouter:
             raise HTTPException(400, "Тип заявки нельзя изменить после создания")
         if ticket.is_internal:
             allowed_internal_fields = {
-                'body', 'source_description', 'resolution_deadline', 'assignee_id',
+                'body', 'resolution_deadline', 'assignee_id',
             }
             forbidden_fields = set(requested_updates) - allowed_internal_fields
             if forbidden_fields:
@@ -273,15 +273,12 @@ def create_ticket_router() -> APIRouter:
             if user.role == UserRole.engineer:
                 requested_updates.pop('assignee_id', None)
             next_body = requested_updates.get('body', ticket.body)
-            next_addition = requested_updates.get(
-                'source_description', ticket.source_description
-            )
             next_deadline = requested_updates.get(
                 'resolution_deadline', ticket.resolution_deadline
             )
             next_assignee = requested_updates.get('assignee_id', ticket.assignee_id)
             TicketService.validate_internal_fields(
-                next_body, next_addition, next_deadline, next_assignee
+                next_body, next_deadline, next_assignee
             )
         changed_fields: list[str] = []
         assignee_changed = False

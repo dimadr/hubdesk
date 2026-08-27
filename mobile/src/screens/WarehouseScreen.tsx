@@ -28,14 +28,16 @@ export const WarehouseScreen: React.FC<{ user: UserInfo; onBack: () => void }> =
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const canWrite = ['admin', 'director', 'storekeeper'].includes(user.role);
-  const canReplacement = ['admin', 'director', 'storekeeper'].includes(user.role);
-  const canInsert = ['admin', 'director', 'storekeeper', 'metrologist'].includes(user.role);
+  const canManageReplacement = ['admin', 'director', 'storekeeper'].includes(user.role);
+  const canManageInsert = ['admin', 'director', 'storekeeper', 'metrologist'].includes(user.role);
+  const canViewReplacement = canManageReplacement || user.role === 'engineer';
+  const canViewInsert = canManageInsert || user.role === 'engineer';
   const tabs = useMemo<Array<{ key: TabKey; label: string }>>(() => [
     { key: 'documents', label: 'Документы' }, { key: 'balances', label: 'Остатки' },
     { key: 'warehouses', label: 'Склады' }, { key: 'nomenclature', label: 'Номенклатура' },
-    ...(canReplacement ? [{ key: 'replacement' as TabKey, label: 'Подмена' }] : []),
-    ...(canInsert ? [{ key: 'inserts' as TabKey, label: 'Вставки' }] : []),
-  ], [canInsert, canReplacement]);
+    ...(canViewReplacement ? [{ key: 'replacement' as TabKey, label: 'Подмена' }] : []),
+    ...(canViewInsert ? [{ key: 'inserts' as TabKey, label: 'Вставки' }] : []),
+  ], [canViewInsert, canViewReplacement]);
   const [tab, setTab] = useState<TabKey>('documents');
   const [warehouses, setWarehouses] = useState<WarehouseResponse[]>([]);
   const [nomenclature, setNomenclature] = useState<NomenclatureResponse[]>([]);
@@ -64,23 +66,23 @@ export const WarehouseScreen: React.FC<{ user: UserInfo; onBack: () => void }> =
         api.get<WarehouseResponse[]>('/warehouses'), api.get<NomenclatureResponse[]>('/nomenclature'),
         api.get<WarehouseDocumentResponse[]>('/warehouse-documents'), api.get<WarehouseBalanceResponse[]>('/balances'),
       ];
-      if (canReplacement) requests.push(api.get<ReplacementDeviceResponse[]>('/replacement/devices'));
-      if (canInsert) requests.push(api.get<InsertProductResponse[]>('/insert/products'));
+      if (canViewReplacement) requests.push(api.get<ReplacementDeviceResponse[]>('/replacement/devices'));
+      if (canViewInsert) requests.push(api.get<InsertProductResponse[]>('/insert/products'));
       const results = await Promise.all(requests) as Array<{ data: unknown }>;
       setWarehouses(results[0].data as WarehouseResponse[]);
       setNomenclature(results[1].data as NomenclatureResponse[]);
       setDocuments(results[2].data as WarehouseDocumentResponse[]);
       setBalances(results[3].data as WarehouseBalanceResponse[]);
       let index = 4;
-      if (canReplacement) setDevices(results[index++].data as ReplacementDeviceResponse[]);
-      if (canInsert) setInserts(results[index].data as InsertProductResponse[]);
+      if (canViewReplacement) setDevices(results[index++].data as ReplacementDeviceResponse[]);
+      if (canViewInsert) setInserts(results[index].data as InsertProductResponse[]);
     } catch (e) {
       setError(getApiError(e, 'Не удалось загрузить склад'));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [canInsert, canReplacement]);
+  }, [canViewInsert, canViewReplacement]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -203,13 +205,14 @@ export const WarehouseScreen: React.FC<{ user: UserInfo; onBack: () => void }> =
   const renderNomenclature = () => <>{canWrite && <ActionButton label="Добавить позицию" onPress={() => setCatalogForm({ kind: 'nomenclature', name: '', type: 'material', unit: 'шт' })} styles={styles} />}{nomenclature.map((item) => <TouchableOpacity key={item.id} style={styles.card} onPress={() => canWrite && setCatalogForm({ kind: 'nomenclature', id: item.id, name: item.name, type: item.type, unit: item.unit })} disabled={!canWrite}><Text style={styles.cardTitle}>{item.name}</Text><Text style={styles.rowMeta}>{item.type} · {item.unit}</Text></TouchableOpacity>)}{!nomenclature.length && <Empty text="Нет номенклатуры" styles={styles} />}</>;
   const renderFund = (kind: FundKind) => {
     const data = kind === 'replacement' ? devices : inserts;
-    return <>{data.map((item) => <View key={item.id} style={styles.card}><Text style={styles.cardTitle}>{item.name}</Text>{kind === 'replacement' && 'serial_number' in item && item.serial_number ? <Text style={styles.rowMeta}>Серийный номер: {item.serial_number}</Text> : null}{kind === 'insert' && 'diameter_inner' in item ? <Text style={styles.rowMeta}>Диаметр: {item.diameter_inner || '—'} / {item.diameter_outer || '—'}{item.cell ? ` · ячейка ${item.cell}` : ''}</Text> : null}<Text style={styles.balance}>Остаток: {item.balance} шт</Text><TouchableOpacity style={styles.inlineAction} onPress={() => setFundForm({ kind, itemId: item.id, itemName: item.name, type: 'outgoing', quantity: '1', comment: '' })}><Text style={styles.inlineActionText}>Операция</Text></TouchableOpacity></View>)}{!data.length && <Empty text={kind === 'replacement' ? 'Нет приборов' : 'Нет вставок'} styles={styles} />}</>;
+    const canManage = kind === 'replacement' ? canManageReplacement : canManageInsert;
+    return <>{data.map((item) => <View key={item.id} style={styles.card}><Text style={styles.cardTitle}>{item.name}</Text>{kind === 'replacement' && 'serial_number' in item && item.serial_number ? <Text style={styles.rowMeta}>Серийный номер: {item.serial_number}</Text> : null}{kind === 'insert' && 'diameter_inner' in item ? <Text style={styles.rowMeta}>Диаметр: {item.diameter_inner || '—'} / {item.diameter_outer || '—'}{item.cell ? ` · ячейка ${item.cell}` : ''}</Text> : null}<Text style={styles.balance}>Остаток: {item.balance} шт</Text>{canManage && <TouchableOpacity style={styles.inlineAction} onPress={() => setFundForm({ kind, itemId: item.id, itemName: item.name, type: 'outgoing', quantity: '1', comment: '' })}><Text style={styles.inlineActionText}>Операция</Text></TouchableOpacity>}</View>)}{!data.length && <Empty text={kind === 'replacement' ? 'Нет приборов' : 'Нет вставок'} styles={styles} />}</>;
   };
 
   if (loading) return <SafeAreaView style={styles.container}><ActivityIndicator color={colors.primary} size="large" style={styles.loader} /></SafeAreaView>;
   return <SafeAreaView style={styles.container}>
     <View style={styles.header}><TouchableOpacity onPress={onBack}><Text style={styles.back}>Назад</Text></TouchableOpacity><Text style={styles.title}>Склад</Text><View style={styles.headerSpace} /></View>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>{tabs.map((item) => <TouchableOpacity key={item.key} style={[styles.tab, tab === item.key && styles.tabActive]} onPress={() => setTab(item.key)}><Text style={[styles.tabText, tab === item.key && styles.tabTextActive]}>{item.label}</Text></TouchableOpacity>)}</ScrollView>
+    <ScrollView style={styles.tabsScroll} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>{tabs.map((item) => <TouchableOpacity key={item.key} style={[styles.tab, tab === item.key && styles.tabActive]} onPress={() => setTab(item.key)}><Text style={[styles.tabText, tab === item.key && styles.tabTextActive]}>{item.label}</Text></TouchableOpacity>)}</ScrollView>
     {error ? <Text style={styles.error}>{error}</Text> : null}
     <ScrollView style={styles.contentScroll} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} colors={[colors.primary]} />}>
       {tab === 'documents' && renderDocuments()}{tab === 'balances' && renderBalances()}{tab === 'warehouses' && renderWarehouses()}{tab === 'nomenclature' && renderNomenclature()}{tab === 'replacement' && renderFund('replacement')}{tab === 'inserts' && renderFund('insert')}
@@ -231,7 +234,7 @@ const ModalActions = ({ onCancel, onSave, disabled, busy, styles, colors }: { on
 
 const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background }, loader: { marginTop: 44 }, header: { height: 52, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: colors.border, paddingHorizontal: 14 }, back: { width: 70, color: colors.primary, fontWeight: '700' }, title: { flex: 1, color: colors.text, textAlign: 'center', fontSize: 18, fontWeight: '800' }, headerSpace: { width: 70 },
-  tabs: { paddingHorizontal: 14, paddingVertical: 8, gap: 6 }, tab: { height: 36, paddingHorizontal: 12, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.input, borderWidth: 1, borderColor: colors.border }, tabActive: { backgroundColor: colors.primary, borderColor: colors.primary }, tabText: { color: colors.muted, fontSize: 12, fontWeight: '700' }, tabTextActive: { color: colors.onPrimary }, error: { color: colors.danger, marginHorizontal: 14, marginBottom: 5 }, contentScroll: { flex: 1 }, content: { padding: 14, paddingTop: 4, paddingBottom: 32 },
+  tabsScroll: { flexGrow: 0, height: 52 }, tabs: { paddingHorizontal: 14, paddingVertical: 8, gap: 6 }, tab: { height: 36, paddingHorizontal: 12, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.input, borderWidth: 1, borderColor: colors.border }, tabActive: { backgroundColor: colors.primary, borderColor: colors.primary }, tabText: { color: colors.muted, fontSize: 12, fontWeight: '700' }, tabTextActive: { color: colors.onPrimary }, error: { color: colors.danger, marginHorizontal: 14, marginBottom: 5 }, contentScroll: { flex: 1 }, content: { padding: 14, paddingTop: 4, paddingBottom: 32 },
   actionButton: { height: 42, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary, marginBottom: 9 }, actionButtonText: { color: colors.onPrimary, fontWeight: '800' }, card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 12, marginBottom: 8 }, cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 }, cardTitle: { flex: 1, color: colors.text, fontSize: 14, fontWeight: '800' }, badge: { color: colors.primarySoft, fontSize: 10, fontWeight: '800' }, rowText: { color: colors.secondary, fontSize: 12, marginTop: 5 }, rowMeta: { color: colors.muted, fontSize: 11, marginTop: 3 }, balance: { color: colors.successBright, fontSize: 13, fontWeight: '800', marginTop: 7 }, inlineAction: { minHeight: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 6, borderWidth: 1, borderColor: colors.primary, marginTop: 9 }, inlineActionText: { color: colors.primarySoft, fontSize: 12, fontWeight: '800' }, empty: { color: colors.subtle, textAlign: 'center', marginTop: 36 },
   modalBackdrop: { flex: 1, justifyContent: 'center', padding: 18, backgroundColor: 'rgba(0,0,0,.68)' }, modalCard: { backgroundColor: colors.surface, borderRadius: 8, borderWidth: 1, borderColor: colors.border, padding: 15 }, modalTitle: { color: colors.text, fontSize: 18, fontWeight: '800', marginBottom: 12 }, input: { height: 44, color: colors.text, backgroundColor: colors.input, borderRadius: 7, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 10, marginBottom: 9 }, commentInput: { height: 82, paddingTop: 10, textAlignVertical: 'top' }, choices: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 9 }, choice: { minHeight: 35, paddingHorizontal: 9, alignItems: 'center', justifyContent: 'center', borderRadius: 6, backgroundColor: colors.input, borderWidth: 1, borderColor: colors.border }, choiceActive: { backgroundColor: colors.primary, borderColor: colors.primary }, choiceText: { color: colors.muted, fontSize: 11, fontWeight: '700' }, choiceTextActive: { color: colors.onPrimary }, selector: { marginTop: 4 }, selectorLabel: { color: colors.muted, fontSize: 11, fontWeight: '800', marginBottom: 6 }, lineForm: { flexDirection: 'row', gap: 7 }, quantityInput: { flex: 1 }, lineAdd: { height: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, borderRadius: 7, backgroundColor: colors.primary }, lineAddText: { color: colors.onPrimary, fontSize: 11, fontWeight: '800' }, draftLine: { minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.border }, removeLine: { color: colors.danger, fontSize: 11, fontWeight: '700' }, modalActions: { flexDirection: 'row', gap: 8, marginTop: 14 }, cancelButton: { flex: 1, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 7, borderWidth: 1, borderColor: colors.border }, cancelText: { color: colors.secondary, fontWeight: '700' }, saveButton: { flex: 1, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 7, backgroundColor: colors.primary }, saveText: { color: colors.onPrimary, fontWeight: '800' }, disabled: { opacity: 0.5 },
 });

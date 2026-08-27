@@ -20,7 +20,7 @@ export const MoreScreen: React.FC<Props> = ({ user, onAdmin, onLocations, onRepo
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { quickUnlockEnabled, lockTimeoutSeconds, setLockTimeoutSeconds, lock, logout } = useAuthStore();
   const canManageLocations = ['admin', 'director', 'dispatcher', 'accountant', 'engineer'].includes(user.role);
-  const canViewWarehouse = ['admin', 'director', 'storekeeper', 'metrologist', 'accountant'].includes(user.role);
+  const canViewWarehouse = ['admin', 'director', 'storekeeper', 'metrologist', 'accountant', 'engineer'].includes(user.role);
 
   const disableQuickUnlock = () => {
     Alert.alert('Отключить быструю разблокировку?', 'Сессия этого устройства будет отозвана. Для следующего входа потребуется пароль.', [

@@ -130,7 +130,7 @@ def _serialize_device(d: ReplacementDevice, balance: int) -> DeviceResponse:
 
 @replacement_router.get("/devices", response_model=list[DeviceResponse])
 async def list_devices(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper, UserRole.engineer):
         raise HTTPException(403, "Недостаточно прав")
     stmt = (
         select(
@@ -215,7 +215,7 @@ async def list_transactions(
     date_from: str | None = None,
     date_to: str | None = None,
 ):
-    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper, UserRole.engineer):
         raise HTTPException(403, "Недостаточно прав")
     stmt = select(ReplacementTransaction).options(
         selectinload(ReplacementTransaction.device),

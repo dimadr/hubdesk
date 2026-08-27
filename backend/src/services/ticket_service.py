@@ -32,11 +32,8 @@ class TicketService:
             normalized["assignee_id"] = user.id
         if normalized.get("is_internal"):
             body = str(normalized.get("body") or "").strip()
-            addition = str(normalized.get("source_description") or "").strip()
             if not body:
                 raise HTTPException(422, "Описание внутренней заявки обязательно")
-            if not addition:
-                raise HTTPException(422, "Дополнение по работам обязательно")
             if not normalized.get("resolution_deadline"):
                 raise HTTPException(422, "Дедлайн внутренней заявки обязателен")
             if not normalized.get("assignee_id"):
@@ -44,7 +41,7 @@ class TicketService:
             normalized.update({
                 "subject": TicketService.internal_subject(body),
                 "body": body,
-                "source_description": addition,
+                "source_description": None,
                 "customer_id": None,
                 "location_id": None,
                 "equipment_id": None,
@@ -65,14 +62,11 @@ class TicketService:
     @staticmethod
     def validate_internal_fields(
         body: str | None,
-        addition: str | None,
         resolution_deadline,
         assignee_id: int | None,
     ) -> None:
         if not body or not body.strip():
             raise HTTPException(422, "Описание внутренней заявки обязательно")
-        if not addition or not addition.strip():
-            raise HTTPException(422, "Дополнение по работам обязательно")
         if not resolution_deadline:
             raise HTTPException(422, "Дедлайн внутренней заявки обязателен")
         if not assignee_id:
@@ -148,6 +142,20 @@ class TicketService:
                 self.session, user, "ticket_created", "ticket",
                 ticket.id, f"Создана заявка №{ticket.number} «{ticket.subject}»"
             )
+        if user and user.role == UserRole.engineer and ticket.assignee_id == user.id:
+            await self.fsm.transition(
+                ticket,
+                "ACCEPTED",
+                user.id,
+                {"reason": "self_created"},
+            )
+            ticket.accepted_at = now_utc
+            await log_audit(
+                self.session, user, "ticket_status_changed", "ticket",
+                ticket.id,
+                f"Заявка №{ticket.number} автоматически принята создавшим её инженером",
+            )
+            await self.session.flush()
         return ticket
 
     async def assign(self, ticket_id: int, engineer_id: int, dispatcher: User) -> Ticket:

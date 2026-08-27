@@ -220,7 +220,6 @@ const CreateTicketModal: React.FC<{
   const submit = async () => {
     if (isInternal) {
       if (!body.trim()) { setError('Заполните описание'); return; }
-      if (!sourceDesc.trim()) { setError('Заполните дополнение по работам'); return; }
       if (!resolutionDeadline) { setError('Укажите дедлайн'); return; }
       if (!assigneeId) { setError('Выберите исполнителя'); return; }
     } else if (!subject || !locationId) {
@@ -234,7 +233,6 @@ const CreateTicketModal: React.FC<{
         await api.post('/tickets', {
           is_internal: true,
           body: body.trim(),
-          source_description: sourceDesc.trim(),
           resolution_deadline: endOfLocalDayIso(resolutionDeadline),
           assignee_id: Number(assigneeId),
         });
@@ -299,10 +297,10 @@ const CreateTicketModal: React.FC<{
               ))}
             </select>
           </div>}
-          <div className="span-2">
-            <label>{isInternal ? 'Дополнение по работам' : 'Примечание'} {isInternal && <span className="required">*</span>}</label>
-            <textarea placeholder={isInternal ? 'Укажите возможные дополнения по работам' : 'Дополнительная информация'} value={sourceDesc} onChange={e => setSourceDesc(e.target.value)} rows={2} />
-          </div>
+          {!isInternal && <div className="span-2">
+            <label>Примечание</label>
+            <textarea placeholder="Дополнительная информация" value={sourceDesc} onChange={e => setSourceDesc(e.target.value)} rows={2} />
+          </div>}
           {!isInternal && <div style={{ position: 'relative' }}>
             <label>Объект <span className="required">*</span></label>
             {locationId ? (
@@ -424,7 +422,6 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
   const submit = async () => {
     if (ticket.is_internal) {
       if (!body.trim()) { setError('Заполните описание'); return; }
-      if (!sourceDesc.trim()) { setError('Заполните дополнение по работам'); return; }
       if (!resolutionDeadline) { setError('Укажите дедлайн'); return; }
       if (!assigneeId) { setError('Выберите исполнителя'); return; }
     } else if (!subject || !locationId) {
@@ -436,7 +433,6 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
       if (ticket.is_internal) {
         await api.patch(`/tickets/${ticket.id}`, {
           body: body.trim(),
-          source_description: sourceDesc.trim(),
           resolution_deadline: endOfLocalDayIso(resolutionDeadline),
           ...(currentUser?.role === 'engineer' ? {} : { assignee_id: Number(assigneeId) }),
         });
@@ -484,10 +480,10 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
               ))}
             </select>
           </div>}
-          <div className="span-2">
-            <label>{ticket.is_internal ? 'Дополнение по работам' : 'Примечание'} {ticket.is_internal && <span className="required">*</span>}</label>
+          {!ticket.is_internal && <div className="span-2">
+            <label>Примечание</label>
             <textarea value={sourceDesc} onChange={e => setSourceDesc(e.target.value)} rows={2} />
-          </div>
+          </div>}
           {!ticket.is_internal && <div>
             <label>Объект <span className="required">*</span></label>
             <select value={locationId} onChange={e => setLocationId(Number(e.target.value) || '')}>
@@ -694,7 +690,7 @@ const TicketDetailModal: React.FC<{
             )}
             {ticket.site_contact_name && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Контакт</span><div>{ticket.site_contact_name}{ticket.site_contact_phone ? `, ${ticket.site_contact_phone}` : ''}</div></div>}
             {ticket.scheduled_end && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Выезд по</span><div>{new Date(ticket.scheduled_end).toLocaleString('ru-RU')}</div></div>}
-            {ticket.source_description && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{ticket.is_internal ? 'Дополнение по работам' : 'Источник'}</span><div>{ticket.source_description}</div></div>}
+            {!ticket.is_internal && ticket.source_description && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Источник</span><div>{ticket.source_description}</div></div>}
             {ticket.location_name && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Объект</span><div>{ticket.location_name}</div></div>}
             {ticket.location_address && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Адрес</span><div>{ticket.location_address}</div></div>}
             {ticket.customer_name && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Заказчик</span><div>{ticket.customer_name}</div></div>}
@@ -1095,7 +1091,7 @@ const App: React.FC = () => {
             .filter(item => item.key !== 'audit' || ['admin', 'director'].includes(user.role))
             .filter(item => item.key !== 'employees' || ['admin', 'director', 'dispatcher', 'accountant'].includes(user.role))
             .filter(item => item.key !== 'kanban' || ['admin', 'director', 'dispatcher', 'engineer'].includes(user.role))
-            .filter(item => item.key !== 'warehouse' || ['admin', 'director', 'storekeeper', 'metrologist', 'accountant'].includes(user.role))
+            .filter(item => item.key !== 'warehouse' || ['admin', 'director', 'storekeeper', 'metrologist', 'accountant', 'engineer'].includes(user.role))
             .map(item => (
               <button
                 key={item.key}

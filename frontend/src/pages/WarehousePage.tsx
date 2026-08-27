@@ -22,10 +22,12 @@ const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (
 
 export const WarehousePage: React.FC = () => {
   const role = (() => { try { return JSON.parse(localStorage.getItem('user') || '{}').role || ''; } catch { return ''; } })();
-  const canRead = role === 'admin' || role === 'director' || role === 'storekeeper' || role === 'metrologist' || role === 'accountant';
+  const canRead = role === 'admin' || role === 'director' || role === 'storekeeper' || role === 'metrologist' || role === 'accountant' || role === 'engineer';
   const canWrite = role === 'admin' || role === 'director' || role === 'storekeeper';
   const canManageReplacement = role === 'admin' || role === 'director' || role === 'storekeeper';
   const canManageInsert = role === 'admin' || role === 'director' || role === 'storekeeper' || role === 'metrologist';
+  const canViewReplacement = canManageReplacement || role === 'engineer';
+  const canViewInsert = canManageInsert || role === 'engineer';
   const [tab, setTab] = useState<'warehouses' | 'nomenclature' | 'docs' | 'balances' | 'replacement' | 'insert'>('docs');
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [nomenclature, setNomenclature] = useState<NomenclatureItem[]>([]);
@@ -170,8 +172,8 @@ export const WarehousePage: React.FC = () => {
         <button className={`tab ${tab === 'balances' ? 'active' : ''}`} onClick={() => setTab('balances')}>Остатки</button>
         <button className={`tab ${tab === 'warehouses' ? 'active' : ''}`} onClick={() => setTab('warehouses')}>Склады</button>
         <button className={`tab ${tab === 'nomenclature' ? 'active' : ''}`} onClick={() => setTab('nomenclature')}>Номенклатура</button>
-        {canManageReplacement && <button className={`tab ${tab === 'replacement' ? 'active' : ''}`} onClick={() => setTab('replacement')}>Подменный фонд</button>}
-        {canManageInsert && <button className={`tab ${tab === 'insert' ? 'active' : ''}`} onClick={() => setTab('insert')}>Вставки</button>}
+        {canViewReplacement && <button className={`tab ${tab === 'replacement' ? 'active' : ''}`} onClick={() => setTab('replacement')}>Подменный фонд</button>}
+        {canViewInsert && <button className={`tab ${tab === 'insert' ? 'active' : ''}`} onClick={() => setTab('insert')}>Вставки</button>}
       </div>
 
       <div style={{ marginTop: 16 }}>

@@ -103,7 +103,7 @@ async def _get_product_balance(db: AsyncSession, product_id: int) -> int:
 
 @insert_v2_router.get("/products", response_model=list[ProductResponse])
 async def list_products(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper, UserRole.metrologist):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper, UserRole.metrologist, UserRole.engineer):
         raise HTTPException(403, "Недостаточно прав")
     stmt = (
         select(
@@ -249,7 +249,7 @@ async def list_transactions(
     date_from: str | None = None,
     date_to: str | None = None,
 ):
-    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper, UserRole.metrologist):
+    if user.role not in (UserRole.admin, UserRole.director, UserRole.storekeeper, UserRole.metrologist, UserRole.engineer):
         raise HTTPException(403, "Недостаточно прав")
     stmt = select(InsertTransaction).options(
         selectinload(InsertTransaction.product),

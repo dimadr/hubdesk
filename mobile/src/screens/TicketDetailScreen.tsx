@@ -199,7 +199,7 @@ export const TicketDetailScreen: React.FC<Props> = ({ ticketId, user, onBack, on
         )}
 
         <Section title="Описание"><Text style={styles.body}>{ticket.body || '—'}</Text></Section>
-        {ticket.source_description && <Section title={ticket.is_internal ? 'Дополнение по работам' : 'Примечание'}><Text style={styles.body}>{ticket.source_description}</Text></Section>}
+        {!ticket.is_internal && ticket.source_description && <Section title="Примечание"><Text style={styles.body}>{ticket.source_description}</Text></Section>}
 
         {checklists.map((checklist) => (
           <Section key={checklist.id} title={checklist.name}>

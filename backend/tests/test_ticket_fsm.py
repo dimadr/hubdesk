@@ -182,22 +182,22 @@ def test_internal_ticket_normalization_clears_object_fields():
     assert normalized["site_contact_name"] is None
 
 
-def test_internal_ticket_requires_addition():
+def test_internal_ticket_does_not_require_addition():
     from datetime import datetime
-    from fastapi import HTTPException
     from src.services.ticket_service import TicketService
 
-    with pytest.raises(HTTPException, match="Дополнение по работам обязательно"):
-        TicketService._normalize_create_data(
-            {
-                "is_internal": True,
-                "body": "Описание",
-                "source_description": "",
-                "resolution_deadline": datetime(2026, 8, 10, 23, 59, 59),
-                "assignee_id": 7,
-            },
-            None,
-        )
+    normalized = TicketService._normalize_create_data(
+        {
+            "is_internal": True,
+            "body": "Описание",
+            "source_description": "Старое значение",
+            "resolution_deadline": datetime(2026, 8, 10, 23, 59, 59),
+            "assignee_id": 7,
+        },
+        None,
+    )
+
+    assert normalized["source_description"] is None
 
 
 @pytest.mark.asyncio

@@ -16,7 +16,7 @@ from src.core.fsm.exceptions import InvalidTransitionError, GuardFailedError
 warehouse_router = APIRouter(tags=["Warehouse"])
 
 
-_WAREHOUSE_READ_ROLES = {UserRole.admin, UserRole.director, UserRole.storekeeper, UserRole.metrologist, UserRole.accountant}
+_WAREHOUSE_READ_ROLES = {UserRole.admin, UserRole.director, UserRole.storekeeper, UserRole.metrologist, UserRole.accountant, UserRole.engineer}
 _WAREHOUSE_FULL_ACCESS_ROLES = {UserRole.admin, UserRole.director}
 
 
