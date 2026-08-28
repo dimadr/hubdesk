@@ -13,11 +13,7 @@ class RoleChecker:
         "ASSIGNED->ACCEPTED":     [UserRole.engineer],
         "ASSIGNED->IN_PROGRESS":  [UserRole.engineer],
         "ACCEPTED->IN_PROGRESS":  [UserRole.engineer],
-        "ACCEPTED->ASSIGNED":     [UserRole.engineer],
         "IN_PROGRESS->COMPLETED": [UserRole.engineer, UserRole.dispatcher],
-        "IN_PROGRESS->ACCEPTED":  [UserRole.engineer],
-        "IN_PROGRESS->ASSIGNED":  [UserRole.engineer],
-        "COMPLETED->IN_PROGRESS": [UserRole.engineer, UserRole.dispatcher],
     }
 
     @staticmethod

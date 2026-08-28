@@ -66,7 +66,7 @@ export const TicketFormScreen: React.FC<Props> = ({ ticket, user, onBack, onSave
     ]).then(([locationsResult, usersResult]) => {
       if (locationsResult.status === 'fulfilled') setLocations(locationsResult.value.data);
       else setError(getApiError(locationsResult.reason, 'Не удалось загрузить объекты'));
-      if (usersResult.status === 'fulfilled') setEngineers(usersResult.value.data.filter((item) => item.role === 'engineer'));
+      if (usersResult.status === 'fulfilled') setEngineers(usersResult.value.data.filter((item) => item.role === 'engineer' && item.status === 'active'));
       setLoadingLocations(false);
     });
   }, [canAssign]);

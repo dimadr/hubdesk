@@ -6,7 +6,8 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 
 from src.models.ticket import Ticket, TicketStatus
-from src.models.user import User, UserRole
+from src.models.user import User, UserRole, UserStatus
+from src.models.attachment import Attachment
 from src.models.customer import Contract
 from src.models.equipment import AssetLocation, Equipment
 from src.models.checklist import Checklist
@@ -77,11 +78,12 @@ class TicketService:
         now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
         is_internal = bool(data.get("is_internal"))
 
+        if data.get("assignee_id") and not await self._is_engineer(data["assignee_id"]):
+            raise HTTPException(400, "Исполнитель должен быть активным пользователем с ролью engineer")
+
         if is_internal:
             if user and user.role == UserRole.customer:
                 raise HTTPException(403, "Заказчик не может создавать внутренние заявки")
-            if not await self._is_engineer(data["assignee_id"]):
-                raise HTTPException(400, "Исполнитель должен иметь роль engineer")
         else:
             subject = str(data.get("subject") or "").strip()
             if not subject:
@@ -114,7 +116,7 @@ class TicketService:
             type=data.get("type"),
             priority=data.get("priority", "medium"),
             is_internal=data.get("is_internal", False),
-            assignee_id=data.get("assignee_id") if data.get("assignee_id") and await self._is_engineer(data["assignee_id"]) else None,
+            assignee_id=data.get("assignee_id"),
             group_id=data.get("group_id"),
             site_contact_name=data.get("site_contact_name"),
             site_contact_phone=data.get("site_contact_phone"),
@@ -165,8 +167,8 @@ class TicketService:
         eng = await self.session.get(User, engineer_id)
         if not eng:
             raise HTTPException(404, "Пользователь не найден")
-        if eng.role != UserRole.engineer:
-            raise HTTPException(400, "Назначать можно только пользователя с ролью engineer")
+        if eng.role != UserRole.engineer or eng.status != UserStatus.active:
+            raise HTTPException(400, "Назначать можно только активного пользователя с ролью engineer")
 
         ticket = await self._get(ticket_id)
         ticket.assignee_id = engineer_id
@@ -178,14 +180,39 @@ class TicketService:
         )
         return ticket
 
-    async def complete(self, ticket_id: int, comment: str, user: User) -> Ticket:
+    async def complete(
+        self,
+        ticket_id: int,
+        comment: str,
+        user: User,
+        attachment_ids: list[int] | None = None,
+    ) -> Ticket:
         ticket = await self._get(ticket_id, for_update=True)
         if not await RoleChecker.can_view_ticket_async(user, ticket, self.session):
             raise HTTPException(403, "Доступ к данной заявке запрещен")
         if ticket.status.value == "COMPLETED":
             return ticket
-        if comment.strip():
-            await CommentService(self.session).add(ticket_id, comment.strip(), False, user)
+        attachments: list[Attachment] = []
+        unique_attachment_ids = list(dict.fromkeys(attachment_ids or []))
+        if unique_attachment_ids:
+            result = await self.session.execute(
+                select(Attachment)
+                .where(Attachment.id.in_(unique_attachment_ids))
+                .with_for_update()
+            )
+            attachments = list(result.scalars().all())
+            if len(attachments) != len(unique_attachment_ids):
+                raise HTTPException(400, "Одно или несколько вложений не найдены")
+            if any(attachment.ticket_id != ticket_id for attachment in attachments):
+                raise HTTPException(400, "Вложение не принадлежит завершаемой заявке")
+        completion_comment = None
+        if comment.strip() or attachments:
+            body = comment.strip() or "Фото к отчёту о выполненной работе"
+            completion_comment = await CommentService(self.session).add(ticket_id, body, True, user)
+        if completion_comment:
+            for attachment in attachments:
+                attachment.comment_id = completion_comment.id
+                attachment.is_internal = True
         return await self.change_status(ticket_id, "COMPLETED", user)
 
     async def change_status(self, ticket_id: int, target: str, user: User) -> Ticket:
@@ -223,10 +250,6 @@ class TicketService:
         elif target == "COMPLETED":
             ticket.completed_at = now_utc
             ticket.archived_at = now_utc
-        elif from_status == "COMPLETED":
-            ticket.completed_at = None
-            ticket.archived_at = None
-
         await self.session.flush()
         await log_audit(
             self.session, user, "ticket_status_changed", "ticket",
@@ -286,4 +309,4 @@ class TicketService:
 
     async def _is_engineer(self, user_id: int) -> bool:
         u = await self.session.get(User, user_id)
-        return u is not None and u.role == UserRole.engineer
+        return u is not None and u.role == UserRole.engineer and u.status == UserStatus.active

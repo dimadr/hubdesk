@@ -1,18 +1,20 @@
+from collections import Counter
+
 from src.core.fsm import BaseFSM
 from src.core.fsm.mixins import AuditMixin
 from src.models.ticket import Ticket, TicketTransition, TicketStatus
 from src.models.checklist import ChecklistField, FieldType
 from src.models.attachment import Attachment
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class TicketFSM(BaseFSM, AuditMixin):
     transitions = {
         "ASSIGNED":    ["ACCEPTED", "IN_PROGRESS"],
-        "ACCEPTED":    ["IN_PROGRESS", "ASSIGNED"],
-        "IN_PROGRESS": ["COMPLETED", "ACCEPTED", "ASSIGNED"],
-        "COMPLETED":   ["IN_PROGRESS"],
+        "ACCEPTED":    ["IN_PROGRESS"],
+        "IN_PROGRESS": ["COMPLETED"],
+        "COMPLETED":   [],
     }
 
     def __init__(self, session: AsyncSession):
@@ -50,17 +52,29 @@ class TicketFSM(BaseFSM, AuditMixin):
         return True
 
     async def _guard_mandatory_photos(self, ticket: Ticket, ctx: dict) -> bool:
-        photo_fields_count = 0
+        photo_values: list[str] = []
         for checklist in ticket.checklists:
             for field in checklist.fields:
                 if field.field_type == FieldType.photo and field.is_mandatory:
-                    photo_fields_count += 1
-        if photo_fields_count == 0:
+                    value = (field.value or "").strip()
+                    if not value:
+                        return False
+                    if value.lower().startswith("фото:"):
+                        value = value.split(":", 1)[1].strip()
+                    if not value:
+                        return False
+                    photo_values.append(value)
+        if not photo_values:
             return True
         result = await self.session.execute(
-            select(func.count(Attachment.id)).where(
+            select(Attachment.filename).where(
                 Attachment.ticket_id == ticket.id,
                 Attachment.content_type.ilike("image/%"),
             )
         )
-        return int(result.scalar() or 0) >= photo_fields_count
+        available = Counter(result.scalars().all())
+        for filename in photo_values:
+            if available[filename] == 0:
+                return False
+            available[filename] -= 1
+        return True

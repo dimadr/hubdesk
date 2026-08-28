@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api, TicketResponse } from './api/client';
 import { TicketGrid } from './components/TicketGrid/TicketGrid';
+import { TicketChecklist } from './components/TicketChecklist';
 import { WarehousePage } from './pages/WarehousePage';
 import { LocationsPage } from './pages/LocationsPage';
 import { AdminPage } from './pages/AdminPage';
@@ -264,7 +265,7 @@ const CreateTicketModal: React.FC<{
     } finally { setSaving(false); }
   };
 
-  const assignables = users.filter(u => u.role === 'engineer');
+  const assignables = users.filter(u => u.role === 'engineer' && (!u.status || u.status === 'active'));
   const canCreateInternal = currentUser && ['admin', 'director', 'dispatcher', 'accountant', 'engineer'].includes(currentUser.role);
 
   return (
@@ -390,6 +391,7 @@ const CreateTicketModal: React.FC<{
 };
 
 const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; onSaved: () => void; users: UserInfo[]; currentUser?: UserInfo }> = ({ ticket, onClose, onSaved, users, currentUser }) => {
+  const isEngineer = currentUser?.role === 'engineer';
   const [subject, setSubject] = useState(ticket.subject);
   const [ticketType, setTicketType] = useState(ticket.type || '');
   const [sourceDesc, setSourceDesc] = useState(ticket.source_description || '');
@@ -438,7 +440,14 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
         });
       } else {
         const selected = locations.find(l => l.id === Number(locationId));
-        await api.patch(`/tickets/${ticket.id}`, {
+        const payload = isEngineer ? {
+          subject,
+          body,
+          source_description: sourceDesc || null,
+          resolution_deadline: endOfLocalDayIso(resolutionDeadline) || null,
+          site_contact_name: siteContactName || null,
+          site_contact_phone: siteContactPhone || null,
+        } : {
           subject,
           body,
           type: ticketType || null,
@@ -450,7 +459,8 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
           assignee_id: assigneeId ? Number(assigneeId) : null,
           site_contact_name: siteContactName || null,
           site_contact_phone: siteContactPhone || null,
-        });
+        };
+        await api.patch(`/tickets/${ticket.id}`, payload);
       }
       onSaved();
     } catch (e: any) {
@@ -459,7 +469,7 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
     } finally { setSaving(false); }
   };
 
-  const assignables = users.filter(u => u.role === 'engineer');
+  const assignables = users.filter(u => u.role === 'engineer' && (!u.status || u.status === 'active'));
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -473,7 +483,7 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
           </div>}
           {!ticket.is_internal && <div>
             <label>Тип заявки</label>
-            <select value={ticketType} onChange={e => setTicketType(e.target.value)}>
+            <select value={ticketType} onChange={e => setTicketType(e.target.value)} disabled={isEngineer}>
               <option value="">— Не выбрано —</option>
               {Object.entries(TICKET_TYPES).map(([k, v]) => (
                 <option key={k} value={k}>{v}</option>
@@ -486,7 +496,7 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
           </div>}
           {!ticket.is_internal && <div>
             <label>Объект <span className="required">*</span></label>
-            <select value={locationId} onChange={e => setLocationId(Number(e.target.value) || '')}>
+            <select value={locationId} onChange={e => setLocationId(Number(e.target.value) || '')} disabled={isEngineer}>
               <option value="">— Выберите объект —</option>
               {locations.map(l => (
                 <option key={l.id} value={l.id}>{l.name} ({l.customer_name})</option>
@@ -499,7 +509,7 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
           </div>
           {!ticket.is_internal && <div>
             <label>Приоритет</label>
-            <select value={priority} onChange={e => setPriority(e.target.value)}>
+            <select value={priority} onChange={e => setPriority(e.target.value)} disabled={isEngineer}>
               <option value="low">Низкий</option>
               <option value="medium">Средний</option>
               <option value="high">Высокий</option>
@@ -513,7 +523,7 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
           {!ticket.is_internal && <div></div>}
           <div>
             <label>Исполнитель {ticket.is_internal && <span className="required">*</span>}</label>
-            {ticket.is_internal && currentUser?.role === 'engineer' ? (
+            {isEngineer ? (
               <input value={[currentUser.name, currentUser.patronymic].filter(Boolean).join(' ')} disabled style={{ opacity: 0.7 }} />
             ) : (
               <select value={assigneeId} onChange={e => setAssigneeId(Number(e.target.value) || '')}>
@@ -699,6 +709,14 @@ const TicketDetailModal: React.FC<{
             <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Описание</span>
             <div style={{ marginTop: 4, padding: 10, background: 'var(--bg-surface)', borderRadius: 7, whiteSpace: 'pre-wrap', fontSize: 13 }}>{ticket.body || '—'}</div>
           </div>
+          <TicketChecklist
+            ticketId={ticket.id}
+            canEdit={!readOnly && (
+              ['admin', 'director', 'dispatcher', 'accountant'].includes(role || '') ||
+              (role === 'engineer' && ticket.assignee_id === currentUserId)
+            )}
+            onChanged={load}
+          />
           {canStatus && next && (
             <div style={{ marginBottom: 14 }}>
               <button className="btn btn-success" onClick={() => handleStatus(next)} style={{ fontSize: 13 }}>
@@ -759,11 +777,12 @@ const TicketDetailModal: React.FC<{
   );
 };
 
-const CompleteTicketModal: React.FC<{ ticket: TicketResponse; onConfirm: (comment: string) => Promise<void> | void; onClose: () => void }> = ({ ticket, onConfirm, onClose }) => {
+const CompleteTicketModal: React.FC<{ ticket: TicketResponse; onConfirm: (comment: string, attachmentIds: number[]) => Promise<void> | void; onClose: () => void }> = ({ ticket, onConfirm, onClose }) => {
   const [comment, setComment] = useState('');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState('');
   const [uploadedPhotoUrl, setUploadedPhotoUrl] = useState('');
+  const [uploadedPhotoId, setUploadedPhotoId] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -771,6 +790,7 @@ const CompleteTicketModal: React.FC<{ ticket: TicketResponse; onConfirm: (commen
     if (file) {
       setPhotoFile(file);
       setUploadedPhotoUrl('');
+      setUploadedPhotoId(null);
       const reader = new FileReader();
       reader.onload = (ev) => setPhotoPreview(ev.target?.result as string);
       reader.readAsDataURL(file);
@@ -781,16 +801,19 @@ const CompleteTicketModal: React.FC<{ ticket: TicketResponse; onConfirm: (commen
     setUploading(true);
     try {
       let photoUrl = uploadedPhotoUrl;
+      let photoId = uploadedPhotoId;
       if (photoFile && !photoUrl) {
         const form = new FormData();
         form.append('file', photoFile);
         form.append('ticket_id', String(ticket.id));
         const resp = await api.post('/attachments', form);
         photoUrl = resp.data?.download_url || '';
+        photoId = resp.data?.id || null;
         setUploadedPhotoUrl(photoUrl);
+        setUploadedPhotoId(photoId);
       }
       const fullComment = [comment, photoUrl ? `Фото: ${photoUrl}` : ''].filter(Boolean).join('\n\n');
-      await onConfirm(fullComment);
+      await onConfirm(fullComment, photoId ? [photoId] : []);
     } catch (e: any) {
       alert(e.response?.data?.detail || 'Ошибка загрузки фото');
     } finally {
@@ -859,8 +882,11 @@ const AddEmployeeModal: React.FC<{ onClose: () => void; onAdded: () => void }> =
         <select value={role} onChange={e => setRole(e.target.value)}>
           <option value="engineer">Инженер</option>
           <option value="dispatcher">Диспетчер</option>
+          <option value="accountant">Бухгалтер</option>
           <option value="admin">Администратор</option>
+          <option value="director">Директор</option>
           <option value="storekeeper">Кладовщик</option>
+          <option value="metrologist">Метролог</option>
           <option value="customer">Заказчик</option>
           <option value="viewer">Наблюдатель</option>
         </select>
@@ -1056,14 +1082,14 @@ const App: React.FC = () => {
     }
   };
 
-  const confirmComplete = async (comment: string) => {
+  const confirmComplete = async (comment: string, attachmentIds: number[]) => {
     if (!confirmStatusTicket) return;
     if (confirmStatusTicket.ticket.status === 'COMPLETED') {
       setConfirmStatusTicket(null);
       return;
     }
     try {
-      await api.post(`/tickets/${confirmStatusTicket.ticket.id}/complete`, { comment });
+      await api.post(`/tickets/${confirmStatusTicket.ticket.id}/complete`, { comment, attachment_ids: attachmentIds });
       setConfirmStatusTicket(null);
       setDetailTicket(null);
       setRefreshKey(k => k + 1);
@@ -1092,6 +1118,7 @@ const App: React.FC = () => {
             .filter(item => item.key !== 'employees' || ['admin', 'director', 'dispatcher', 'accountant'].includes(user.role))
             .filter(item => item.key !== 'kanban' || ['admin', 'director', 'dispatcher', 'engineer'].includes(user.role))
             .filter(item => item.key !== 'warehouse' || ['admin', 'director', 'storekeeper', 'metrologist', 'accountant', 'engineer'].includes(user.role))
+            .filter(item => item.key !== 'calendar' || !['storekeeper', 'metrologist'].includes(user.role))
             .map(item => (
               <button
                 key={item.key}

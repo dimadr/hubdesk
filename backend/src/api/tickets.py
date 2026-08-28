@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text, func
 from sqlalchemy.orm import selectinload
 from datetime import datetime, timezone
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from src.database import get_db
 from src.models.ticket import Ticket, TicketStatus
 from src.models.customer import Customer
@@ -20,7 +20,7 @@ from src.api.schemas import (
     CommentCreate, CommentResponse,
 )
 from src.core.deps import get_current_user
-from src.models.user import User, UserRole
+from src.models.user import User, UserRole, UserStatus
 from src.models.checklist import Checklist, ChecklistField, FieldType
 
 logger = logging.getLogger(__name__)
@@ -301,8 +301,8 @@ def create_ticket_router() -> APIRouter:
                 ):
                     raise HTTPException(403, "Только диспетчер или администратор может назначать исполнителя")
                 eng = await db.get(User, value)
-                if not eng or eng.role != UserRole.engineer:
-                    raise HTTPException(400, "Исполнитель должен иметь роль engineer")
+                if not eng or eng.role != UserRole.engineer or eng.status != UserStatus.active:
+                    raise HTTPException(400, "Исполнитель должен быть активным пользователем с ролью engineer")
             if isinstance(value, datetime):
                 if value.tzinfo is not None:
                     value = value.astimezone(timezone.utc).replace(tzinfo=None)
@@ -376,6 +376,7 @@ def create_ticket_router() -> APIRouter:
 
     class CompleteTicketRequest(BaseModel):
         comment: str = ""
+        attachment_ids: list[int] = Field(default_factory=list)
 
     @router.post("/{ticket_id}/complete", response_model=TicketResponse)
     async def complete_ticket(
@@ -386,7 +387,7 @@ def create_ticket_router() -> APIRouter:
     ):
         svc = TicketService(db)
         try:
-            ticket = await svc.complete(ticket_id, data.comment, user)
+            ticket = await svc.complete(ticket_id, data.comment, user, data.attachment_ids)
             await db.commit()
         except PermissionError as exc:
             await db.rollback()

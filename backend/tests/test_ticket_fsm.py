@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from src.services.ticket_fsm import TicketFSM
-from src.core.fsm.exceptions import GuardFailedError
+from src.core.fsm.exceptions import GuardFailedError, InvalidTransitionError
 from src.models.checklist import FieldType
 
 
@@ -32,6 +32,22 @@ async def test_engineer_can_start_assigned_ticket(fsm, ticket):
     ticket.status.value = "ASSIGNED"
     await fsm.transition(ticket, "IN_PROGRESS", user_id=1)
     assert ticket.status == "IN_PROGRESS"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("current", "target"),
+    [
+        ("ACCEPTED", "ASSIGNED"),
+        ("IN_PROGRESS", "ACCEPTED"),
+        ("IN_PROGRESS", "ASSIGNED"),
+        ("COMPLETED", "IN_PROGRESS"),
+    ],
+)
+async def test_reverse_transitions_are_rejected(fsm, ticket, current, target):
+    ticket.status.value = current
+    with pytest.raises(InvalidTransitionError):
+        await fsm.transition(ticket, target, user_id=1)
 
 
 @pytest.mark.asyncio
@@ -109,7 +125,7 @@ async def test_mandatory_photo_requires_image_attachment(fsm, ticket):
     field.value = "fake-client-value"
     ticket.checklists = [MagicMock(fields=[field])]
     result = MagicMock()
-    result.scalar.return_value = 0
+    result.scalars.return_value.all.return_value = []
     fsm.session.execute.return_value = result
 
     with pytest.raises(GuardFailedError, match="mandatory_photos"):
@@ -122,14 +138,28 @@ async def test_mandatory_photo_allows_completion_with_image_attachment(fsm, tick
     field = MagicMock()
     field.is_mandatory = True
     field.field_type = FieldType.photo
-    field.value = None
+    field.value = "Фото: result.jpg"
     ticket.checklists = [MagicMock(fields=[field])]
     result = MagicMock()
-    result.scalar.return_value = 1
+    result.scalars.return_value.all.return_value = ["result.jpg"]
     fsm.session.execute.return_value = result
 
     await fsm.transition(ticket, "COMPLETED", user_id=1)
     assert ticket.status == "COMPLETED"
+
+
+@pytest.mark.asyncio
+async def test_mandatory_photo_requires_each_field_to_reference_own_attachment(fsm, ticket):
+    ticket.status.value = "IN_PROGRESS"
+    first = MagicMock(is_mandatory=True, field_type=FieldType.photo, value="Фото: result.jpg")
+    second = MagicMock(is_mandatory=True, field_type=FieldType.photo, value="Фото: result.jpg")
+    ticket.checklists = [MagicMock(fields=[first, second])]
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = ["result.jpg"]
+    fsm.session.execute.return_value = result
+
+    with pytest.raises(GuardFailedError, match="mandatory_photos"):
+        await fsm.transition(ticket, "COMPLETED", user_id=1)
 
 
 def test_acl_admin_can_change_any_status():
@@ -239,8 +269,21 @@ async def test_accountant_has_full_ticket_permissions():
 
 
 @pytest.mark.asyncio
-async def test_reopen_clears_completion_timestamps(monkeypatch):
-    from datetime import datetime
+async def test_inactive_engineer_is_not_assignable():
+    from src.models.user import UserRole, UserStatus
+    from src.services.ticket_service import TicketService
+
+    session = AsyncMock()
+    session.get.return_value = MagicMock(
+        role=UserRole.engineer,
+        status=UserStatus.pending,
+    )
+
+    assert await TicketService(session)._is_engineer(7) is False
+
+
+@pytest.mark.asyncio
+async def test_completion_comment_and_attachments_become_internal(monkeypatch):
     from src.models.user import UserRole
     from src.services import ticket_service
     from src.services.acl_service import RoleChecker
@@ -248,28 +291,27 @@ async def test_reopen_clears_completion_timestamps(monkeypatch):
 
     session = AsyncMock()
     service = TicketService(session)
-    completed_at = datetime(2026, 7, 28, 10, 0)
-    ticket = MagicMock()
-    ticket.id = 1
-    ticket.number = 1001
-    ticket.status.value = "COMPLETED"
-    ticket.completed_at = completed_at
-    ticket.archived_at = completed_at
-    ticket.created_by = None
-    user = MagicMock(id=2, role=UserRole.dispatcher)
-
+    ticket = MagicMock(id=1)
+    ticket.status.value = "IN_PROGRESS"
+    user = MagicMock(id=2, role=UserRole.engineer)
+    attachment = MagicMock(id=5, ticket_id=1, comment_id=None, is_internal=False)
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [attachment]
+    session.execute.return_value = result
     service._get = AsyncMock(return_value=ticket)
-    service.fsm.transition = AsyncMock()
+    service.change_status = AsyncMock(return_value=ticket)
+    comment = MagicMock(id=9)
+    add_comment = AsyncMock(return_value=comment)
     monkeypatch.setattr(
         RoleChecker, "can_view_ticket_async", AsyncMock(return_value=True)
     )
-    monkeypatch.setattr(RoleChecker, "can_change_status", lambda *_args: True)
-    monkeypatch.setattr(ticket_service, "log_audit", AsyncMock())
+    monkeypatch.setattr(ticket_service.CommentService, "add", add_comment)
 
-    await service.change_status(ticket.id, "IN_PROGRESS", user)
+    await service.complete(1, "Выполнено", user, [5])
 
-    assert ticket.completed_at is None
-    assert ticket.archived_at is None
+    add_comment.assert_awaited_once_with(1, "Выполнено", True, user)
+    assert attachment.comment_id == 9
+    assert attachment.is_internal is True
 
 
 @pytest.mark.asyncio

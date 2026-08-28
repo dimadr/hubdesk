@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { api, getApiError } from '../api/client';
 import { uploadTicketPhoto } from '../api/uploads';
-import { AttachmentResponse, ChecklistResponse, TicketResponse } from '../api/types';
+import { ChecklistResponse, TicketResponse } from '../api/types';
 import { ThemeColors, useAppTheme } from '../theme/ThemeContext';
 import { buildCommentWithLink, isHttpUrl } from '../utils/ticketContent';
 
@@ -22,18 +22,14 @@ export const CompleteTicketScreen: React.FC<Props> = ({ ticket, onBack, onSubmit
   const [linkUrl, setLinkUrl] = useState('');
   const [image, setImage] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [checklists, setChecklists] = useState<ChecklistResponse[]>([]);
-  const [attachments, setAttachments] = useState<AttachmentResponse[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    Promise.all([
-      api.get<ChecklistResponse[]>(`/tickets/${ticket.id}/checklists`),
-      api.get<AttachmentResponse[]>('/attachments', { params: { ticket_id: ticket.id } }),
-    ]).then(([checklistResult, attachmentResult]) => {
-      setChecklists(checklistResult.data);
-      setAttachments(attachmentResult.data);
-    }).catch((e) => Alert.alert('Не удалось проверить заявку', getApiError(e))).finally(() => setLoadingData(false));
+    api.get<ChecklistResponse[]>(`/tickets/${ticket.id}/checklists`)
+      .then((result) => setChecklists(result.data))
+      .catch((e) => Alert.alert('Не удалось проверить заявку', getApiError(e)))
+      .finally(() => setLoadingData(false));
   }, [ticket.id]);
 
   const pickImage = async (source: 'camera' | 'library') => {
@@ -57,9 +53,10 @@ export const CompleteTicketScreen: React.FC<Props> = ({ ticket, onBack, onSubmit
       return !value || ['false', 'нет', '0', '-'].includes(value);
     }).map((field) => field.label));
     if (missing.length) return `Заполните обязательные поля: ${missing.join(', ')}`;
-    const requiredPhotos = checklists.flatMap((checklist) => checklist.fields).filter((field) => field.is_mandatory && field.field_type === 'photo').length;
-    const availablePhotos = attachments.filter((attachment) => attachment.content_type.startsWith('image/')).length + (image ? 1 : 0);
-    if (availablePhotos < requiredPhotos) return `Не хватает обязательных фотографий: ${requiredPhotos - availablePhotos}`;
+    const missingPhotos = checklists.flatMap((checklist) => checklist.fields).filter((field) => (
+      field.is_mandatory && field.field_type === 'photo' && !(field.value || '').trim()
+    )).map((field) => field.label);
+    if (missingPhotos.length) return `Заполните обязательные фото-поля: ${missingPhotos.join(', ')}`;
     return '';
   };
 
@@ -76,8 +73,15 @@ export const CompleteTicketScreen: React.FC<Props> = ({ ticket, onBack, onSubmit
     }
     setSubmitting(true);
     try {
-      if (image) await uploadTicketPhoto(ticket.id, image.uri, image.fileName || `photo-${Date.now()}.jpg`, image.mimeType || 'image/jpeg');
-      await api.post(`/tickets/${ticket.id}/complete`, { comment: buildCommentWithLink(comment, linkTitle, linkUrl) });
+      const attachmentIds: number[] = [];
+      if (image) {
+        const attachment = await uploadTicketPhoto(ticket.id, image.uri, image.fileName || `photo-${Date.now()}.jpg`, image.mimeType || 'image/jpeg');
+        attachmentIds.push(attachment.id);
+      }
+      await api.post(`/tickets/${ticket.id}/complete`, {
+        comment: buildCommentWithLink(comment, linkTitle, linkUrl),
+        attachment_ids: attachmentIds,
+      });
       onSubmitted();
     } catch (e) {
       Alert.alert('Заявка не завершена', getApiError(e));
