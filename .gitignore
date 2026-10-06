@@ -1,0 +1,106 @@
+# Environment
+.env
+*.env
+.env.*
+*.env.*
+secrets/
+credentials*.json
+service-account*.json
+credentials/
+.ssh/
+.aws/
+.gnupg/
+.netrc
+.npmrc
+.pypirc
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Node / Vite
+node_modules/
+.vite/
+
+# Frontend build
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+history.log
+backend/history.log
+/tmp/
+
+# Archives
+*.tar.gz
+*.tar
+*.zip
+*.7z
+*.sql
+*.sql.gz
+*.sql.bz2
+*.sql.xz
+*.dump
+*.sqlite
+*.sqlite3
+*.db
+*.enc
+backup/
+
+# Uploads
+uploads/
+
+# Local config
+.env.local
+.env.production
+
+# Local project files
+Main.md
+ToDo.md
+archive.sh
+test.html
+screenshot.png
+API.md
+Sklad_vstavok.md
+AGENTS.md
+INSTRUCTION.md
+soul.md
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+mobile/android/
+mobile/ios/
+.opencode/
+opencode.json
+opencode.jsonc
+.opencode.json
+.opencode.jsonc
+opencode*.json
+opencode*.jsonc
+auth.json
+.codex/
+.agents/
+.attachment-fix-*/

@@ -1,0 +1,7 @@
+.git
+.expo
+node_modules
+android
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

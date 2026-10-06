@@ -1,0 +1,14 @@
+entities:
+  Customer: {}
+  Contract: {}
+  AssetLocation: {}
+  Equipment: {}
+  Ticket: {}
+  Comment: {}
+  Attachment: {}
+  Checklist: {}
+  User: {}
+  Group: {}
+  Warehouse: {}
+  Nomenclature: {}
+  AccountingDocument: {}
