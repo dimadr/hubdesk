@@ -20,6 +20,8 @@
   --warning-bg: rgba(251,191,36,.1);
   --danger: #f87171;
   --danger-bg: rgba(248,113,113,.1);
+  --overdue-bg: #30202b;
+  --overdue-hover: #402831;
   --info: #60a5fa;
   --info-bg: rgba(96,165,250,.1);
   --critical: #ec4899;
@@ -54,6 +56,8 @@
   --warning-bg: rgba(217,119,6,.08);
   --danger: #dc2626;
   --danger-bg: rgba(220,38,38,.08);
+  --overdue-bg: #fff0f0;
+  --overdue-hover: #ffe3e3;
   --info: #2563eb;
   --info-bg: rgba(37,99,235,.08);
   --shadow-sm: 0 1px 3px rgba(0,0,0,.06);
@@ -280,8 +284,10 @@ tbody tr:hover { background: var(--bg-hover) }
 tbody tr:last-child td { border-bottom: none }
 
 /* Row styles */
-tr.row-overdue { background: rgba(248,113,113,.04) }
-tr.row-overdue:hover { background: rgba(248,113,113,.08) }
+tr.ticket-row { --ticket-row-bg: var(--bg-surface) }
+tr.ticket-row:hover { --ticket-row-bg: var(--bg-hover) }
+tr.row-overdue { --ticket-row-bg: var(--overdue-bg); background: var(--overdue-bg) }
+tr.row-overdue:hover { --ticket-row-bg: var(--overdue-hover); background: var(--overdue-hover) }
 tr.row-internal .cell-subject::before { content: "🔒 "; color: var(--text-muted) }
 tr.row-priority-critical { border-left: 3px solid var(--critical) }
 tr.row-priority-high { border-left: 3px solid var(--high-priority) }
@@ -316,13 +322,17 @@ tr.row-priority-low { border-left: 2px solid var(--low-priority) }
 /* ── Card grid ── */
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px }
 .ticket-card {
-  background: var(--bg-card); border: 1px solid var(--border);
+  background: var(--ticket-card-bg, var(--bg-card)); border: 1px solid var(--border);
   border-radius: var(--radius-lg); padding: 16px; cursor: pointer;
   transition: transform .15s, border-color .15s, box-shadow .15s;
 }
 .ticket-card:hover { transform: translateY(-1px); border-color: rgba(139,92,246,.3); box-shadow: var(--shadow) }
 .ticket-card .card-header { font-weight: 700; font-size: 13px; margin-bottom: 8px }
 .ticket-card .card-meta { display: flex; gap: 8px; font-size: 11px; color: var(--text-secondary); flex-wrap: wrap }
+.ticket-overdue { --ticket-card-bg: var(--overdue-bg) }
+.ticket-overdue:hover { --ticket-card-bg: var(--overdue-hover) }
+.ticket-overdue-label { display: inline-block; max-width: 100%; color: var(--danger); font-size: 11px; font-weight: 600; line-height: 1.4 }
+.ticket-deadline { display: flex; flex-direction: column; align-items: flex-start; gap: 3px }
 
 /* ── Tree view ── */
 .tree-view {

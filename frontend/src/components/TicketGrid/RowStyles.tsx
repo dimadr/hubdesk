@@ -1,5 +1,6 @@
 import React from 'react';
 import { TicketResponse } from '../../api/client';
+import { isTicketOverdue } from '../TicketOverdue';
 
 interface RowStyleProps {
   ticket: TicketResponse;
@@ -10,7 +11,7 @@ interface RowStyleProps {
 export const RowStyle: React.FC<RowStyleProps> = ({ ticket, children, onClick }) => {
   const cls: string[] = ['ticket-row'];
 
-  if (ticket.response_overdue || ticket.resolution_overdue) {
+  if (isTicketOverdue(ticket)) {
     cls.push('row-overdue');
   }
   if (ticket.is_internal) {

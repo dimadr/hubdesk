@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { api, TicketResponse } from '../../api/client';
 import { RowStyle } from './RowStyles';
+import { isTicketOverdue, TicketOverdue } from '../TicketOverdue';
 import { ColumnHeader } from './ColumnHeader';
 import { useTicketStore } from '../../store/tickets';
 import { DndContext, closestCenter, DragEndEvent } from '@dnd-kit/core';
@@ -103,7 +104,7 @@ const Cell = React.memo<CellProps>(({ ticket, col, width, userMap, engineerIds, 
     left: stickyLeft !== undefined ? stickyLeft : undefined,
     right: stickyRight ? 0 : undefined,
     zIndex: isSticky ? 1 : undefined,
-    background: 'var(--bg-surface)',
+    background: 'var(--ticket-row-bg, var(--bg-surface))',
   };
 
   return (
@@ -127,7 +128,7 @@ const Cell = React.memo<CellProps>(({ ticket, col, width, userMap, engineerIds, 
 function renderCellContent(ticket: TicketResponse, col: ColumnDef, userMap: Map<number, string>, engineerIds: number[], onEdit?: (ticket: TicketResponse) => void, onStatusChange?: (ticket: TicketResponse, targetStatus: string) => void, onDelete?: (ticket: TicketResponse) => void, currentUserId?: number, role?: string, onAssigneeChanged?: (ticketId: number, assigneeId: number | null) => void) {
   if (col.key === 'subject') {
     return (
-      <span className="cell-subject" style={{ fontWeight: ticket.status === 'ASSIGNED' || ticket.response_overdue ? 700 : 400 }}>
+      <span className="cell-subject" style={{ fontWeight: ticket.status === 'ASSIGNED' || isTicketOverdue(ticket) ? 700 : 400 }}>
         {ticket.subject}
       </span>
     );
@@ -175,8 +176,10 @@ function renderCellContent(ticket: TicketResponse, col: ColumnDef, userMap: Map<
   );
   }
   if (col.key === 'deadline') {
-    try { return ticket.resolution_deadline ? new Date(ticket.resolution_deadline).toLocaleDateString('ru-RU') : '—'; }
-    catch { return ticket.resolution_deadline?.substring(0, 10) || '—'; }
+    let deadline = '—';
+    try { deadline = ticket.resolution_deadline ? new Date(ticket.resolution_deadline).toLocaleDateString('ru-RU') : '—'; }
+    catch { deadline = ticket.resolution_deadline?.substring(0, 10) || '—'; }
+    return <span className="ticket-deadline"><span>{deadline}</span><TicketOverdue ticket={ticket} /></span>;
   }
   if (col.key === 'actions') return (
     <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>

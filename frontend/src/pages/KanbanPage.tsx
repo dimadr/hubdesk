@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { api, TicketResponse } from '../api/client';
+import { isTicketOverdue, TicketOverdue } from '../components/TicketOverdue';
 
 interface Task {
   id: number; title: string; description: string; column: string;
@@ -181,11 +182,12 @@ export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[]; onDetail?
             {tickets.filter(t => ticketToColumn(t.status) === col.key).map(t => (
               <div
                 key={`ticket-${t.id}`}
+                className={`kanban-ticket${isTicketOverdue(t) ? ' ticket-overdue' : ''}`}
                 draggable
                 onDragStart={e => e.dataTransfer.setData('ticketId', String(t.id))}
                 onClick={() => onDetail?.(t)}
                 style={{
-                  background: 'var(--bg-card)', borderRadius: 7, padding: 10, marginBottom: 8,
+                  background: 'var(--ticket-card-bg, var(--bg-card))', borderRadius: 7, padding: 10, marginBottom: 8,
                   border: '1px solid var(--border)', fontSize: 13, cursor: 'pointer',
                   borderLeft: `3px solid ${t.priority === 'critical' ? '#f87171' : t.priority === 'high' ? '#fbbf24' : 'var(--border)'}`,
                 }}
@@ -199,6 +201,7 @@ export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[]; onDetail?
                   </div>
                 )}
                 <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{t.priority === 'critical' ? 'Критический' : t.priority === 'high' ? 'Высокий' : t.priority === 'medium' ? 'Средний' : 'Низкий'}</div>
+                <TicketOverdue ticket={t} />
               </div>
             ))}
             {tasks.filter(t => t.column === col.key).map(t => (

@@ -1,5 +1,6 @@
 import React from 'react';
 import { TicketResponse } from '../../api/client';
+import { isTicketOverdue, TicketOverdue } from '../TicketOverdue';
 
 interface UserInfo {
   id: number; email: string; name: string; role: string;
@@ -36,7 +37,7 @@ export const CardView: React.FC<Props> = ({ tickets, users, onDetail }) => {
   return (
     <div className="card-grid">
       {tickets.map((ticket) => (
-        <div key={ticket.id} className="ticket-card"
+        <div key={ticket.id} className={`ticket-card${isTicketOverdue(ticket) ? ' ticket-overdue' : ''}`}
           style={{ borderLeft: `3px solid ${PRIORITY_COLORS[ticket.priority] || 'var(--border)'}`, cursor: onDetail ? 'pointer' : undefined }}
           onClick={onDetail ? () => onDetail(ticket) : undefined}>
           <div className="card-header">
@@ -54,9 +55,9 @@ export const CardView: React.FC<Props> = ({ tickets, users, onDetail }) => {
             <span>{PRIORITY_MAP[ticket.priority]}</span>
             <span>👤 {getUserName(ticket.assignee_id)}</span>
           </div>
-          {ticket.response_overdue && (
-            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--danger)', background: 'var(--danger-bg)', padding: '4px 10px', borderRadius: 4 }}>
-              ⚠ Просрочена
+          {isTicketOverdue(ticket) && (
+            <div style={{ marginTop: 8 }}>
+              <TicketOverdue ticket={ticket} />
             </div>
           )}
         </div>
