@@ -57,7 +57,7 @@ class WarehouseService:
     async def approve(self, doc_id: int, user: User) -> AccountingDocument:
         if not RoleChecker.can_manage_warehouse(user):
             raise PermissionError("Access denied")
-        doc = await self._get(doc_id)
+        doc = await self._get(doc_id, for_update=True)
         await self.fsm.transition(doc, "APPROVAL", user.id)
         await self.session.flush()
         await self.session.refresh(doc, ["lines"])
@@ -66,7 +66,7 @@ class WarehouseService:
     async def deliver(self, doc_id: int, user: User) -> AccountingDocument:
         if not RoleChecker.can_manage_warehouse(user):
             raise PermissionError("Access denied")
-        doc = await self._get(doc_id)
+        doc = await self._get(doc_id, for_update=True)
         await self.fsm.transition(doc, "DELIVERY", user.id)
         await self.session.flush()
         await self.session.refresh(doc, ["lines"])
@@ -102,7 +102,8 @@ class WarehouseService:
             )
         )
         if for_update:
-            stmt = stmt.with_for_update()
+            # Locking must also refresh documents already loaded by the API.
+            stmt = stmt.with_for_update().execution_options(populate_existing=True)
         result = await self.session.execute(stmt)
         doc = result.scalar_one_or_none()
         if not doc:
