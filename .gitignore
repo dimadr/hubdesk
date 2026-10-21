@@ -81,6 +81,7 @@ opencode.json
 .audit-*/
 .h01-*/
 .high-*/
+.medium-*/
 *.pem
 *.key
 *.p12
@@ -94,4 +95,5 @@ credentials*.json
 AUDIT_REPORT.md
 H01_REPORT.md
 HIGH_FIX_REPORT.md
+MEDIUM_FIX_REPORT.md
 PRIVATE_*.md

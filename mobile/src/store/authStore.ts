@@ -179,18 +179,29 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   refreshAccessToken: async (allowWhileLocked = false) => {
-    if (get().phase === 'locked' && !allowWhileLocked) return null;
+    if (get().phase === 'locked' && !allowWhileLocked) {
+      throw new Error('Разблокируйте приложение для продолжения');
+    }
+    const sessionId = get().currentSessionId;
     const refreshToken = await loadRefreshToken();
     if (!refreshToken) return null;
     try {
       const { data } = await sessionApi.post<AuthResponse>('/auth/refresh', {
         refresh_token: refreshToken,
       });
+      if (get().currentSessionId !== sessionId || get().phase === 'signed_out'
+          || (get().phase === 'locked' && !allowWhileLocked)) {
+        throw new Error('Состояние сессии изменилось');
+      }
       const user = userFromAuth(data);
       setAccessToken(data.token);
       set({ token: data.token, user, phase: 'unlocked' });
       return data.token;
-    } catch {
+    } catch (error: any) {
+      if (get().currentSessionId !== sessionId
+          || ![401, 403].includes(error?.response?.status)) {
+        throw error;
+      }
       setAccessToken(null);
       await clearDeviceSession();
       set({

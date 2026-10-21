@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { api, TicketResponse } from '../api/client';
+import { localDateKey, localMonthUtcRange } from '../utils/dates';
 
 const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
@@ -48,10 +49,7 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ role, onCreateTicket
     abortRef.current = controller;
     const year = current.getFullYear();
     const month = current.getMonth();
-    const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
-    const dateFrom = `${monthKey}-01T00:00:00`;
-    const lastDay = new Date(year, month + 1, 0).getDate();
-    const dateTo = `${monthKey}-${String(lastDay).padStart(2, '0')}T23:59:59`;
+    const { from: dateFrom, to: dateTo } = localMonthUtcRange(year, month);
     setLoading(true);
     setError('');
     Promise.all([
@@ -86,7 +84,7 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ role, onCreateTicket
   const visibleMonthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
   for (const t of tickets) {
     const primaryDate = t.resolution_deadline || t.scheduled_end || t.created_at;
-    const d = primaryDate?.substring(0, 10);
+    const d = localDateKey(primaryDate);
     if (d?.startsWith(visibleMonthPrefix)) {
       if (!ticketsByDate[d]) ticketsByDate[d] = [];
       ticketsByDate[d].push(t);

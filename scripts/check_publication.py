@@ -10,7 +10,8 @@ from pathlib import PurePosixPath
 def forbidden_path(name):
     path = PurePosixPath(name)
     base = path.name.lower()
-    if any(part in {"uploads", "backup", ".opencode", ".codex", ".agents"} for part in path.parts):
+    if any(part in {"uploads", "backup", ".opencode", ".codex", ".agents"}
+           or part.startswith((".audit-", ".h01-", ".high-", ".medium-")) for part in path.parts):
         return True
     if base.startswith(".env") or base.endswith(".env") or base == "opencode.json":
         return True
@@ -20,7 +21,7 @@ def forbidden_path(name):
         return True
     if base.endswith(".sql") and not name.startswith(("backend/scripts/", "backend/migrations/")):
         return True
-    return base in {"audit_report.md", "high_fix_report.md", "h01_report.md"} or base.startswith("private_")
+    return base in {"audit_report.md", "high_fix_report.md", "medium_fix_report.md", "h01_report.md"} or base.startswith("private_")
 
 
 def sensitive_content(data, check_emails=True):

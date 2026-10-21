@@ -10,21 +10,12 @@ import { ReportsPage } from './pages/ReportsPage';
 import { KanbanPage } from './pages/KanbanPage';
 import { AuditLogPage } from './pages/AuditLogPage';
 import { useTicketStore } from './store/tickets';
+import { canViewTicketReports, useTicketStatsStore } from './store/ticketStats';
+import { localDateKey as isoToLocalDate } from './utils/dates';
 
 const endOfLocalDayIso = (date: string): string | undefined => (
   date ? new Date(`${date}T23:59:59`).toISOString() : undefined
 );
-
-const isoToLocalDate = (value: string | null | undefined): string => {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, '0'),
-    String(date.getDate()).padStart(2, '0'),
-  ].join('-');
-};
 
 async function downloadFile(url: string, filename: string) {
   try {
@@ -998,8 +989,7 @@ const App: React.FC = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [viewingEngineerId, setViewingEngineerId] = useState<number | null>(null);
-  const [stats, setStats] = useState<{ total: number; open: number; urgent: number }>({ total: 0, open: 0, urgent: 0 });
-  const [statsLoading, setStatsLoading] = useState(true);
+  const { stats, scope: statsScope, loading: statsLoading, load: loadStats, reset: resetStats } = useTicketStatsStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const getInitialTheme = () => localStorage.getItem('theme') || 'dark';
@@ -1028,20 +1018,16 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const controller = new AbortController();
+    setUsers([]);
     if (auth) {
-      api.get('/users/list').then(r => setUsers(r.data)).catch(() => {});
-      setStatsLoading(true);
-      api.get('/reports/tickets').then(r => {
-        const s = r.data;
-        setStats({
-          total: s.total || 0,
-          open: (s.by_status || []).reduce((sum: number, st: any) => st.label !== 'COMPLETED' ? sum + st.count : sum, 0),
-          urgent: (s.by_priority || []).reduce((sum: number, p: any) => (p.label === 'critical' || p.label === 'high') ? sum + p.count : sum, 0),
-        });
-        setStatsLoading(false);
-      }).catch(() => { setStatsLoading(false); });
+      api.get('/users/list', { signal: controller.signal }).then(r => {
+        if (!controller.signal.aborted) setUsers(r.data);
+      }).catch(() => {});
     }
-  }, [auth, refreshKey]);
+    void loadStats(auth);
+    return () => { controller.abort(); resetStats(); };
+  }, [auth, refreshKey, loadStats, resetStats]);
 
   const handleLogin = (token: string, user: any) => {
     api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -1052,6 +1038,8 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
+    resetStats();
+    setUsers([]);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     localStorage.removeItem('currentUserId');
@@ -1141,7 +1129,7 @@ const App: React.FC = () => {
         <nav className="sidebar-nav">
           <div className="nav-section">Навигация</div>
           {NAV_ITEMS.filter(item => !('adminOnly' in item) || user.role === 'admin')
-            .filter(item => item.key !== 'reports' || ['admin', 'director', 'dispatcher', 'accountant', 'chief_accountant'].includes(user.role))
+            .filter(item => item.key !== 'reports' || canViewTicketReports(user.role))
             .filter(item => item.key !== 'audit' || ['admin', 'director', 'chief_accountant'].includes(user.role))
             .filter(item => item.key !== 'employees' || ['admin', 'director', 'dispatcher', 'accountant', 'chief_accountant'].includes(user.role))
             .filter(item => item.key !== 'kanban' || ['admin', 'director', 'chief_accountant', 'dispatcher', 'engineer'].includes(user.role))
@@ -1202,26 +1190,26 @@ const App: React.FC = () => {
              page === 'admin' ? 'Администрирование' :
              page === 'audit' ? 'Журнал действий' : 'Склад'}
           </h1>
-          <div className="stat-pills">
+          {canViewTicketReports(user.role) && statsScope === auth.token && (statsLoading || stats) && <div className="stat-pills">
             <div className="stat-pill">
               <div>
                 <div className="stat-lab">Всего заявок</div>
-                <div className="stat-val" style={{ color: 'var(--text)' }}>{statsLoading ? '—' : stats.total}</div>
+                <div className="stat-val" style={{ color: 'var(--text)' }}>{statsLoading ? '—' : stats?.total}</div>
               </div>
             </div>
             <div className="stat-pill">
               <div>
                 <div className="stat-lab">Открыто</div>
-                <div className="stat-val" style={{ color: 'var(--warning)' }}>{statsLoading ? '—' : stats.open}</div>
+                <div className="stat-val" style={{ color: 'var(--warning)' }}>{statsLoading ? '—' : stats?.open}</div>
               </div>
             </div>
             <div className="stat-pill">
               <div>
                 <div className="stat-lab">Срочных</div>
-                <div className="stat-val" style={{ color: 'var(--danger)' }}>{statsLoading ? '—' : stats.urgent}</div>
+                <div className="stat-val" style={{ color: 'var(--danger)' }}>{statsLoading ? '—' : stats?.urgent}</div>
               </div>
             </div>
-          </div>
+          </div>}
         </div>
 
         {page === 'tickets' && (

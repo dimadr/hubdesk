@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_serializer
+from pydantic import BaseModel, Field, field_serializer, field_validator
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
@@ -100,6 +100,13 @@ class TicketUpdate(BaseModel):
     source_description: Optional[str] = Field(None, max_length=5000)
     resolution_deadline: Optional[datetime] = None
     is_internal: Optional[bool] = None
+
+    @field_validator("subject", "body", "priority", "is_internal")
+    @classmethod
+    def non_nullable_fields(cls, value):
+        if value is None:
+            raise ValueError("Field cannot be null")
+        return value
 
 
 class StatusChange(BaseModel):
@@ -273,17 +280,17 @@ class SavedViewResponse(BaseModel):
 
 
 class TicketFilter(BaseModel):
-    status: Optional[str] = None
-    priority: Optional[str] = None
-    type: Optional[str] = None
+    status: Optional[TicketStatus] = None
+    priority: Optional[TicketPriority] = None
+    type: Optional[TicketType] = None
     assignee_id: Optional[int] = None
     customer_id: Optional[int] = None
     location_id: Optional[int] = None
     q: Optional[str] = None
     overdue: Optional[bool] = None
     archived: Optional[bool] = None
-    limit: int = Field(default=50, le=200)
-    offset: int = Field(default=0)
+    limit: int = Field(default=50, ge=1, le=200)
+    offset: int = Field(default=0, ge=0)
     date_from: Optional[str] = None
     date_to: Optional[str] = None
     deadline_from: Optional[str] = None

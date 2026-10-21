@@ -1,5 +1,4 @@
 import logging
-import os
 from datetime import datetime, date, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,18 +11,10 @@ from src.models.replacement_device import ReplacementDevice, ReplacementTransact
 from src.models.equipment import AssetLocation
 from src.models.user import User, UserRole
 from src.core.deps import get_current_user
+from src.services.audit_service import log_audit
 
 logger = logging.getLogger(__name__)
 replacement_router = APIRouter(prefix="/replacement", tags=["Replacement Fund"])
-
-
-def _log(action: str, detail: str, user: User):
-    try:
-        p = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "history.log")
-        with open(p, "a", encoding="utf-8") as f:
-            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {user.name} — {action}: {detail}\n")
-    except:
-        pass
 
 
 # ── Pydantic schemas ─────────────────────────────────────────
@@ -169,8 +160,9 @@ async def create_device(data: DeviceCreate, user: User = Depends(get_current_use
     )
     db.add(d)
     await db.flush()
+    await log_audit(db, user, "replacement_device_created", "replacement_device", d.id,
+                    f"Добавлен прибор: {d.name}", required=True)
     await db.commit()
-    _log("Подменный фонд", f"Добавлен прибор: {d.name}", user)
     return _serialize_device(d, 0)
 
 
@@ -186,9 +178,10 @@ async def update_device(device_id: int, data: DeviceUpdate, user: User = Depends
         update_data["name"] = update_data["name"].strip()
     for field, value in update_data.items():
         setattr(d, field, value)
+    await log_audit(db, user, "replacement_device_updated", "replacement_device", d.id,
+                    f"Обновлён прибор: {d.name}", required=True)
     await db.commit()
     balance = await _get_device_balance(db, d.id)
-    _log("Подменный фонд", f"Обновлён прибор: {d.name}", user)
     return _serialize_device(d, balance)
 
 
@@ -201,8 +194,9 @@ async def delete_device(device_id: int, user: User = Depends(get_current_user), 
         raise HTTPException(404, detail="Прибор не найден")
     await db.execute(sa_delete(ReplacementTransaction).where(ReplacementTransaction.device_id == device_id))
     await db.delete(d)
+    await log_audit(db, user, "replacement_device_deleted", "replacement_device", device_id,
+                    f"Удалён прибор «{d.name}» со всеми транзакциями", required=True)
     await db.commit()
-    _log("Подменный фонд", f"Удалён прибор «{d.name}» со всеми транзакциями", user)
     return {"ok": True}
 
 
@@ -289,6 +283,11 @@ async def create_transaction(data: TransactionCreate, user: User = Depends(get_c
     )
     db.add(t)
     await db.flush()
+    labels = {"incoming": "Приход", "outgoing": "Выдача", "return": "Возврат"}
+    await log_audit(db, user, "replacement_transaction_created", "replacement_transaction", t.id,
+                    f"{labels[data.type]}: {data.quantity} шт (прибор «{dev.name}»)",
+                    meta={"type": data.type, "device_id": data.device_id, "quantity": data.quantity},
+                    required=True)
     await db.commit()
 
     stmt = (
@@ -301,9 +300,6 @@ async def create_transaction(data: TransactionCreate, user: User = Depends(get_c
         .where(ReplacementTransaction.id == t.id)
     )
     t_refreshed = (await db.execute(stmt)).scalar_one()
-
-    labels = {"incoming": "Приход", "outgoing": "Выдача", "return": "Возврат"}
-    _log("Подменный фонд", f"{labels.get(data.type)}: {data.quantity} шт (прибор «{t_refreshed.device.name}»)", user)
 
     return TransactionResponse(
         id=t_refreshed.id, type=t_refreshed.type, device_id=t_refreshed.device_id,
@@ -325,6 +321,7 @@ async def delete_transaction(tx_id: int, user: User = Depends(get_current_user),
     if not t:
         raise HTTPException(404, detail="Транзакция не найдена")
     await db.delete(t)
+    await log_audit(db, user, "replacement_transaction_deleted", "replacement_transaction", tx_id,
+                    f"Удалена транзакция #{tx_id}", required=True)
     await db.commit()
-    _log("Подменный фонд", f"Удалена транзакция #{tx_id}", user)
     return {"ok": True}

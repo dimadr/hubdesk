@@ -17,6 +17,7 @@ from src.models.customer import Customer, CustomerType
 from src.models.ticket import Ticket, TicketStatus, TicketPriority
 from src.models.equipment import AssetLocation
 from src.models.warehouse import Warehouse
+from src.models.audit_log import AuditLog
 from src.core.deps import get_current_user
 from src.services.audit_service import log_audit
 
@@ -118,25 +119,6 @@ class CreateApiKeyRequest(BaseModel):
     name: str
 
 
-def _sync_read_history(history_path: str) -> List[str]:
-    if not os.path.exists(history_path):
-        return []
-    lines = []
-    with open(history_path, "r", encoding="utf-8") as f:
-        for line in f:
-            lines.append(line.rstrip("\n"))
-            if len(lines) > 2000:
-                lines = lines[-200:]
-    lines.reverse()
-    return lines[:200]
-
-
-def _sync_write_history_log(history_path: str, admin_name: str, text_msg: str):
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open(history_path, "a", encoding="utf-8") as f:
-        f.write(f"[{ts}] {admin_name} — {text_msg}\n")
-
-
 @admin_router.get("/stats", response_model=SystemStats)
 async def system_stats(
     admin: User = Depends(require_admin),
@@ -186,11 +168,12 @@ async def system_stats(
 
 
 @admin_router.get("/history")
-async def read_history(admin: User = Depends(require_admin)):
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    history_path = os.path.normpath(os.path.join(base_dir, "history.log"))
-
-    lines = await run_in_threadpool(_sync_read_history, history_path)
+async def read_history(admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    entries = (await db.execute(
+        select(AuditLog).order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(200)
+    )).scalars().all()
+    lines = [f"[{entry.created_at.isoformat()}Z] {entry.user_name or 'SYSTEM'} — {entry.detail}"
+             for entry in entries]
     return {"lines": lines}
 
 
@@ -372,17 +355,9 @@ async def approve_user(user_id: int, admin: User = Depends(require_admin), db: A
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
     target.status = UserStatus.active
+    await log_audit(db, admin, "user_approved", "user", target.id,
+                    f"Утвердил пользователя: {target.name}, роль: {target.role.value}", required=True)
     await db.commit()
-
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    history_path = os.path.normpath(os.path.join(base_dir, "history.log"))
-
-    await run_in_threadpool(
-        _sync_write_history_log,
-        history_path,
-        admin.name,
-        f"Утвердил пользователя: {target.name} ({target.email}), роль: {target.role.value}"
-    )
     return {"ok": True}
 
 
@@ -393,17 +368,9 @@ async def reject_user(user_id: int, admin: User = Depends(require_admin), db: As
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
     target.status = UserStatus.rejected
+    await log_audit(db, admin, "user_rejected", "user", target.id,
+                    f"Отклонил пользователя: {target.name}, роль: {target.role.value}", required=True)
     await db.commit()
-
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    history_path = os.path.normpath(os.path.join(base_dir, "history.log"))
-
-    await run_in_threadpool(
-        _sync_write_history_log,
-        history_path,
-        admin.name,
-        f"Отклонил пользователя: {target.name} ({target.email}), роль: {target.role.value}"
-    )
     return {"ok": True}
 
 

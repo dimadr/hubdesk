@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { api } from '../api/client';
+import { localDayUtcRange } from '../utils/dates';
 
 interface ObjectRow { location_id: number; location_name: string; customer_name: string; location_address: string; total: number; open: number; closed: number; overdue: number; avg_resolution_hours: number; types: Record<string, number>; }
 interface TicketStats { total: number; by_status: { label: string; count: number }[]; by_priority: { label: string; count: number }[]; by_type: { label: string; count: number }[]; avg_resolution_hours: number; sla_percent: number; }
@@ -46,8 +47,8 @@ export const ReportsPage: React.FC<{ onOpenTicket?: (t: any) => void }> = ({ onO
 
   const getParams = () => {
     const p: any = {};
-    if (from) p.date_from = new Date(`${from}T00:00:00`).toISOString();
-    if (to) p.date_to = new Date(`${to}T23:59:59`).toISOString();
+    if (from) p.date_from = localDayUtcRange(from).from;
+    if (to) p.date_to = localDayUtcRange(to).to;
     return p;
   };
 

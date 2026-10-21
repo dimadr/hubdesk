@@ -53,7 +53,7 @@ def project_files(project):
     for directory, dirs, files in os.walk(project):
         dirs[:] = sorted(d for d in dirs if d not in {
             ".git", "backup", "uploads", "node_modules", "__pycache__", "dist", "build", ".expo",
-        } and not d.startswith((".audit-", ".h01-", ".high-")))
+        } and not d.startswith((".audit-", ".h01-", ".high-", ".medium-")))
         for name in sorted(files):
             path = Path(directory) / name
             relative = path.relative_to(project)
@@ -64,7 +64,7 @@ def project_files(project):
                 continue
             if name.endswith(".sql") and not relative.as_posix().startswith(("backend/scripts/", "backend/migrations/")):
                 continue
-            if name.startswith("PRIVATE_") or name in {"AUDIT_REPORT.md", "HIGH_FIX_REPORT.md", "H01_REPORT.md"}:
+            if name.startswith("PRIVATE_") or name in {"AUDIT_REPORT.md", "HIGH_FIX_REPORT.md", "MEDIUM_FIX_REPORT.md", "H01_REPORT.md"}:
                 continue
             yield path, relative, False
 

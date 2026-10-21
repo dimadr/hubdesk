@@ -4,6 +4,7 @@ import { RowStyle } from './RowStyles';
 import { isTicketOverdue, TicketOverdue } from '../TicketOverdue';
 import { ColumnHeader } from './ColumnHeader';
 import { useTicketStore } from '../../store/tickets';
+import { formatLocalDate, localDateKey } from '../../utils/dates';
 import { DndContext, closestCenter, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 
@@ -87,10 +88,10 @@ const Cell = React.memo<CellProps>(({ ticket, col, width, userMap, engineerIds, 
     if (col.key === 'status') onFilter?.('status', ticket.status);
     else if (col.key === 'priority') onFilter?.('priority', ticket.priority);
     else if (col.key === 'created_at') {
-      const d = ticket.created_at?.substring?.(0, 10);
+      const d = localDateKey(ticket.created_at);
       if (d) onFilter?.('created', d);
     } else if (col.key === 'deadline') {
-      const d = ticket.resolution_deadline?.substring?.(0, 10);
+      const d = localDateKey(ticket.resolution_deadline);
       if (d) onFilter?.('deadline', d);
     }
   } : undefined;
@@ -112,7 +113,7 @@ const Cell = React.memo<CellProps>(({ ticket, col, width, userMap, engineerIds, 
       {isFilterable ? (
         <button
           className="cell-filter-btn"
-          onClick={clickHandler}
+          onClick={e => { e.stopPropagation(); clickHandler?.(); }}
           title="Фильтр по значению"
           style={{ background: 'none', border: 'none', padding: 0, margin: 0, font: 'inherit', color: 'inherit', width: '100%', display: 'block', cursor: 'pointer', textAlign: 'left' }}
         >
@@ -143,8 +144,7 @@ function renderCellContent(ticket: TicketResponse, col: ColumnDef, userMap: Map<
   if (col.key === 'priority') return PRIORITY_MAP[ticket.priority] || ticket.priority;
   if (col.key === 'number') return <span className="mono" style={{ color: 'var(--text-muted)' }}>#{ticket.number}</span>;
   if (col.key === 'created_at') {
-    try { return new Date(ticket.created_at).toLocaleDateString('ru-RU'); }
-    catch { return ticket.created_at?.substring(0, 10) || '—'; }
+    return formatLocalDate(ticket.created_at) || '—';
   }
   if (col.key === 'customer') {
     return ticket.is_internal ? 'Внутренняя' : (ticket.customer_name || ticket.customer_id || '—');
@@ -176,9 +176,7 @@ function renderCellContent(ticket: TicketResponse, col: ColumnDef, userMap: Map<
   );
   }
   if (col.key === 'deadline') {
-    let deadline = '—';
-    try { deadline = ticket.resolution_deadline ? new Date(ticket.resolution_deadline).toLocaleDateString('ru-RU') : '—'; }
-    catch { deadline = ticket.resolution_deadline?.substring(0, 10) || '—'; }
+    const deadline = formatLocalDate(ticket.resolution_deadline) || '—';
     return <span className="ticket-deadline"><span>{deadline}</span><TicketOverdue ticket={ticket} /></span>;
   }
   if (col.key === 'actions') return (

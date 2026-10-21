@@ -30,9 +30,20 @@ def _enrich_ticket(d: TicketResponse, ticket: Ticket) -> TicketResponse:
     d.customer_name = ticket.customer.name if ticket.customer else None
     d.location_name = ticket.location.name if ticket.location else None
     d.location_address = ticket.location.address if ticket.location else None
-    if hasattr(ticket, 'assignee') and ticket.assignee:
-        d.assignee_name = ticket.assignee.name
+    d.assignee_name = ticket.assignee.name if ticket.assignee else None
+    d.response_overdue = SLAService.is_response_overdue(ticket)
+    d.resolution_overdue = SLAService.is_resolution_overdue(ticket)
+    d.is_archived = ticket.archived_at is not None
     return d
+
+
+async def _reload_ticket(db: AsyncSession, ticket_id: int) -> Ticket:
+    stmt = (
+        select(Ticket).where(Ticket.id == ticket_id)
+        .options(selectinload(Ticket.customer), selectinload(Ticket.location), selectinload(Ticket.assignee))
+        .execution_options(populate_existing=True)
+    )
+    return (await db.execute(stmt)).scalar_one()
 
 
 def create_ticket_router() -> APIRouter:
@@ -168,9 +179,6 @@ def create_ticket_router() -> APIRouter:
         output = []
         for t in tickets:
             d = _enrich_ticket(TicketResponse.model_validate(t), t)
-            d.response_overdue = SLAService.is_response_overdue(t)
-            d.resolution_overdue = SLAService.is_resolution_overdue(t)
-            d.is_archived = t.archived_at is not None
             output.append(d)
         return output
 
@@ -193,9 +201,6 @@ def create_ticket_router() -> APIRouter:
         if not ticket or not await RoleChecker.can_view_ticket_async(user, ticket, db):
             raise HTTPException(404)
         d = _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
-        d.response_overdue = SLAService.is_response_overdue(ticket)
-        d.resolution_overdue = SLAService.is_resolution_overdue(ticket)
-        d.is_archived = ticket.archived_at is not None
         return d
 
     @router.post("", status_code=201, response_model=TicketResponse)
@@ -220,17 +225,7 @@ def create_ticket_router() -> APIRouter:
         svc = TicketService(db)
         ticket = await svc.create(data.model_dump(), user)
         await db.commit()
-        # Reload with relationships for response
-        stmt = (
-            select(Ticket)
-            .where(Ticket.id == ticket.id)
-            .options(
-                selectinload(Ticket.customer),
-                selectinload(Ticket.location),
-                selectinload(Ticket.assignee),
-            )
-        )
-        ticket = (await db.execute(stmt)).scalar_one()
+        ticket = await _reload_ticket(db, ticket.id)
         # Отправка email инженеру при назначении
         if ticket.assignee_id:
             eng = await db.get(User, ticket.assignee_id)
@@ -351,11 +346,11 @@ def create_ticket_router() -> APIRouter:
                 detail,
             )
         await db.commit()
+        ticket = await _reload_ticket(db, ticket.id)
         # Отправка email инженеру при смене исполнителя
         if assignee_changed and ticket.assignee_id:
             eng = await db.get(User, ticket.assignee_id)
             if eng:
-                await db.refresh(ticket, ['customer', 'location'])
                 await MailService.notify_engineer_assigned(ticket, eng, db)
         return _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
 
@@ -375,6 +370,7 @@ def create_ticket_router() -> APIRouter:
             logger.exception("Unexpected ticket status change failure for ticket %s", ticket_id)
             raise HTTPException(500, "Не удалось изменить статус заявки")
         await db.commit()
+        ticket = await _reload_ticket(db, ticket.id)
         return _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
 
     class CompleteTicketRequest(BaseModel):
@@ -405,6 +401,7 @@ def create_ticket_router() -> APIRouter:
             await db.rollback()
             logger.exception("Unexpected ticket completion failure for ticket %s", ticket_id)
             raise HTTPException(500, "Не удалось завершить заявку")
+        ticket = await _reload_ticket(db, ticket.id)
         return _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
 
     @router.post("/{ticket_id}/comments", status_code=201, response_model=CommentResponse)
@@ -556,21 +553,9 @@ def create_ticket_router() -> APIRouter:
         db: AsyncSession = Depends(get_db),
     ):
         svc = TicketService(db)
-        if data.assignee_id:
-            ticket = await svc.assign(ticket_id, data.assignee_id, user)
-        else:
-            if not RoleChecker.can_assign(user):
-                raise HTTPException(403, "Only dispatcher or admin can assign")
-            t = await db.get(Ticket, ticket_id)
-            if not t:
-                raise HTTPException(404)
-            t.assignee_id = None
-            await db.flush()
-            await log_audit(db, user, "ticket_unassigned", "ticket", ticket_id, f"Снят инженер с заявки №{t.number}")
-            ticket = t
+        ticket = await svc.assign(ticket_id, data.assignee_id, user)
         await db.commit()
-        stmt = select(Ticket).where(Ticket.id == ticket_id).options(selectinload(Ticket.customer), selectinload(Ticket.location), selectinload(Ticket.assignee))
-        ticket = (await db.execute(stmt)).scalar_one()
+        ticket = await _reload_ticket(db, ticket_id)
         return _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
 
     @router.delete("/{ticket_id}", status_code=204)

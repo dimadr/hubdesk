@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete as sa_delete, func as sa_func, case, cast, Integer
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 from src.database import get_db
 from src.models.insert_stock import InsertProduct, InsertTransaction
@@ -25,7 +25,7 @@ class ProductCreate(BaseModel):
     diameter_inner: str | None = Field(None, max_length=50)
     diameter_outer: str | None = Field(None, max_length=50)
     length: str | None = Field(None, max_length=50)
-    flange_type: str | None = Field(None, max_length=100)
+    flange_type: str | None = Field(None, max_length=50)
     notes: str | None = Field(None, max_length=1000)
     cell: str | None = Field(None, max_length=100)
 
@@ -35,9 +35,16 @@ class ProductUpdate(BaseModel):
     diameter_inner: str | None = Field(None, max_length=50)
     diameter_outer: str | None = Field(None, max_length=50)
     length: str | None = Field(None, max_length=50)
-    flange_type: str | None = Field(None, max_length=100)
+    flange_type: str | None = Field(None, max_length=50)
     notes: str | None = Field(None, max_length=1000)
     cell: str | None = Field(None, max_length=100)
+
+    @field_validator("name")
+    @classmethod
+    def non_nullable_name(cls, value):
+        if value is None:
+            raise ValueError("Name cannot be null")
+        return value
 
 
 class ProductResponse(BaseModel):
@@ -58,7 +65,7 @@ class ProductResponse(BaseModel):
 class TransactionCreate(BaseModel):
     type: str = Field(..., max_length=50)
     product_id: int
-    quantity: int = Field(..., gt=0)
+    quantity: int = Field(..., gt=0, le=2147483647)
     taken_by_id: int | None = None
     location_id: int | None = None
     destination: str | None = Field(None, max_length=500)

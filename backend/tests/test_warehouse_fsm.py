@@ -1,6 +1,6 @@
 from decimal import Decimal
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -11,6 +11,7 @@ from src.services.warehouse_fsm import WarehouseDocFSM
 @pytest.mark.asyncio
 async def test_linear_transition():
     session = AsyncMock()
+    session.add = MagicMock()
     fsm = WarehouseDocFSM(session)
     doc = AsyncMock()
     doc.status.value = "DRAFT"

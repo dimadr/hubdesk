@@ -322,6 +322,7 @@ async def create_warehouse(data: WarehouseCreate, user=Depends(get_current_user)
 async def rename_warehouse(warehouse_id: int, data: WarehouseCreate, user=Depends(get_current_user), db=Depends(get_db)):
     if user.role not in (UserRole.admin, UserRole.director, UserRole.chief_accountant, UserRole.storekeeper):
         raise HTTPException(403, "Только админ, директор или кладовщик")
+    await _check_warehouse_access(user, warehouse_id, db)
     w = await db.get(Warehouse, warehouse_id)
     if not w:
         raise HTTPException(404)

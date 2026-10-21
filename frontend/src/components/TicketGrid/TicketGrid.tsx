@@ -4,6 +4,7 @@ import { Tabs } from './Tabs';
 import { SavedViews } from './SavedViews';
 import { TableView } from './TableView';
 import { CardView } from './CardView';
+import { localDateKey, localDayUtcRange } from '../../utils/dates';
 
 interface UserInfo {
   id: number; email: string; name: string; role: string;
@@ -38,12 +39,14 @@ export const TicketGrid: React.FC<{ users: UserInfo[]; onEdit?: (ticket: any) =>
     if (colFilter.status) filters.status = colFilter.status;
     if (colFilter.priority) filters.priority = colFilter.priority;
     if (colFilter.created) {
-      filters.date_from = colFilter.created + 'T00:00:00';
-      filters.date_to = colFilter.created + 'T23:59:59';
+      const range = localDayUtcRange(colFilter.created);
+      filters.date_from = range.from;
+      filters.date_to = range.to;
     }
     if (colFilter.deadline) {
-      filters.deadline_from = colFilter.deadline + 'T00:00:00';
-      filters.deadline_to = colFilter.deadline + 'T23:59:59';
+      const range = localDayUtcRange(colFilter.deadline);
+      filters.deadline_from = range.from;
+      filters.deadline_to = range.to;
     }
     return filters;
   }, [activeTab, storeSearch, colFilter]);
@@ -117,8 +120,8 @@ export const TicketGrid: React.FC<{ users: UserInfo[]; onEdit?: (ticket: any) =>
   const filteredTickets = useMemo(() => {
     if (!colFilter.deadline && !colFilter.created) return tickets;
     return tickets.filter(t => {
-      if (colFilter.deadline && t.resolution_deadline?.substring(0, 10) !== colFilter.deadline) return false;
-      if (colFilter.created && t.created_at?.substring(0, 10) !== colFilter.created) return false;
+      if (colFilter.deadline && localDateKey(t.resolution_deadline) !== colFilter.deadline) return false;
+      if (colFilter.created && localDateKey(t.created_at) !== colFilter.created) return false;
       return true;
     });
   }, [tickets, colFilter.deadline, colFilter.created]);

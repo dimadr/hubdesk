@@ -15,6 +15,8 @@ async def log_audit(
     entity_id: int | None = None,
     detail: str = "",
     meta: Any | None = None,
+    *,
+    required: bool = True,
 ) -> AuditLog | None:
     savepoint = await db.begin_nested()
     try:
@@ -34,4 +36,6 @@ async def log_audit(
     except Exception as e:
         await savepoint.rollback()
         logger.error(f"Не удалось записать audit log: {e}", exc_info=True)
+        if required:
+            raise
         return None

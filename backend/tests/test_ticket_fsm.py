@@ -8,6 +8,7 @@ from src.models.checklist import FieldType
 @pytest.fixture
 def fsm():
     session = AsyncMock()
+    session.add = MagicMock()
     return TicketFSM(session)
 
 

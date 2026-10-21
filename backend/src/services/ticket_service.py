@@ -33,12 +33,9 @@ class TicketService:
             normalized["assignee_id"] = user.id
         if normalized.get("is_internal"):
             body = str(normalized.get("body") or "").strip()
-            if not body:
-                raise HTTPException(422, "Описание внутренней заявки обязательно")
-            if not normalized.get("resolution_deadline"):
-                raise HTTPException(422, "Дедлайн внутренней заявки обязателен")
-            if not normalized.get("assignee_id"):
-                raise HTTPException(422, "Исполнитель внутренней заявки обязателен")
+            TicketService.validate_internal_fields(
+                body, normalized.get("resolution_deadline"), normalized.get("assignee_id")
+            )
             normalized.update({
                 "subject": TicketService.internal_subject(body),
                 "body": body,
@@ -160,19 +157,21 @@ class TicketService:
             await self.session.flush()
         return ticket
 
-    async def assign(self, ticket_id: int, engineer_id: int, dispatcher: User) -> Ticket:
+    async def assign(self, ticket_id: int, engineer_id: int | None, dispatcher: User) -> Ticket:
         if not RoleChecker.can_assign(dispatcher):
             raise HTTPException(403, "Недостаточно прав для назначения исполнителя")
 
-        assignee = await self.validate_assignee(engineer_id, dispatcher)
-
         ticket = await self._get(ticket_id)
+        if ticket.is_internal:
+            self.validate_internal_fields(ticket.body, ticket.resolution_deadline, engineer_id)
+        assignee = await self.validate_assignee(engineer_id, dispatcher) if engineer_id is not None else None
         ticket.assignee_id = engineer_id
 
         await self.session.flush()
         await log_audit(
-            self.session, dispatcher, "ticket_assigned", "ticket",
-            ticket_id, f"Назначен исполнитель {assignee.name} на заявку №{ticket.number}"
+            self.session, dispatcher, "ticket_assigned" if assignee else "ticket_unassigned", "ticket",
+            ticket_id, (f"Назначен исполнитель {assignee.name} на заявку №{ticket.number}"
+                        if assignee else f"Снят инженер с заявки №{ticket.number}")
         )
         return ticket
 
