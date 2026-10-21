@@ -21,7 +21,7 @@ class InsertProduct(Base):
     __table_args__ = (
         Index(
             "uq_insert_products_name_normalized",
-            func.lower(func.trim(name)),
+            func.lower(func.btrim(name)),
             unique=True,
         ),
     )

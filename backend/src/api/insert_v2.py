@@ -14,6 +14,7 @@ from src.models.equipment import AssetLocation
 from src.models.user import User, UserRole
 from src.core.deps import get_current_user
 from src.services.audit_service import log_audit
+from src.services.insert_product_service import check_product_name
 
 logger = logging.getLogger(__name__)
 insert_v2_router = APIRouter(prefix="/insert", tags=["Insert Stock v2"])
@@ -151,21 +152,10 @@ async def list_products(user: User = Depends(get_current_user), db: AsyncSession
 async def create_product(data: ProductCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.role not in (UserRole.admin, UserRole.director, UserRole.chief_accountant, UserRole.storekeeper, UserRole.metrologist):
         raise HTTPException(status_code=403, detail="Недостаточно прав")
-    existing = await db.execute(
-        select(InsertProduct).where(
-            sa_func.lower(sa_func.trim(InsertProduct.name)) == data.name.strip().lower()
-        )
-    )
-    dup = existing.scalar_one_or_none()
-    if dup:
-        current_bal = await _get_product_balance(db, dup.id)
-        raise HTTPException(
-            status_code=400,
-            detail=f"Продукт с таким названием уже существует (ID: {dup.id}, остаток: {current_bal})"
-        )
+    name = await check_product_name(db, data.name)
 
     p = InsertProduct(
-        name=data.name.strip(), diameter_inner=data.diameter_inner, diameter_outer=data.diameter_outer,
+        name=name, diameter_inner=data.diameter_inner, diameter_outer=data.diameter_outer,
         length=data.length, flange_type=data.flange_type, cell=data.cell, notes=data.notes
     )
     db.add(p)
@@ -195,16 +185,7 @@ async def update_product(product_id: int, data: ProductUpdate, user: User = Depe
 
     update_data = data.model_dump(exclude_unset=True)
     if "name" in update_data and update_data["name"]:
-        update_data["name"] = update_data["name"].strip()
-        from sqlalchemy import func as sa_func
-        dup = await db.execute(
-            select(InsertProduct).where(
-                sa_func.lower(sa_func.trim(InsertProduct.name)) == update_data["name"].lower(),
-                InsertProduct.id != product_id,
-            )
-        )
-        if dup.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail="Продукт с таким названием уже существует")
+        update_data["name"] = await check_product_name(db, update_data["name"], product_id)
 
     for field, value in update_data.items():
         setattr(p, field, value)

@@ -69,6 +69,10 @@ class Ticket(Base):
     scheduled_start: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     scheduled_end: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     source_description: Mapped[str | None] = mapped_column(String(5000), nullable=True)
+    # Preserve unmigrated legacy contact data without exposing new API fields.
+    contact_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    contact_phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

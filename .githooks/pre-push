@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+while read -r local_ref local_sha remote_ref remote_sha; do
+    case "$local_sha" in 0000000000000000000000000000000000000000) continue ;; esac
+    python3 scripts/check_publication.py --ref "$local_sha"
+    if git merge-base --is-ancestor bcbe9d9ed530b57ddae8695d6fe4b476b5752a2f "$local_sha" 2>/dev/null; then
+        echo 'Publication blocked: branch contains the superseded private history' >&2
+        exit 1
+    fi
+done

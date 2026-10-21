@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.attachment import Attachment
 from src.models.comment import Comment
 from src.models.ticket import Ticket
-from src.models.user import User
+from src.models.user import User, UserRole
 from src.services.acl_service import RoleChecker
 from fastapi import UploadFile, HTTPException
 
@@ -15,6 +15,35 @@ MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
 class AttachmentService:
     def __init__(self, session: AsyncSession):
         self.session = session
+
+    async def download_path(self, attachment: Attachment, user: User, path: str | None = None) -> str:
+        restricted = user.role in (UserRole.customer, UserRole.engineer)
+        ticket_id = attachment.ticket_id
+        internal = attachment.is_internal
+        if attachment.comment_id:
+            comment = await self.session.get(Comment, attachment.comment_id)
+            if not comment:
+                raise HTTPException(404, "Связанный комментарий не найден")
+            internal = internal or comment.is_internal
+            if ticket_id and comment.ticket_id and ticket_id != comment.ticket_id:
+                raise HTTPException(403, "Несогласованная привязка файла")
+            ticket_id = ticket_id or comment.ticket_id
+        if restricted and internal:
+            raise HTTPException(403, "Нет доступа к внутреннему файлу")
+        if ticket_id:
+            ticket = await self.session.get(Ticket, ticket_id)
+            if not ticket:
+                raise HTTPException(404, "Связанная заявка не найдена")
+            if not await RoleChecker.can_view_ticket_async(user, ticket, self.session):
+                raise HTTPException(403, "Нет доступа к заявке")
+        elif user.role not in (UserRole.admin, UserRole.director, UserRole.chief_accountant, UserRole.storekeeper):
+            raise HTTPException(403, "Нет доступа к файлу")
+        real_path = os.path.realpath(path or attachment.path)
+        if not real_path.startswith(os.path.realpath(UPLOAD_DIR) + os.sep):
+            raise HTTPException(403, "Недопустимый путь")
+        if not os.path.isfile(real_path):
+            raise HTTPException(404, "Файл не найден на диске")
+        return real_path
 
     @staticmethod
     def remove_stored_file(path: str) -> None:

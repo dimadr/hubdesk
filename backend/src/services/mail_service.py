@@ -100,7 +100,7 @@ class MailService:
             status, data = mail.uid('search', None, search_criteria)
             if status != 'OK' or not data[0]:
                 return [], mail, None
-            uid_list = data[0].split()[:MAIL_BATCH_LIMIT]
+            uid_list = sorted(set(data[0].split()), key=int)[:MAIL_BATCH_LIMIT]
             return uid_list, mail, None
 
         def _fetch_one(mail, uid):
@@ -172,9 +172,10 @@ class MailService:
                             "location_id": default_loc.id,
                             "source_description": f"Email от {sender}",
                         })
-                        created += 1
+                    created += 1
                 except Exception:
-                    logger.exception("Ошибка обработки письма UID %s; письмо пропущено", uid_str)
+                    logger.exception("Ошибка обработки письма UID %s; обработка остановлена для повторной попытки", uid_str)
+                    break
 
                 new_last_uid = uid_str
 

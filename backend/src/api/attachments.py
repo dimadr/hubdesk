@@ -72,33 +72,5 @@ async def download_attachment(
     if not att:
         raise HTTPException(404, "Файл не найден")
 
-    if att.ticket_id:
-        ticket = await db.get(Ticket, att.ticket_id)
-        if not ticket:
-            raise HTTPException(404, "Связанная заявка не найдена")
-        if not await RoleChecker.can_view_ticket_async(user, ticket, db):
-            raise HTTPException(403, "Нет доступа к заявке")
-        if att.is_internal and user.role in (UserRole.customer, UserRole.engineer):
-            raise HTTPException(403, "Нет доступа к внутреннему файлу")
-    elif att.comment_id:
-        from src.models.comment import Comment
-        comment = await db.get(Comment, att.comment_id)
-        if not comment:
-            raise HTTPException(404, "Связанный комментарий не найден")
-        if comment.ticket_id:
-            ticket = await db.get(Ticket, comment.ticket_id)
-            if not ticket:
-                raise HTTPException(404, "Связанная заявка не найдена")
-            if not await RoleChecker.can_view_ticket_async(user, ticket, db):
-                raise HTTPException(403, "Нет доступа к заявке")
-    else:
-        if user.role not in (UserRole.admin, UserRole.director, UserRole.chief_accountant, UserRole.storekeeper):
-            raise HTTPException(403, "Нет доступа к файлу")
-
-    if not os.path.exists(att.path):
-        raise HTTPException(404, "Файл не найден на диске")
-    real_path = os.path.realpath(att.path)
-    uploads_real = os.path.realpath(UPLOAD_DIR)
-    if not real_path.startswith(uploads_real + os.sep):
-        raise HTTPException(403, "Недопустимый путь")
-    return FileResponse(real_path, filename=att.filename)
+    real_path = await AttachmentService(db).download_path(att, user)
+    return FileResponse(real_path, filename=att.filename, headers={"X-Content-Type-Options": "nosniff"})
