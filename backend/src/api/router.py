@@ -37,6 +37,7 @@ from src.models.customer import Customer
 from src.models.ticket import Ticket
 from src.core.deps import create_token, get_current_user
 from src.services.audit_service import log_audit
+from src.services.acl_service import RoleChecker
 from src.services.inn_service import lookup_inn as do_lookup
 from src.services.device_session_service import DeviceSessionService
 
@@ -220,6 +221,7 @@ class UserListResponse(BaseModel):
     role: str
     status: str
     customer_id: int | None = None
+    can_be_assignee: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -674,7 +676,12 @@ async def list_users(
 
     result = await db.execute(select(User))
     users = result.scalars().all()
-    return users
+    return [
+        UserListResponse.model_validate(candidate).model_copy(update={
+            "can_be_assignee": RoleChecker.can_assign_user(user, candidate),
+        })
+        for candidate in users
+    ]
 
 
 @api_router.get("/groups", response_model=list[GroupResponse], tags=["Groups"])

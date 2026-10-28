@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     remember_me_token_ttl: int = 31536000
     mobile_access_token_ttl: int = 31536000
     device_session_ttl_days: int = 730
+    dispatcher_self_assignment_user_ids: list[int] = []
     mailbox_email: str = ""
     mailbox_password: str = ""
     mailbox_imap_server: str = "imap.timeweb.ru"

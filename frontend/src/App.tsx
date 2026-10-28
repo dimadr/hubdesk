@@ -73,6 +73,7 @@ interface UserInfo {
   patronymic?: string;
   role: string;
   status?: string;
+  can_be_assignee?: boolean;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -279,7 +280,7 @@ const CreateTicketModal: React.FC<{
 
   const assignables = users.filter(u =>
     (!u.status || u.status === 'active') &&
-    (['director', 'chief_accountant'].includes(currentUser?.role || '') || u.role === 'engineer')
+    (u.can_be_assignee ?? (['director', 'chief_accountant'].includes(currentUser?.role || '') || u.role === 'engineer'))
   );
   const canCreateInternal = currentUser && ['admin', 'director', 'dispatcher', 'accountant', 'chief_accountant', 'engineer'].includes(currentUser.role);
 
@@ -486,7 +487,7 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
 
   const assignables = users.filter(u =>
     (!u.status || u.status === 'active') &&
-    (['director', 'chief_accountant'].includes(currentUser?.role || '') || u.role === 'engineer')
+    (u.can_be_assignee ?? (['director', 'chief_accountant'].includes(currentUser?.role || '') || u.role === 'engineer'))
   );
 
   return (

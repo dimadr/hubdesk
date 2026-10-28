@@ -306,7 +306,6 @@ class TicketService:
         assignee = await self.session.get(User, user_id)
         if assignee is None or assignee.status != UserStatus.active:
             raise HTTPException(400, "Исполнитель должен быть активным пользователем")
-        unrestricted_roles = (UserRole.director, UserRole.chief_accountant)
-        if (assigner is None or assigner.role not in unrestricted_roles) and assignee.role != UserRole.engineer:
+        if not RoleChecker.can_assign_user(assigner, assignee):
             raise HTTPException(400, "Исполнитель должен быть активным пользователем с ролью engineer")
         return assignee

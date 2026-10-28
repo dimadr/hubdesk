@@ -52,6 +52,7 @@ export interface UserListItem {
   role: string;
   status: string;
   customer_id: number | null;
+  can_be_assignee?: boolean;
 }
 
 export interface LocationContact {

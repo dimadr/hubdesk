@@ -1,4 +1,5 @@
-from src.models.user import User, UserRole
+from src.config import settings
+from src.models.user import User, UserRole, UserStatus
 from src.models.ticket import Ticket
 from src.models.customer import Customer
 from sqlalchemy import select
@@ -81,6 +82,21 @@ class RoleChecker:
         return user.role in (
             UserRole.admin, UserRole.director,
             UserRole.dispatcher, UserRole.accountant, UserRole.chief_accountant,
+        )
+
+    @staticmethod
+    def can_assign_user(assigner: User | None, assignee: User) -> bool:
+        if assignee.status != UserStatus.active:
+            return False
+        if assigner and assigner.role in (UserRole.director, UserRole.chief_accountant):
+            return True
+        if assignee.role == UserRole.engineer:
+            return True
+        return bool(
+            assigner
+            and assigner.role == UserRole.dispatcher
+            and assignee.id == assigner.id
+            and assigner.id in settings.dispatcher_self_assignment_user_ids
         )
 
     @staticmethod
