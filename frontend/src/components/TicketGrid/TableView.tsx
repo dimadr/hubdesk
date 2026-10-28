@@ -10,6 +10,7 @@ import { SortableContext, horizontalListSortingStrategy, arrayMove } from '@dnd-
 
 interface UserInfo {
   id: number; email: string; name: string; patronymic?: string; role: string; status?: string;
+  can_be_assignee?: boolean;
 }
 
 interface Props {
@@ -253,7 +254,7 @@ export const TableView: React.FC<Props> = ({ tickets, users, onEdit, onDetail, o
 
   const engineerIds = useMemo(
     () => users
-      .filter(u => (!u.status || u.status === 'active') && (['director', 'chief_accountant'].includes(role || '') || u.role === 'engineer'))
+      .filter(u => (!u.status || u.status === 'active') && (u.can_be_assignee ?? (['director', 'chief_accountant'].includes(role || '') || u.role === 'engineer')))
       .map(u => u.id),
     [users, role]
   );
