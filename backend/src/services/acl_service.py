@@ -88,7 +88,13 @@ class RoleChecker:
     def can_assign_user(assigner: User | None, assignee: User) -> bool:
         if assignee.status != UserStatus.active:
             return False
-        if assigner and assigner.role in (UserRole.director, UserRole.chief_accountant):
+        if assigner and (
+            assigner.role in (UserRole.director, UserRole.chief_accountant)
+            or (
+                assigner.role == UserRole.admin
+                and assigner.id in settings.admin_unrestricted_assignment_user_ids
+            )
+        ):
             return True
         if assignee.role == UserRole.engineer:
             return True

@@ -18,12 +18,13 @@ from src.models.equipment import AssetLocation
 from src.models.ticket import Ticket, TicketStatus, TicketTransition
 from src.models.user import User, UserRole, UserStatus
 from src.services.mail_service import MailService
+from src.services.acl_service import RoleChecker
 
 
 @pytest_asyncio.fixture
 async def dispatcher_case(postgres_factory, monkeypatch):
     monkeypatch.setattr(MailService, "notify_engineer_assigned", AsyncMock())
-    roles = ["dispatcher", "dispatcher", "engineer", "engineer", "engineer", "engineer", "admin", "viewer"]
+    roles = ["dispatcher", "dispatcher", "engineer", "engineer", "engineer", "engineer", "admin", "viewer", "admin"]
     async with postgres_factory() as db:
         users = [User(email=f"user-{index}@example.test", name=f"User {index}", role=UserRole(role),
                       status=UserStatus.active, password_hash="test-only")
@@ -38,6 +39,7 @@ async def dispatcher_case(postgres_factory, monkeypatch):
         db.add_all(locations)
         await db.commit()
     monkeypatch.setattr(settings, "dispatcher_self_assignment_user_ids", [users[0].id], raising=False)
+    monkeypatch.setattr(settings, "admin_unrestricted_assignment_user_ids", [users[6].id], raising=False)
     app = FastAPI()
     app.include_router(api_router, prefix="/api")
 
@@ -156,3 +158,67 @@ async def test_missing_auth_cannot_read_or_create(dispatcher_case):
     assert (await c.client.get("/api/locations")).status_code == 401
     assert (await c.client.get("/api/users/list")).status_code == 401
     assert (await c.client.post("/api/tickets", json=c.payload())).status_code == 401
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("target", [0, 1, 2, 3, 4, 6, 7, 8])
+@pytest.mark.parametrize("internal", [False, True])
+async def test_configured_admin_creates_for_any_active_user(dispatcher_case, target, internal):
+    c = dispatcher_case
+    response = await c.client.post("/api/tickets", json=c.payload(target, internal), headers=c.headers(6))
+    assert response.status_code == 201, response.text
+    assert response.json()["assignee_id"] == c.users[target].id
+    assert response.json()["status"] == TicketStatus.ASSIGNED.value
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("suffix", ["", "/assign"])
+@pytest.mark.parametrize("target", [0, 6, 7, 8])
+async def test_configured_admin_updates_and_assigns_any_role(dispatcher_case, suffix, target):
+    c = dispatcher_case
+    created = await c.client.post("/api/tickets", json=c.payload(2), headers=c.headers(6))
+    assert created.status_code == 201
+    response = await c.client.patch(f'/api/tickets/{created.json()["id"]}{suffix}',
+                                    json={"assignee_id": c.users[target].id}, headers=c.headers(6))
+    assert response.status_code == 200, response.text
+    assert response.json()["assignee_id"] == c.users[target].id
+
+
+@pytest.mark.asyncio
+async def test_unrestricted_grant_is_personal_and_revocable(dispatcher_case, monkeypatch):
+    c = dispatcher_case
+    expected = {u.id for u in c.users if u.status == UserStatus.active}
+    rows = (await c.client.get("/api/users/list", headers=c.headers(6))).json()
+    assert {u["id"] for u in rows if u["can_be_assignee"]} == expected
+    for target in (0, 6, 7, 8):
+        response = await c.client.post("/api/tickets", json=c.payload(target), headers=c.headers(8))
+        assert response.status_code == 400, response.text
+    assert (await c.client.post("/api/tickets", json=c.payload(2), headers=c.headers(8))).status_code == 201
+    monkeypatch.setattr(settings, "admin_unrestricted_assignment_user_ids", [])
+    assert (await c.client.post("/api/tickets", json=c.payload(6), headers=c.headers(6))).status_code == 400
+    rows = (await c.client.get("/api/users/list", headers=c.headers(6))).json()
+    assert {u["id"] for u in rows if u["can_be_assignee"]} == {c.users[i].id for i in (2, 3, 4)}
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_assign_inactive_or_missing_users(dispatcher_case):
+    c = dispatcher_case
+    for target in (c.users[5].id, 999999):
+        payload = c.payload(2)
+        payload["assignee_id"] = target
+        assert (await c.client.post("/api/tickets", json=payload, headers=c.headers(6))).status_code == 400
+    async with c.factory() as db:
+        assert await db.scalar(select(func.count()).select_from(Ticket)) == 0
+
+
+@pytest.mark.parametrize("role", list(UserRole))
+def test_personal_admin_grant_covers_every_active_role(role, monkeypatch):
+    actor = User(id=101, role=UserRole.admin, status=UserStatus.active)
+    target = User(id=202, role=role, status=UserStatus.active)
+    monkeypatch.setattr(settings, "admin_unrestricted_assignment_user_ids", [actor.id])
+    assert RoleChecker.can_assign_user(actor, target)
+    target.status = UserStatus.pending
+    assert not RoleChecker.can_assign_user(actor, target)
+    actor.role = UserRole.dispatcher
+    target.status = UserStatus.active
+    assert RoleChecker.can_assign_user(actor, target) == (role == UserRole.engineer)
