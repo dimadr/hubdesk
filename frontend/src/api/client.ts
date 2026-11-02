@@ -20,6 +20,7 @@ api.interceptors.response.use(
 );
 
 export interface TicketResponse {
+  allowed_statuses?: string[];
   id: number; number: number; subject: string; body: string;
   status: string; priority: string; type: string | null; is_internal: boolean;
   customer_id: number | null; customer_name?: string | null; location_id: number | null;

@@ -2,6 +2,7 @@ export type TicketStatus = 'ASSIGNED' | 'ACCEPTED' | 'IN_PROGRESS' | 'COMPLETED'
 export type TicketPriority = 'low' | 'medium' | 'high' | 'critical';
 
 export interface TicketResponse {
+  allowed_statuses?: TicketStatus[];
   id: number;
   number: number;
   subject: string;

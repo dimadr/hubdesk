@@ -26,7 +26,7 @@ from src.models.checklist import Checklist, ChecklistField, FieldType
 logger = logging.getLogger(__name__)
 
 
-def _enrich_ticket(d: TicketResponse, ticket: Ticket) -> TicketResponse:
+def _enrich_ticket(d: TicketResponse, ticket: Ticket, user: User) -> TicketResponse:
     d.customer_name = ticket.customer.name if ticket.customer else None
     d.location_name = ticket.location.name if ticket.location else None
     d.location_address = ticket.location.address if ticket.location else None
@@ -34,6 +34,7 @@ def _enrich_ticket(d: TicketResponse, ticket: Ticket) -> TicketResponse:
     d.response_overdue = SLAService.is_response_overdue(ticket)
     d.resolution_overdue = SLAService.is_resolution_overdue(ticket)
     d.is_archived = ticket.archived_at is not None
+    d.allowed_statuses = RoleChecker.allowed_ticket_statuses(user, ticket)
     return d
 
 
@@ -178,7 +179,7 @@ def create_ticket_router() -> APIRouter:
         tickets = result.scalars().all()
         output = []
         for t in tickets:
-            d = _enrich_ticket(TicketResponse.model_validate(t), t)
+            d = _enrich_ticket(TicketResponse.model_validate(t), t, user)
             output.append(d)
         return output
 
@@ -200,7 +201,7 @@ def create_ticket_router() -> APIRouter:
         ticket = (await db.execute(stmt)).scalar_one_or_none()
         if not ticket or not await RoleChecker.can_view_ticket_async(user, ticket, db):
             raise HTTPException(404)
-        d = _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
+        d = _enrich_ticket(TicketResponse.model_validate(ticket), ticket, user)
         return d
 
     @router.post("", status_code=201, response_model=TicketResponse)
@@ -231,7 +232,7 @@ def create_ticket_router() -> APIRouter:
             eng = await db.get(User, ticket.assignee_id)
             if eng:
                 await MailService.notify_engineer_assigned(ticket, eng, db)
-        return _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
+        return _enrich_ticket(TicketResponse.model_validate(ticket), ticket, user)
 
     @router.patch("/{ticket_id}", response_model=TicketResponse)
     async def update_ticket(
@@ -352,7 +353,7 @@ def create_ticket_router() -> APIRouter:
             eng = await db.get(User, ticket.assignee_id)
             if eng:
                 await MailService.notify_engineer_assigned(ticket, eng, db)
-        return _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
+        return _enrich_ticket(TicketResponse.model_validate(ticket), ticket, user)
 
     @router.patch("/{ticket_id}/status", response_model=TicketResponse)
     async def change_status(
@@ -371,7 +372,7 @@ def create_ticket_router() -> APIRouter:
             raise HTTPException(500, "Не удалось изменить статус заявки")
         await db.commit()
         ticket = await _reload_ticket(db, ticket.id)
-        return _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
+        return _enrich_ticket(TicketResponse.model_validate(ticket), ticket, user)
 
     class CompleteTicketRequest(BaseModel):
         comment: str = ""
@@ -402,7 +403,7 @@ def create_ticket_router() -> APIRouter:
             logger.exception("Unexpected ticket completion failure for ticket %s", ticket_id)
             raise HTTPException(500, "Не удалось завершить заявку")
         ticket = await _reload_ticket(db, ticket.id)
-        return _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
+        return _enrich_ticket(TicketResponse.model_validate(ticket), ticket, user)
 
     @router.post("/{ticket_id}/comments", status_code=201, response_model=CommentResponse)
     async def add_comment(
@@ -556,7 +557,7 @@ def create_ticket_router() -> APIRouter:
         ticket = await svc.assign(ticket_id, data.assignee_id, user)
         await db.commit()
         ticket = await _reload_ticket(db, ticket_id)
-        return _enrich_ticket(TicketResponse.model_validate(ticket), ticket)
+        return _enrich_ticket(TicketResponse.model_validate(ticket), ticket, user)
 
     @router.delete("/{ticket_id}", status_code=204)
     async def delete_ticket(

@@ -160,10 +160,12 @@ export const TicketDetailScreen: React.FC<Props> = ({ ticketId, user, onBack, on
 
   const canModify = ['admin', 'director', 'dispatcher', 'accountant', 'chief_accountant'].includes(user.role)
     || (user.role === 'engineer' && ticket.assignee_id === user.user_id);
-  const canChangeStatus = ['admin', 'director', 'accountant', 'chief_accountant'].includes(user.role)
+  const next = NEXT_STATUS[ticket.status];
+  const canChangeStatus = ticket.allowed_statuses !== undefined
+    ? !!next && ticket.allowed_statuses.includes(next)
+    : ['admin', 'director', 'accountant', 'chief_accountant'].includes(user.role)
     || (user.role === 'engineer' && ticket.assignee_id === user.user_id)
     || (user.role === 'dispatcher' && ticket.status === 'IN_PROGRESS');
-  const next = NEXT_STATUS[ticket.status];
 
   return (
     <SafeAreaView style={styles.container}>

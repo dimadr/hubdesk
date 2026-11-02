@@ -592,11 +592,17 @@ const TicketDetailModal: React.FC<{
   const PL: Record<string, string> = { low: 'Низкий', medium: 'Средний', high: 'Высокий', critical: 'Критичный' };
   const TL: Record<string, string> = { repair: 'Ремонт', installation: 'Монтаж', maintenance: 'ТО', pressure_test_preparation: 'Подготовка к опрессовке', pressure_test_with_inspector: 'Опрессовка с инспектором', inspection: 'Инспекция', emergency: 'Авария', verification: 'Поверка' };
 
-  const canStatus = !readOnly && (
+  const next = NS[ticket.status];
+  const canStatus = !readOnly && (ticket.allowed_statuses !== undefined
+    ? ticket.allowed_statuses.includes(next)
+    : (
     role === 'admin' || role === 'director' || role === 'accountant' || role === 'chief_accountant' ||
     (role === 'engineer' && ticket.assignee_id === currentUserId)
-  );
-  const next = NS[ticket.status];
+  ));
+  const canEditDeadline = canStatus || (!readOnly && (
+    role === 'admin' || role === 'director' || role === 'accountant' || role === 'chief_accountant' ||
+    (role === 'engineer' && ticket.assignee_id === currentUserId)
+  ));
 
   const load = async () => {
     try {
@@ -696,16 +702,16 @@ const TicketDetailModal: React.FC<{
             <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Приоритет</span><div>{PL[ticket.priority] || ticket.priority}</div></div>
             {ticket.type && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Тип</span><div>{TL[ticket.type] || ticket.type}</div></div>}
             <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Создана</span><div>{new Date(ticket.created_at).toLocaleString('ru-RU')}</div></div>
-            {ticket.resolution_deadline && !editingDeadline && canStatus && (
+            {ticket.resolution_deadline && !editingDeadline && canEditDeadline && (
               <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Срок</span><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <span>{new Date(ticket.resolution_deadline).toLocaleDateString('ru-RU')}</span>
                 <button onClick={() => setEditingDeadline(true)} style={{ background: 'none', border: '1px dashed var(--border)', borderRadius: 4, padding: '1px 5px', fontSize: 10, color: 'var(--text-muted)', cursor: 'pointer' }}>✎</button>
               </div></div>
             )}
-            {ticket.resolution_deadline && !editingDeadline && !canStatus && (
+            {ticket.resolution_deadline && !editingDeadline && !canEditDeadline && (
               <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Срок</span><div>{new Date(ticket.resolution_deadline).toLocaleDateString('ru-RU')}</div></div>
             )}
-            {!ticket.resolution_deadline && !editingDeadline && canStatus && (
+            {!ticket.resolution_deadline && !editingDeadline && canEditDeadline && (
               <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Срок</span><div>
                 <button onClick={() => setEditingDeadline(true)} style={{ background: 'none', border: '1px dashed var(--border)', borderRadius: 6, padding: '2px 8px', fontSize: 12, color: 'var(--text-muted)', cursor: 'pointer' }}>+ Указать срок</button>
               </div></div>

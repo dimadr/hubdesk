@@ -184,6 +184,7 @@ function renderCellContent(ticket: TicketResponse, col: ColumnDef, userMap: Map<
     <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
       {ticket.status !== 'COMPLETED' && NEXT_STATUS[ticket.status] &&
         CAN_ACCEPT.includes(ticket.status) && currentUserId === ticket.assignee_id &&
+        (ticket.allowed_statuses === undefined || ticket.allowed_statuses.includes(NEXT_STATUS[ticket.status])) &&
         onStatusChange && (
         <button
           className="btn btn-success"

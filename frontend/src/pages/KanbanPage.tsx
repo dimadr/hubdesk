@@ -138,12 +138,16 @@ export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[]; onDetail?
       const targetStatus = columnToStatus[column];
       const ticket = tickets.find(t => t.id === ticketId);
       if (targetStatus && ticket && ticket.status !== targetStatus) {
+        if (ticket.allowed_statuses !== undefined && !ticket.allowed_statuses.includes(targetStatus)) {
+          alert('Этот переход статуса недоступен');
+          return;
+        }
         if (targetStatus === 'COMPLETED' && onStatusChange) {
           onStatusChange(ticket, 'COMPLETED');
         } else {
           try {
-            await api.patch(`/tickets/${ticketId}/status`, { status: targetStatus });
-            setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, status: targetStatus } : t));
+            const response = await api.patch<TicketResponse>(`/tickets/${ticketId}/status`, { status: targetStatus });
+            setTickets(prev => prev.map(t => t.id === ticketId ? response.data : t));
           } catch (e: any) {
             alert(e.response?.data?.detail || 'Ошибка смены статуса');
           }
@@ -183,7 +187,7 @@ export const KanbanPage: React.FC<{ role?: string; users?: UserInfo[]; onDetail?
               <div
                 key={`ticket-${t.id}`}
                 className={`kanban-ticket${isTicketOverdue(t) ? ' ticket-overdue' : ''}`}
-                draggable
+                draggable={t.allowed_statuses === undefined || t.allowed_statuses.length > 0}
                 onDragStart={e => e.dataTransfer.setData('ticketId', String(t.id))}
                 onClick={() => onDetail?.(t)}
                 style={{

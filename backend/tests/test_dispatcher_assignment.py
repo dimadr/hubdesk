@@ -24,6 +24,7 @@ from src.services.acl_service import RoleChecker
 @pytest_asyncio.fixture
 async def dispatcher_case(postgres_factory, monkeypatch):
     monkeypatch.setattr(MailService, "notify_engineer_assigned", AsyncMock())
+    monkeypatch.setattr(MailService, "notify_creator_accepted", AsyncMock())
     roles = ["dispatcher", "dispatcher", "engineer", "engineer", "engineer", "engineer", "admin", "viewer", "admin"]
     async with postgres_factory() as db:
         users = [User(email=f"user-{index}@example.test", name=f"User {index}", role=UserRole(role),

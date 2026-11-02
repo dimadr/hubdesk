@@ -144,6 +144,7 @@ class TicketResponse(BaseModel):
     response_overdue: bool = False
     resolution_overdue: bool = False
     is_archived: bool = False
+    allowed_statuses: list[str] = Field(default_factory=list)
 
     @field_serializer(
         "scheduled_start", "scheduled_end", "created_at", "accepted_at",

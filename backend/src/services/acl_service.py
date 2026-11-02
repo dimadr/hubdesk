@@ -64,7 +64,25 @@ class RoleChecker:
         from_val = ticket.status.value if hasattr(ticket.status, 'value') else str(ticket.status)
         key = f"{from_val}->{target_val}"
         allowed_roles = RoleChecker.TRANSITION_ROLES.get(key, [])
+        if (
+            user.role == UserRole.dispatcher
+            and user.status == UserStatus.active
+            and user.id in settings.dispatcher_self_assignment_user_ids
+            and ticket.assignee_id == user.id
+            and UserRole.engineer in allowed_roles
+        ):
+            return True
         return user.role in allowed_roles
+
+    @staticmethod
+    def allowed_ticket_statuses(user: User, ticket: Ticket) -> list[str]:
+        from src.services.ticket_fsm import TicketFSM
+
+        if not RoleChecker.can_view_ticket(user, ticket):
+            return []
+        current = ticket.status.value if hasattr(ticket.status, 'value') else str(ticket.status)
+        return [target for target in TicketFSM.transitions.get(current, [])
+                if RoleChecker.can_change_status(user, ticket, target)]
 
     @staticmethod
     def can_see_comment(user: User, comment) -> bool:
