@@ -20,6 +20,7 @@ from src.models.warehouse import Warehouse
 from src.models.audit_log import AuditLog
 from src.core.deps import get_current_user
 from src.services.audit_service import log_audit
+from src.services.user_activity_service import UserActivityService
 
 logger = logging.getLogger(__name__)
 admin_router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -62,6 +63,16 @@ class UserUpdate(BaseModel):
     password: str | None = None
     status: str | None = None
     customer_id: int | None = None
+
+
+class UserActivityResponse(BaseModel):
+    id: int
+    last_active_at: datetime | None
+
+
+@admin_router.get("/user-activity", response_model=List[UserActivityResponse])
+async def list_user_activity(admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    return await UserActivityService(db).list_activity()
 
 
 class AdminUserCreate(BaseModel):

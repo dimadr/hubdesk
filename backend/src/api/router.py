@@ -54,6 +54,7 @@ from .replacement import replacement_router
 from .insert_stock import insert_router
 from .insert_v2 import insert_v2_router
 from .audit import audit_router
+from .activity import activity_router
 
 logger = logging.getLogger(__name__)
 api_router = APIRouter()
@@ -71,6 +72,7 @@ api_router.include_router(replacement_router)
 api_router.include_router(insert_router)
 api_router.include_router(insert_v2_router)
 api_router.include_router(audit_router)
+api_router.include_router(activity_router)
 
 
 class SignupRequest(BaseModel):

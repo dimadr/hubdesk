@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { formatLastActivity } from '../utils/userActivity';
 
 interface Stats {
   total_users: number; total_customers: number; total_locations: number;
@@ -9,7 +10,7 @@ interface Stats {
 }
 
 interface CustomerData { id: number; name: string; type: string; locations_count: number; }
-interface UserInfo { id: number; email: string; name: string; phone?: string; patronymic?: string; role: string; status?: string; customer_id?: number | null; }
+interface UserInfo { id: number; email: string; name: string; phone?: string; patronymic?: string; role: string; status?: string; customer_id?: number | null; last_active_at?: string | null; }
 interface PendingUser { id: number; email: string; name: string; role: string; status: string; consent_given: boolean; consent_date: string | null; }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -121,29 +122,36 @@ const UsersTab: React.FC = () => {
   const [customers, setCustomers] = useState<CustomerData[]>([]);
   const [editId, setEditId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const load = () => {
+    setLoading(true);
+    setError('');
     Promise.all([
       api.get('/users/list'),
       api.get('/admin/customers'),
+      api.get<{ id: number; last_active_at: string | null }[]>('/admin/user-activity'),
     ])
-      .then(([usersResponse, customersResponse]) => {
-        setUsers(usersResponse.data);
+      .then(([usersResponse, customersResponse, activityResponse]) => {
+        const activity = new Map(activityResponse.data.map(row => [row.id, row.last_active_at]));
+        setUsers(usersResponse.data.map((user: UserInfo) => ({ ...user, last_active_at: activity.get(user.id) })));
         setCustomers(customersResponse.data);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => { setError('Не удалось загрузить пользователей'); setLoading(false); });
   };
 
   useEffect(() => { load(); }, []);
 
   if (loading) return <div className="loading">Загрузка...</div>;
 
+  if (error) return <div role="alert">{error} <button className="btn btn-secondary" onClick={load}>Повторить</button></div>;
+
   return (
     <div>
       <div className="table-wrapper">
         <table>
-          <thead><tr><th>ID</th><th>ФИО</th><th>Телефон</th><th>Email</th><th>Должность</th><th></th></tr></thead>
+          <thead><tr><th>ID</th><th>ФИО</th><th>Телефон</th><th>Email</th><th>Должность</th><th>Последняя активность (МСК)</th><th></th></tr></thead>
           <tbody>
             {users.map(u => (
               <tr key={u.id}>
@@ -158,6 +166,9 @@ const UsersTab: React.FC = () => {
                   {' '}
                   {u.status === 'pending' && <span className="status-pill" style={{ background: 'var(--warning-bg)', color: 'var(--warning)' }}>Ожидает</span>}
                   {u.status === 'rejected' && <span className="status-pill" style={{ background: 'var(--danger-bg)', color: 'var(--danger)' }}>Отклонён</span>}
+                </td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  {u.last_active_at ? <time dateTime={u.last_active_at}>{formatLastActivity(u.last_active_at)}</time> : 'Нет данных'}
                 </td>
                 <td>
                   <button className="btn btn-secondary" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => setEditId(u.id)}>✎</button>

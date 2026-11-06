@@ -1,11 +1,12 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
-import { hasSavedUrl, initApi } from './src/api/client';
+import { api, hasSavedUrl, initApi } from './src/api/client';
+import { createActivityReporter } from './src/utils/userActivity';
 import { TicketResponse } from './src/api/types';
 import { useAuthStore } from './src/store/authStore';
 import { AdminOverviewScreen } from './src/screens/AdminOverviewScreen';
@@ -60,6 +61,12 @@ function AppContent() {
   const { user, phase, quickUnlockEnabled, lockTimeoutSeconds, restoreSession, lock, logout } = useAuthStore();
   const { colors, mode } = useAppTheme();
   const backgroundAt = useRef<number | null>(null);
+  const activityUserId = user?.user_id;
+  const activityReporter = useMemo(() => createActivityReporter(() => api.post('/activity')), [activityUserId]);
+  const reportActivity = useCallback(() => {
+    if (ready && phase === 'unlocked' && activityUserId !== undefined && AppState.currentState === 'active') void activityReporter();
+  }, [ready, phase, activityUserId, activityReporter]);
+  useEffect(() => { reportActivity(); }, [reportActivity]);
   const navigationTheme = useMemo(() => ({
     ...(mode === 'dark' ? DarkTheme : DefaultTheme),
     colors: {
@@ -108,7 +115,8 @@ function AppContent() {
   return (
     <>
       <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
-      <NavigationContainer theme={navigationTheme}>
+      <View style={{ flex: 1 }} onTouchStart={reportActivity}>
+      <NavigationContainer theme={navigationTheme} onStateChange={reportActivity}>
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           {!configured ? (
             <Stack.Screen name="ServerSetup">{() => <ServerSetupScreen onDone={() => setConfigured(true)} />}</Stack.Screen>
@@ -140,6 +148,7 @@ function AppContent() {
           )}
         </Stack.Navigator>
       </NavigationContainer>
+      </View>
     </>
   );
 }

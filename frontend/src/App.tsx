@@ -12,6 +12,7 @@ import { AuditLogPage } from './pages/AuditLogPage';
 import { useTicketStore } from './store/tickets';
 import { canViewTicketReports, useTicketStatsStore } from './store/ticketStats';
 import { localDateKey as isoToLocalDate } from './utils/dates';
+import { trackUserActivity } from './utils/userActivity';
 
 const endOfLocalDayIso = (date: string): string | undefined => (
   date ? new Date(`${date}T23:59:59`).toISOString() : undefined
@@ -984,6 +985,9 @@ const EmployeesPage: React.FC<{ onAdd: () => void; refreshKey: number; isAdmin: 
 
 const App: React.FC = () => {
   const [auth, setAuth] = useState<{ token: string; user: any } | null>(null);
+  useEffect(() => {
+    if (auth) return trackUserActivity();
+  }, [auth]);
   const [page, setPage] = useState<Page>('tickets');
   const [showCreate, setShowCreate] = useState(false);
   const [createDeadline, setCreateDeadline] = useState<string | undefined>();
