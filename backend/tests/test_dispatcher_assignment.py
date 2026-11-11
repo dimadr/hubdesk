@@ -25,12 +25,16 @@ from src.services.acl_service import RoleChecker
 async def dispatcher_case(postgres_factory, monkeypatch):
     monkeypatch.setattr(MailService, "notify_engineer_assigned", AsyncMock())
     monkeypatch.setattr(MailService, "notify_creator_accepted", AsyncMock())
-    roles = ["dispatcher", "dispatcher", "engineer", "engineer", "engineer", "engineer", "admin", "viewer", "admin"]
+    roles = [
+        "dispatcher", "dispatcher", "engineer", "engineer", "engineer", "engineer",
+        "admin", "viewer", "admin", "director", "director",
+    ]
     async with postgres_factory() as db:
         users = [User(email=f"user-{index}@example.test", name=f"User {index}", role=UserRole(role),
                       status=UserStatus.active, password_hash="test-only")
                  for index, role in enumerate(roles)]
         users[5].status = UserStatus.rejected
+        users[10].status = UserStatus.rejected
         customers = [Customer(name=f"Customer {i}") for i in range(3)]
         db.add_all([*users, *customers])
         await db.flush()
@@ -79,7 +83,50 @@ async def test_assignment_capabilities_are_request_specific(dispatcher_case):
     for actor, expected in ((0, {0, 2, 3, 4}), (1, {2, 3, 4})):
         response = await c.client.get("/api/users/list", headers=c.headers(actor))
         assert response.status_code == 200
-        assert {u["id"] for u in response.json() if u["can_be_assignee"]} == {c.users[i].id for i in expected}
+        rows = response.json()
+        assert {u["id"] for u in rows if u["can_be_assignee_on_update"]} == {c.users[i].id for i in expected}
+        create_targets = expected | ({9} if actor == 0 else set())
+        assert {u["id"] for u in rows if u["can_be_assignee"]} == {c.users[i].id for i in create_targets}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("internal", [False, True])
+async def test_configured_dispatcher_can_create_for_active_director(dispatcher_case, internal):
+    c = dispatcher_case
+    created = await c.client.post("/api/tickets", json=c.payload(9, internal), headers=c.headers())
+    assert created.status_code == 201, created.text
+    ticket = created.json()
+    assert ticket["assignee_id"] == c.users[9].id
+    assert ticket["status"] == TicketStatus.ASSIGNED.value
+
+    # A full edit form can send the unchanged assignee without reassigning the ticket.
+    updated = await c.client.patch(
+        f'/api/tickets/{ticket["id"]}',
+        json={"body": "Updated description", "assignee_id": c.users[9].id},
+        headers=c.headers(),
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["assignee_id"] == c.users[9].id
+
+    other = await c.client.post("/api/tickets", json=c.payload(2, internal), headers=c.headers())
+    assert other.status_code == 201, other.text
+    for suffix in ("", "/assign"):
+        response = await c.client.patch(
+            f'/api/tickets/{other.json()["id"]}{suffix}',
+            json={"assignee_id": c.users[9].id},
+            headers=c.headers(),
+        )
+        assert response.status_code == 400, response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("actor,target", [(0, 10), (1, 9)])
+async def test_director_creation_grant_does_not_cover_other_users(dispatcher_case, actor, target):
+    c = dispatcher_case
+    response = await c.client.post("/api/tickets", json=c.payload(target), headers=c.headers(actor))
+    assert response.status_code == 400, response.text
+    async with c.factory() as db:
+        assert await db.scalar(select(func.count()).select_from(Ticket)) == 0
 
 
 @pytest.mark.asyncio

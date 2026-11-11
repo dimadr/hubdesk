@@ -103,7 +103,7 @@ class RoleChecker:
         )
 
     @staticmethod
-    def can_assign_user(assigner: User | None, assignee: User) -> bool:
+    def can_assign_user(assigner: User | None, assignee: User, *, creating: bool = False) -> bool:
         if assignee.status != UserStatus.active:
             return False
         if assigner and (
@@ -119,8 +119,11 @@ class RoleChecker:
         return bool(
             assigner
             and assigner.role == UserRole.dispatcher
-            and assignee.id == assigner.id
             and assigner.id in settings.dispatcher_self_assignment_user_ids
+            and (
+                assignee.id == assigner.id
+                or (creating and assigner.status == UserStatus.active and assignee.role == UserRole.director)
+            )
         )
 
     @staticmethod

@@ -76,7 +76,7 @@ class TicketService:
         is_internal = bool(data.get("is_internal"))
 
         if data.get("assignee_id"):
-            await self.validate_assignee(data["assignee_id"], user)
+            await self.validate_assignee(data["assignee_id"], user, creating=True)
 
         if is_internal:
             if user and user.role == UserRole.customer:
@@ -302,10 +302,10 @@ class TicketService:
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def validate_assignee(self, user_id: int, assigner: User | None) -> User:
+    async def validate_assignee(self, user_id: int, assigner: User | None, *, creating: bool = False) -> User:
         assignee = await self.session.get(User, user_id)
         if assignee is None or assignee.status != UserStatus.active:
             raise HTTPException(400, "Исполнитель должен быть активным пользователем")
-        if not RoleChecker.can_assign_user(assigner, assignee):
+        if not RoleChecker.can_assign_user(assigner, assignee, creating=creating):
             raise HTTPException(400, "Исполнитель должен быть активным пользователем с ролью engineer")
         return assignee

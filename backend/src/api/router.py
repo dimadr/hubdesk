@@ -224,6 +224,7 @@ class UserListResponse(BaseModel):
     status: str
     customer_id: int | None = None
     can_be_assignee: bool = False
+    can_be_assignee_on_update: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -680,7 +681,8 @@ async def list_users(
     users = result.scalars().all()
     return [
         UserListResponse.model_validate(candidate).model_copy(update={
-            "can_be_assignee": RoleChecker.can_assign_user(user, candidate),
+            "can_be_assignee": RoleChecker.can_assign_user(user, candidate, creating=True),
+            "can_be_assignee_on_update": RoleChecker.can_assign_user(user, candidate),
         })
         for candidate in users
     ]

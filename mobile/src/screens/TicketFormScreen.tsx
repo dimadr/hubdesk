@@ -69,13 +69,14 @@ export const TicketFormScreen: React.FC<Props> = ({ ticket, user, onBack, onSave
       if (locationsResult.status === 'fulfilled') setLocations(locationsResult.value.data);
       else setError(getApiError(locationsResult.reason, 'Не удалось загрузить объекты'));
       if (usersResult.status === 'fulfilled') {
-        setEngineers(usersResult.value.data.filter((item) =>
-          item.status === 'active' && (item.can_be_assignee ?? (['director', 'chief_accountant'].includes(user.role) || item.role === 'engineer')),
-        ));
+        setEngineers(usersResult.value.data.filter((item) => {
+          const eligible = editing ? item.can_be_assignee_on_update ?? item.can_be_assignee : item.can_be_assignee;
+          return item.status === 'active' && (eligible ?? (['director', 'chief_accountant'].includes(user.role) || item.role === 'engineer'));
+        }));
       }
       setLoadingLocations(false);
     });
-  }, [canAssign, user.role]);
+  }, [canAssign, editing, user.role]);
 
   const filteredLocations = useMemo(() => {
     const query = locationQuery.trim().toLowerCase();
@@ -237,6 +238,9 @@ export const TicketFormScreen: React.FC<Props> = ({ ticket, user, onBack, onSave
           )}
 
           <Field label={isInternal ? 'Дедлайн *' : 'Дедлайн'} value={deadline} onChangeText={setDeadline} placeholder="ГГГГ-ММ-ДД" keyboardType="numbers-and-punctuation" />
+          {canAssign && ticket && assigneeId === ticket.assignee_id && assigneeId !== null && !engineers.some(item => item.id === assigneeId) && (
+            <ReadOnly label="Текущий исполнитель" value={ticket.assignee_name || ''} />
+          )}
           {canAssign ? (
             <View><Text style={styles.label}>Исполнитель {isInternal ? '*' : ''}</Text><View style={styles.choiceList}><Choice label="Не назначен" active={!assigneeId} onPress={() => setAssigneeId(null)} styles={styles} />{engineers.map((engineer) => <Choice key={engineer.id} label={[engineer.name, engineer.patronymic].filter(Boolean).join(' ')} active={assigneeId === engineer.id} onPress={() => setAssigneeId(engineer.id)} styles={styles} />)}</View></View>
           ) : <ReadOnly label="Исполнитель" value={ticket?.assignee_name || user.name} />}

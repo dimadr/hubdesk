@@ -301,7 +301,8 @@ def create_ticket_router() -> APIRouter:
                     UserRole.dispatcher, UserRole.accountant, UserRole.chief_accountant,
                 ):
                     raise HTTPException(403, "Только диспетчер или администратор может назначать исполнителя")
-                await TicketService(db).validate_assignee(value, user)
+                if value != ticket.assignee_id:
+                    await TicketService(db).validate_assignee(value, user)
             if isinstance(value, datetime):
                 if value.tzinfo is not None:
                     value = value.astimezone(timezone.utc).replace(tzinfo=None)

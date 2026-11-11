@@ -75,6 +75,7 @@ interface UserInfo {
   role: string;
   status?: string;
   can_be_assignee?: boolean;
+  can_be_assignee_on_update?: boolean;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -488,8 +489,9 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
 
   const assignables = users.filter(u =>
     (!u.status || u.status === 'active') &&
-    (u.can_be_assignee ?? (['director', 'chief_accountant'].includes(currentUser?.role || '') || u.role === 'engineer'))
+    (u.can_be_assignee_on_update ?? u.can_be_assignee ?? (['director', 'chief_accountant'].includes(currentUser?.role || '') || u.role === 'engineer'))
   );
+  const currentAssignee = users.find(u => u.id === ticket.assignee_id);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -548,6 +550,9 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
             ) : (
               <select value={assigneeId} onChange={e => setAssigneeId(Number(e.target.value) || '')}>
                 <option value="">{ticket.is_internal ? '— Выберите исполнителя —' : '— Назначить позже —'}</option>
+                {currentAssignee && !assignables.some(u => u.id === currentAssignee.id) && (
+                  <option value={currentAssignee.id} disabled>{[currentAssignee.name, currentAssignee.patronymic].filter(Boolean).join(' ')}</option>
+                )}
                 {assignables.map(u => (
                   <option key={u.id} value={u.id}>{[u.name, u.patronymic].filter(Boolean).join(' ')}</option>
                 ))}
