@@ -50,8 +50,6 @@ export const TicketFormScreen: React.FC<Props> = ({ ticket, user, onBack, onSave
   const [deadline, setDeadline] = useState(isoDate(ticket?.resolution_deadline));
   const [type, setType] = useState(ticket?.type || '');
   const [priority, setPriority] = useState<TicketPriority>(ticket?.priority || 'medium');
-  const [contactName, setContactName] = useState(ticket?.site_contact_name || '');
-  const [contactPhone, setContactPhone] = useState(ticket?.site_contact_phone || '');
   const [locations, setLocations] = useState<LocationResponse[]>([]);
   const [engineers, setEngineers] = useState<UserListItem[]>([]);
   const [locationId, setLocationId] = useState<number | null>(ticket?.location_id || null);
@@ -91,8 +89,6 @@ export const TicketFormScreen: React.FC<Props> = ({ ticket, user, onBack, onSave
   const selectLocation = (location: LocationResponse) => {
     setLocationId(location.id);
     setLocationQuery('');
-    if (!contactName) setContactName(location.contact_name || '');
-    if (!contactPhone) setContactPhone(location.contact_phone || '');
   };
 
   const submit = async () => {
@@ -129,8 +125,6 @@ export const TicketFormScreen: React.FC<Props> = ({ ticket, user, onBack, onSave
           body,
           source_description: addition || null,
           resolution_deadline: deadlineValue,
-          site_contact_name: contactName || null,
-          site_contact_phone: contactPhone || null,
         };
         if (canAssign) {
           const location = locations.find((item) => item.id === locationId);
@@ -153,8 +147,6 @@ export const TicketFormScreen: React.FC<Props> = ({ ticket, user, onBack, onSave
           priority,
           resolution_deadline: deadlineValue || undefined,
           assignee_id: canAssign ? assigneeId : user.user_id,
-          site_contact_name: contactName || undefined,
-          site_contact_phone: contactPhone || undefined,
         };
       }
       const response = editing
@@ -169,6 +161,8 @@ export const TicketFormScreen: React.FC<Props> = ({ ticket, user, onBack, onSave
   };
 
   const selectedLocation = locations.find((item) => item.id === locationId);
+  const contactName = selectedLocation?.contact_name?.trim();
+  const contact = contactName ? [contactName, selectedLocation?.contact_phone?.trim()].filter(Boolean).join(', ') : 'Не указан';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -246,10 +240,7 @@ export const TicketFormScreen: React.FC<Props> = ({ ticket, user, onBack, onSave
           ) : <ReadOnly label="Исполнитель" value={ticket?.assignee_name || user.name} />}
 
           {!isInternal && (
-            <>
-              <Field label="Контактное лицо" value={contactName} onChangeText={setContactName} placeholder="ФИО" />
-              <Field label="Телефон" value={contactPhone} onChangeText={setContactPhone} placeholder="+7..." keyboardType="phone-pad" />
-            </>
+            <ReadOnly label="Контактное лицо" value={contact} />
           )}
 
           {error ? <Text style={styles.error}>{error}</Text> : null}

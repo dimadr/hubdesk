@@ -27,6 +27,15 @@ class TicketService:
         self.fsm = TicketFSM(session)
 
     @staticmethod
+    def location_contact(location: AssetLocation | None) -> tuple[str | None, str | None]:
+        if location is None:
+            return None, None
+        name = (location.contact_name or "").strip()
+        if not name:
+            return None, None
+        return name, (location.contact_phone or "").strip() or None
+
+    @staticmethod
     def _normalize_create_data(data: dict, user: User | None) -> dict:
         normalized = dict(data)
         if user and user.role == UserRole.engineer:
@@ -74,6 +83,7 @@ class TicketService:
         data = self._normalize_create_data(data, user)
         now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
         is_internal = bool(data.get("is_internal"))
+        location = None
 
         if data.get("assignee_id"):
             await self.validate_assignee(data["assignee_id"], user, creating=True)
@@ -103,6 +113,7 @@ class TicketService:
                 if equip.location_id != data["location_id"]:
                     raise HTTPException(400, "Оборудование не принадлежит указанному объекту")
 
+        contact_name, contact_phone = self.location_contact(location)
         ticket = Ticket(
             number=await self._secure_next_number(),
             subject=data["subject"],
@@ -115,8 +126,8 @@ class TicketService:
             is_internal=data.get("is_internal", False),
             assignee_id=data.get("assignee_id"),
             group_id=data.get("group_id"),
-            site_contact_name=data.get("site_contact_name"),
-            site_contact_phone=data.get("site_contact_phone"),
+            site_contact_name=contact_name,
+            site_contact_phone=contact_phone,
             scheduled_start=self._naive_datetime(data.get("scheduled_start")),
             scheduled_end=self._naive_datetime(data.get("scheduled_end")),
             source_description=data.get("source_description"),

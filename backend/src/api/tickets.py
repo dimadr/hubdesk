@@ -30,6 +30,7 @@ def _enrich_ticket(d: TicketResponse, ticket: Ticket, user: User) -> TicketRespo
     d.customer_name = ticket.customer.name if ticket.customer else None
     d.location_name = ticket.location.name if ticket.location else None
     d.location_address = ticket.location.address if ticket.location else None
+    d.site_contact_name, d.site_contact_phone = TicketService.location_contact(ticket.location)
     d.assignee_name = ticket.assignee.name if ticket.assignee else None
     d.response_overdue = SLAService.is_response_overdue(ticket)
     d.resolution_overdue = SLAService.is_resolution_overdue(ticket)
@@ -290,10 +291,10 @@ def create_ticket_router() -> APIRouter:
                 ticket.subject = next_subject
                 changed_fields.append('subject')
         for field, value in requested_updates.items():
-            if field in ('status', 'assigned_at', 'completed_at'):
+            if field in ('status', 'assigned_at', 'completed_at', 'site_contact_name', 'site_contact_phone'):
                 continue
             if user.role == UserRole.engineer:
-                if field not in ('subject', 'source_description', 'body', 'site_contact_name', 'site_contact_phone', 'resolution_deadline'):
+                if field not in ('subject', 'source_description', 'body', 'resolution_deadline'):
                     continue
             if field == 'assignee_id' and value is not None:
                 if user.role not in (
@@ -321,6 +322,8 @@ def create_ticket_router() -> APIRouter:
                 raise HTTPException(400, "Объект не найден")
             if loc.customer_id != ticket.customer_id:
                 raise HTTPException(400, "Объект не принадлежит указанному заказчику")
+            if 'location_id' in changed_fields:
+                ticket.site_contact_name, ticket.site_contact_phone = TicketService.location_contact(loc)
             if 'location_id' in update_fields and ticket.equipment_id:
                 from src.models.equipment import Equipment as EQ
                 eq = await db.get(EQ, ticket.equipment_id)

@@ -66,6 +66,11 @@ interface Location {
   contract_valid_to: string | null;
 }
 
+function formatSiteContact(name?: string | null, phone?: string | null): string {
+  const contactName = name?.trim();
+  return contactName ? [contactName, phone?.trim()].filter(Boolean).join(', ') : 'Не указан';
+}
+
 interface UserInfo {
   id: number;
   email: string;
@@ -210,8 +215,6 @@ const CreateTicketModal: React.FC<{
   const [priority, setPriority] = useState('medium');
   const [resolutionDeadline, setResolutionDeadline] = useState(initialResolutionDeadline || '');
   const [assigneeId, setAssigneeId] = useState<number | ''>(currentUser?.role === 'engineer' ? currentUser.id : '');
-  const [siteContactName, setSiteContactName] = useState('');
-  const [siteContactPhone, setSiteContactPhone] = useState('');
   const [isInternal, setIsInternal] = useState(false);
   const [locations, setLocations] = useState<Location[]>([]);
   const [error, setError] = useState('');
@@ -223,15 +226,7 @@ const CreateTicketModal: React.FC<{
     api.get('/locations').then(r => setLocations(r.data)).catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (!locationId) return;
-    const loc = locations.find(l => l.id === Number(locationId));
-    if (loc) {
-      setSiteContactName(loc.contact_name || loc.assigned_engineer_name || '');
-      const phoneMatch = loc.contacts?.match(/\+7[\s()\d\-]+/);
-      setSiteContactPhone(loc.contact_phone || (phoneMatch ? phoneMatch[0] : '') || '');
-    }
-  }, [locationId, locations]);
+  const selectedLocation = locations.find(l => l.id === Number(locationId));
 
   const submit = async () => {
     if (isInternal) {
@@ -269,8 +264,6 @@ const CreateTicketModal: React.FC<{
           priority,
           resolution_deadline: currentUser?.role === 'customer' ? undefined : endOfLocalDayIso(resolutionDeadline),
           assignee_id: assigneeId ? Number(assigneeId) : undefined,
-          site_contact_name: siteContactName || undefined,
-          site_contact_phone: siteContactPhone || undefined,
         });
       }
       onCreated();
@@ -392,11 +385,7 @@ const CreateTicketModal: React.FC<{
           )}
           {!isInternal && <div>
             <label>Контактное лицо на объекте</label>
-            <input placeholder="ФИО" value={siteContactName} onChange={e => setSiteContactName(e.target.value)} />
-          </div>}
-          {!isInternal && <div>
-            <label>Телефон на объекте</label>
-            <input placeholder="+7 (___) ___-__-__" value={siteContactPhone} onChange={e => setSiteContactPhone(e.target.value)} />
+            <input value={formatSiteContact(selectedLocation?.contact_name, selectedLocation?.contact_phone)} readOnly />
           </div>}
         </div>
         <div className="modal-actions">
@@ -418,8 +407,6 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
   const [priority, setPriority] = useState(ticket.priority);
   const [resolutionDeadline, setResolutionDeadline] = useState(isoToLocalDate(ticket.resolution_deadline));
   const [assigneeId, setAssigneeId] = useState<number | ''>(ticket.assignee_id ?? '');
-  const [siteContactName, setSiteContactName] = useState(ticket.site_contact_name || '');
-  const [siteContactPhone, setSiteContactPhone] = useState(ticket.site_contact_phone || '');
   const [locations, setLocations] = useState<Location[]>([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -428,16 +415,7 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
     api.get('/locations').then(r => setLocations(r.data)).catch(() => {});
   }, []);
 
-  useEffect(() => {
-    const sel = locations.find(l => l.id === Number(locationId));
-    if (sel) {
-      if (!ticket.site_contact_name) setSiteContactName(sel.assigned_engineer_name || '');
-      if (!ticket.site_contact_phone) {
-        const phoneMatch = sel.contacts?.match(/\+7[\s()\d\-]+/);
-        setSiteContactPhone(phoneMatch ? phoneMatch[0] : sel.contacts || '');
-      }
-    }
-  }, [locationId, locations]);
+  const selectedLocation = locations.find(l => l.id === Number(locationId));
 
   const submit = async () => {
     if (ticket.is_internal) {
@@ -463,8 +441,6 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
           body,
           source_description: sourceDesc || null,
           resolution_deadline: endOfLocalDayIso(resolutionDeadline) || null,
-          site_contact_name: siteContactName || null,
-          site_contact_phone: siteContactPhone || null,
         } : {
           subject,
           body,
@@ -475,8 +451,6 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
           priority,
           resolution_deadline: endOfLocalDayIso(resolutionDeadline) || null,
           assignee_id: assigneeId ? Number(assigneeId) : null,
-          site_contact_name: siteContactName || null,
-          site_contact_phone: siteContactPhone || null,
         };
         await api.patch(`/tickets/${ticket.id}`, payload);
       }
@@ -561,11 +535,7 @@ const EditTicketModal: React.FC<{ ticket: TicketResponse; onClose: () => void; o
           </div>
           {!ticket.is_internal && <div>
             <label>Контактное лицо на объекте</label>
-            <input value={siteContactName} onChange={e => setSiteContactName(e.target.value)} />
-          </div>}
-          {!ticket.is_internal && <div>
-            <label>Телефон на объекте</label>
-            <input value={siteContactPhone} onChange={e => setSiteContactPhone(e.target.value)} />
+            <input value={formatSiteContact(selectedLocation?.contact_name, selectedLocation?.contact_phone)} readOnly />
           </div>}
         </div>
         <div className="modal-actions">
@@ -729,7 +699,7 @@ const TicketDetailModal: React.FC<{
                 <button className="btn btn-secondary" onClick={() => setEditingDeadline(false)} style={{ padding: '4px 8px', fontSize: 11 }}>✕</button>
               </div></div>
             )}
-            {ticket.site_contact_name && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Контакт</span><div>{ticket.site_contact_name}{ticket.site_contact_phone ? `, ${ticket.site_contact_phone}` : ''}</div></div>}
+            {!ticket.is_internal && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Контакт</span><div>{formatSiteContact(ticket.site_contact_name, ticket.site_contact_phone)}</div></div>}
             {ticket.scheduled_end && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Выезд по</span><div>{new Date(ticket.scheduled_end).toLocaleString('ru-RU')}</div></div>}
             {!ticket.is_internal && ticket.source_description && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Источник</span><div>{ticket.source_description}</div></div>}
             {ticket.location_name && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Объект</span><div>{ticket.location_name}</div></div>}

@@ -67,6 +67,76 @@ async def dispatcher_case(postgres_factory, monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("name,phone,expected", [
+    ("  Объектный контакт  ", "  12345  ", ("Объектный контакт", "12345")),
+    (None, "12345", (None, None)),
+    ("   ", "12345", (None, None)),
+])
+async def test_ticket_contact_comes_from_object_on_create_and_edit(dispatcher_case, name, phone, expected):
+    c = dispatcher_case
+    payload = c.payload(2)
+    async with c.factory() as db:
+        location = await db.get(AssetLocation, payload["location_id"])
+        location.contact_name, location.contact_phone = name, phone
+        location.assigned_engineer_id = c.users[2].id
+        await db.commit()
+
+    created = await c.client.post("/api/tickets", headers=c.headers(), json={
+        **payload, "site_contact_name": c.users[2].name, "site_contact_phone": "99999",
+    })
+    assert created.status_code == 201, created.text
+    row = created.json()
+    assert (row["site_contact_name"], row["site_contact_phone"]) == expected
+    assert row["assignee_id"] == c.users[2].id
+    async with c.factory() as db:
+        stored = await db.get(Ticket, row["id"])
+        assert (stored.site_contact_name, stored.site_contact_phone) == expected
+
+    changed = await c.client.patch(f'/api/tickets/{row["id"]}', headers=c.headers(), json={
+        "location_id": c.locations[0].id, "customer_id": c.customers[0].id,
+        "site_contact_name": c.users[2].name, "site_contact_phone": "99999",
+    })
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["site_contact_name"] is None
+    assert changed.json()["site_contact_phone"] is None
+    assert changed.json()["assignee_id"] == c.users[2].id
+    async with c.factory() as db:
+        stored = await db.get(Ticket, row["id"])
+        assert stored.site_contact_name is None
+        assert stored.site_contact_phone is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("number,status", [(1103, TicketStatus.COMPLETED), (1114, TicketStatus.ACCEPTED)])
+async def test_legacy_object_engineer_is_not_returned_as_contact(dispatcher_case, number, status):
+    c = dispatcher_case
+    archived = status == TicketStatus.COMPLETED
+    assignee = c.users[3] if archived else c.users[2]
+    async with c.factory() as db:
+        ticket = Ticket(number=number, subject=f"Ticket {number}", body="", status=status,
+                        customer_id=c.customers[0].id, location_id=c.locations[0].id,
+                        assignee_id=assignee.id, site_contact_name=c.users[2].name,
+                        site_contact_phone="99999",
+                        archived_at=datetime.now(timezone.utc).replace(tzinfo=None) if archived else None)
+        db.add(ticket)
+        await db.commit()
+        ticket_id = ticket.id
+    detail = await c.client.get(f"/api/tickets/{ticket_id}", headers=c.headers())
+    assert detail.status_code == 200, detail.text
+    row = detail.json()
+    assert row["site_contact_name"] is None
+    assert row["site_contact_phone"] is None
+    assert row["assignee_name"] == assignee.name
+    listed = await c.client.get("/api/tickets", headers=c.headers(), params={"archived": str(archived).lower()})
+    assert listed.status_code == 200, listed.text
+    row = next(item for item in listed.json() if item["id"] == ticket_id)
+    assert (row["site_contact_name"], row["site_contact_phone"], row["assignee_id"]) == (None, None, assignee.id)
+    async with c.factory() as db:
+        stored = await db.get(Ticket, ticket_id)
+        assert (stored.site_contact_name, stored.site_contact_phone) == (c.users[2].name, "99999")
+
+
+@pytest.mark.asyncio
 async def test_dispatcher_all_objects_and_engineer_scope(dispatcher_case):
     c = dispatcher_case
     for actor in (0, 1):

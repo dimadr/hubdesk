@@ -195,8 +195,8 @@ export const TicketDetailScreen: React.FC<Props> = ({ ticketId, user, onBack, on
             {ticket.customer_name && <Text style={styles.primaryText}>{ticket.customer_name}</Text>}
             {ticket.location_name && <Text style={styles.primaryText}>{ticket.location_name}</Text>}
             {ticket.location_address && <Text style={styles.secondaryText}>{ticket.location_address}</Text>}
-            {ticket.site_contact_name && <Text style={styles.secondaryText}>{ticket.site_contact_name}</Text>}
-            {ticket.site_contact_phone && <TouchableOpacity onPress={() => Linking.openURL(`tel:${ticket.site_contact_phone}`)}><Text style={styles.phone}>{ticket.site_contact_phone}</Text></TouchableOpacity>}
+            <Text style={styles.secondaryText}>{ticket.site_contact_name?.trim() || 'Не указан'}</Text>
+            {ticket.site_contact_name?.trim() && ticket.site_contact_phone && <TouchableOpacity onPress={() => Linking.openURL(`tel:${ticket.site_contact_phone}`)}><Text style={styles.phone}>{ticket.site_contact_phone}</Text></TouchableOpacity>}
           </Section>
         )}
 
