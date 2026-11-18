@@ -334,7 +334,10 @@ async def report_engineers(
     dt_to = _parse_date(date_to) if date_to else None
     date_cond = _date_filter(dt_from, dt_to)
 
-    base = [Ticket.assignee_id.isnot(None)]
+    base = [
+        Ticket.assignee_id.isnot(None),
+        ~Ticket.assignee.has(User.name == "dimadr"),
+    ]
     if date_cond is not None:
         base.append(date_cond)
     if status:

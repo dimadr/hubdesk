@@ -370,6 +370,45 @@ async def test_m09_report_server_acl_unchanged(medium_case):
         assert response.status_code == expected, response.text
 
 
+@pytest.mark.asyncio
+async def test_engineer_report_excludes_dimadr_only(medium_case):
+    c = medium_case
+    created = datetime(2026, 10, 1)
+    async with c.factory() as db:
+        dimadr = User(email="excluded@example.test", name="dimadr", role=UserRole.admin,
+                      password_hash="test-only")
+        db.add(dimadr)
+        await db.flush()
+        db.add_all([
+            Ticket(number=3000, subject="Excluded open ticket", body="", assignee_id=dimadr.id,
+                   created_at=created),
+            Ticket(number=3001, subject="Excluded completed ticket", body="", assignee_id=dimadr.id,
+                   created_at=created, status=TicketStatus.COMPLETED,
+                   completed_at=created + timedelta(hours=4)),
+            Ticket(number=3002, subject="Other admin ticket", body="", assignee_id=c.users[0].id,
+                   created_at=created, status=TicketStatus.COMPLETED,
+                   completed_at=created + timedelta(hours=2)),
+        ])
+        await db.commit()
+
+    response = await c.client.get("/api/reports/engineers")
+    assert response.status_code == 200, response.text
+    assert response.json() == [
+        {"engineer_id": c.users[1].id, "engineer_name": c.users[1].name, "total": 2,
+         "completed": 0, "in_progress": 2, "overdue": 1, "avg_resolution_hours": 0},
+        {"engineer_id": c.users[0].id, "engineer_name": c.users[0].name, "total": 1,
+         "completed": 1, "in_progress": 0, "overdue": 0, "avg_resolution_hours": 2},
+    ]
+
+    summary = await c.client.get("/api/reports/tickets")
+    assert summary.status_code == 200, summary.text
+    assert summary.json()["total"] == 5
+    assert {row["label"]: row["count"] for row in summary.json()["by_status"]} == {
+        "ASSIGNED": 3, "COMPLETED": 2,
+    }
+    assert summary.json()["avg_resolution_hours"] == 3
+
+
 def test_medium_report_and_staging_remain_private(tmp_path):
     from tests.test_high_backup_publication import module
 
