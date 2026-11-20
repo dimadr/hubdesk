@@ -283,6 +283,17 @@ tbody td { padding: 9px 12px; border-bottom: 1px solid var(--border); color: var
 tbody tr:hover { background: var(--bg-hover) }
 tbody tr:last-child td { border-bottom: none }
 
+.locations-table .location-actions {
+  position: sticky;
+  right: 0;
+  width: 1%;
+  white-space: nowrap;
+  box-shadow: -1px 0 0 var(--border);
+}
+.locations-table th.location-actions { z-index: 3 }
+.locations-table td.location-actions { background: var(--bg-card); z-index: 1 }
+.locations-table tr:hover td.location-actions { background: var(--bg-hover) }
+
 /* Row styles */
 tr.ticket-row { --ticket-row-bg: var(--bg-surface) }
 tr.ticket-row:hover { --ticket-row-bg: var(--bg-hover) }

@@ -123,12 +123,12 @@ export const LocationsPage: React.FC<LocationsPageProps> = ({ onOpenTicket }) =>
         onChange={e => setSearch(e.target.value)}
         style={{ marginBottom: 14 }}
       />
-      <div className="table-wrapper">
+      <div className="table-wrapper locations-table">
         <table>
           <thead>
             <tr>
               <th>ID</th><th>Название</th><th>Клиент</th><th>Адрес</th><th>ИНН</th><th>Контакты</th>
-              <th>Инженер</th><th>Договор</th><th>Срок</th><th></th>
+              <th>Инженер</th><th>Договор</th><th>Срок</th><th className="location-actions" scope="col">Действия</th>
             </tr>
           </thead>
           <tbody>
@@ -160,8 +160,15 @@ export const LocationsPage: React.FC<LocationsPageProps> = ({ onOpenTicket }) =>
                     {l.contract_valid_to && <span> до {l.contract_valid_to.substring(0, 10)}</span>}
                     {!l.contract_valid_from && !l.contract_valid_to && <span style={{ color: 'var(--text-muted)' }}>—</span>}
                   </td>
-                  <td>
-                    <button onClick={() => setEditId(l.id)} className="btn btn-secondary" style={{ padding: '3px 8px', fontSize: 11 }}>✎</button>
+                  <td className="location-actions">
+                    <button
+                      type="button"
+                      onClick={() => setEditId(l.id)}
+                      className="btn btn-secondary"
+                      aria-label={canEditLocation ? 'Редактировать объект' : 'Сведения об объекте'}
+                      title={canEditLocation ? 'Редактировать объект' : 'Сведения об объекте'}
+                      style={{ padding: '3px 8px', fontSize: 11 }}
+                    >✎</button>
                     {isAdmin && (
                       <button
                         onClick={() => handleDelete(l.id)}
