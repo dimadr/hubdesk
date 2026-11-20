@@ -157,6 +157,11 @@ class TicketResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class TicketDetailResponse(TicketResponse):
+    creator_name: str | None = None
+    can_upload_documents: bool = False
+
+
 class CommentCreate(BaseModel):
     body: str = Field(..., max_length=5000)
     is_internal: bool = False

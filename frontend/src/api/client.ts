@@ -29,10 +29,18 @@ export interface TicketResponse {
   site_contact_name: string | null; site_contact_phone: string | null;
   scheduled_start: string | null; scheduled_end: string | null;
   source_description: string | null;
+  creator_name?: string | null;
+  can_upload_documents?: boolean;
   created_at: string; accepted_at: string | null; completed_at: string | null;
   response_deadline: string | null; resolution_deadline: string | null;
   response_overdue: boolean; resolution_overdue: boolean;
   is_archived: boolean;
+}
+
+export interface TicketAttachment {
+  id: number;
+  filename: string;
+  download_url: string | null;
 }
 
 export interface SavedViewResponse {

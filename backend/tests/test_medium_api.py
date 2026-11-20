@@ -161,6 +161,40 @@ RESPONSE_FIELDS = ("customer_id", "customer_name", "location_id", "location_name
 
 
 @pytest.mark.asyncio
+async def test_ticket_detail_keeps_creator_after_reassignment_and_status_change(medium_case):
+    c = medium_case
+    created = await c.client.post("/api/tickets", json={
+        "subject": "Ticket with a known creator",
+        "customer_id": c.customers[0].id,
+        "location_id": c.locations[0].id,
+        "assignee_id": c.users[1].id,
+        "created_by": c.users[1].id,
+    })
+    assert created.status_code == 201, created.text
+    url = f"/api/tickets/{created.json()['id']}"
+
+    detail = await c.client.get(url)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["creator_name"] == c.users[0].name
+    assert detail.json()["assignee_name"] == c.users[1].name
+
+    assigned = await c.client.patch(url + "/assign", json={"assignee_id": c.users[2].id})
+    assert assigned.status_code == 200, assigned.text
+    c.actor = c.users[2]
+    started = await c.client.patch(url + "/status", json={"status": "IN_PROGRESS"})
+    assert started.status_code == 200, started.text
+    detail = await c.client.get(url)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["creator_name"] == c.users[0].name
+    assert detail.json()["assignee_name"] == c.users[2].name
+
+    c.actor = c.users[0]
+    legacy = await c.client.get(f"/api/tickets/{c.normal_id}")
+    assert legacy.status_code == 200, legacy.text
+    assert legacy.json()["creator_name"] is None
+
+
+@pytest.mark.asyncio
 async def test_m04_patch_relationships_and_sla_match_get(medium_case):
     c = medium_case
     url = f"/api/tickets/{c.normal_id}"

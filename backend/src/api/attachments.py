@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, UploadFile, File, Form, Query, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +22,7 @@ async def upload_attachment(
     file: UploadFile = File(...),
     ticket_id: int | None = Form(None),
     comment_id: int | None = Form(None),
+    kind: Literal["document"] | None = Form(None),
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -27,7 +30,7 @@ async def upload_attachment(
         if user.role not in (UserRole.admin, UserRole.director, UserRole.chief_accountant, UserRole.storekeeper):
             raise HTTPException(403, "Только админ/директор/кладовщик могут загружать файлы без привязки к заявке")
     svc = AttachmentService(db)
-    att = await svc.upload(file, ticket_id, comment_id, user)
+    att = await svc.upload(file, ticket_id, comment_id, user, document=kind == "document")
     try:
         await db.commit()
     except Exception:

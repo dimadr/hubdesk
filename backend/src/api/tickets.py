@@ -1,14 +1,15 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text, func
 from sqlalchemy.orm import selectinload
 from datetime import datetime, timedelta, timezone
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from src.database import get_db
 from src.models.ticket import Ticket, TicketStatus
 from src.models.customer import Customer
+from src.services.attachment_service import AttachmentService
 from src.services.ticket_service import TicketService
 from src.services.acl_service import RoleChecker
 from src.services.sla_service import SLAService
@@ -16,7 +17,7 @@ from src.services.comment_service import CommentService
 from src.services.mail_service import MailService
 from src.services.audit_service import log_audit
 from src.api.schemas import (
-    TicketCreate, TicketUpdate, TicketResponse, StatusChange, TicketFilter,
+    TicketCreate, TicketUpdate, TicketResponse, TicketDetailResponse, StatusChange, TicketFilter,
     CommentCreate, CommentResponse,
 )
 from src.core.deps import get_current_user
@@ -184,7 +185,7 @@ def create_ticket_router() -> APIRouter:
             output.append(d)
         return output
 
-    @router.get("/{ticket_id}", response_model=TicketResponse)
+    @router.get("/{ticket_id}", response_model=TicketDetailResponse)
     async def get_ticket(
         ticket_id: int,
         user: User = Depends(get_current_user),
@@ -202,14 +203,17 @@ def create_ticket_router() -> APIRouter:
         ticket = (await db.execute(stmt)).scalar_one_or_none()
         if not ticket or not await RoleChecker.can_view_ticket_async(user, ticket, db):
             raise HTTPException(404)
-        d = _enrich_ticket(TicketResponse.model_validate(ticket), ticket, user)
-        return d
+        detail = TicketDetailResponse.model_validate(ticket)
+        if ticket.created_by is not None:
+            detail.creator_name = await db.scalar(select(User.name).where(User.id == ticket.created_by))
+        detail.can_upload_documents = await RoleChecker.can_modify_ticket_async(user, ticket, db)
+        return _enrich_ticket(detail, ticket, user)
 
-    @router.post("", status_code=201, response_model=TicketResponse)
-    async def create_ticket(
+    async def create_ticket_with_documents(
         data: TicketCreate,
-        user: User = Depends(get_current_user),
-        db: AsyncSession = Depends(get_db),
+        user: User,
+        db: AsyncSession,
+        files: list[UploadFile],
     ):
         if user.role == UserRole.customer:
             if user.customer_id is None:
@@ -226,7 +230,20 @@ def create_ticket_router() -> APIRouter:
             raise HTTPException(403, "Только диспетчер, администратор или инженер может создавать заявки")
         svc = TicketService(db)
         ticket = await svc.create(data.model_dump(), user)
-        await db.commit()
+        stored_paths: list[str] = []
+        try:
+            attachments = AttachmentService(db)
+            for file in files:
+                stored = await attachments.store_new_ticket_document(file, ticket)
+                stored_paths.append(stored.path)
+            await db.commit()
+        except BaseException:
+            try:
+                await db.rollback()
+            finally:
+                for path in stored_paths:
+                    AttachmentService.remove_stored_file(path)
+            raise
         ticket = await _reload_ticket(db, ticket.id)
         # Отправка email инженеру при назначении
         if ticket.assignee_id:
@@ -234,6 +251,27 @@ def create_ticket_router() -> APIRouter:
             if eng:
                 await MailService.notify_engineer_assigned(ticket, eng, db)
         return _enrich_ticket(TicketResponse.model_validate(ticket), ticket, user)
+
+    @router.post("", status_code=201, response_model=TicketResponse)
+    async def create_ticket(
+        data: TicketCreate,
+        user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+    ):
+        return await create_ticket_with_documents(data, user, db, [])
+
+    @router.post("/with-attachments", status_code=201, response_model=TicketResponse)
+    async def create_ticket_with_attachments(
+        data: str = Form(...),
+        files: list[UploadFile] = File(...),
+        user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+    ):
+        try:
+            ticket_data = TicketCreate.model_validate_json(data)
+        except ValidationError as exc:
+            raise HTTPException(422, "Проверьте заполнение полей заявки") from exc
+        return await create_ticket_with_documents(ticket_data, user, db, files)
 
     @router.patch("/{ticket_id}", response_model=TicketResponse)
     async def update_ticket(

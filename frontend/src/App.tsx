@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { api, TicketResponse } from './api/client';
+import { isAxiosError } from 'axios';
+import { api, TicketAttachment, TicketResponse } from './api/client';
 import { TicketGrid } from './components/TicketGrid/TicketGrid';
 import { TicketChecklist } from './components/TicketChecklist';
 import { WarehousePage } from './pages/WarehousePage';
@@ -17,6 +18,16 @@ import { trackUserActivity } from './utils/userActivity';
 const endOfLocalDayIso = (date: string): string | undefined => (
   date ? new Date(`${date}T23:59:59`).toISOString() : undefined
 );
+
+const TICKET_DOCUMENT_ACCEPT = '.pdf,.png,.jpg,.jpeg,.doc,.docx,application/pdf,image/png,image/jpeg,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+function requestErrorMessage(error: unknown, fallback: string): string {
+  if (isAxiosError<{ detail?: unknown }>(error)) {
+    const detail = error.response?.data?.detail;
+    if (typeof detail === 'string') return detail;
+  }
+  return fallback;
+}
 
 async function downloadFile(url: string, filename: string) {
   try {
@@ -217,6 +228,7 @@ const CreateTicketModal: React.FC<{
   const [assigneeId, setAssigneeId] = useState<number | ''>(currentUser?.role === 'engineer' ? currentUser.id : '');
   const [isInternal, setIsInternal] = useState(false);
   const [locations, setLocations] = useState<Location[]>([]);
+  const [documents, setDocuments] = useState<File[]>([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [locQuery, setLocQuery] = useState('');
@@ -229,47 +241,51 @@ const CreateTicketModal: React.FC<{
   const selectedLocation = locations.find(l => l.id === Number(locationId));
 
   const submit = async () => {
+    if (saving) return;
+    let data: Record<string, unknown>;
     if (isInternal) {
       if (!body.trim()) { setError('Заполните описание'); return; }
       if (!resolutionDeadline) { setError('Укажите дедлайн'); return; }
       if (!assigneeId) { setError('Выберите исполнителя'); return; }
-    } else if (!subject || !locationId) {
-      setError('Заполните тему и выберите объект');
-      return;
+      data = {
+        is_internal: true,
+        body: body.trim(),
+        resolution_deadline: endOfLocalDayIso(resolutionDeadline),
+        assignee_id: Number(assigneeId),
+      };
+    } else {
+      if (!subject || !locationId) { setError('Заполните тему и выберите объект'); return; }
+      if (!selectedLocation) {
+        setError('Выбранный объект не найден. Обновите список объектов.');
+        return;
+      }
+      data = {
+        subject,
+        body,
+        type: ticketType || undefined,
+        source_description: sourceDesc || undefined,
+        customer_id: selectedLocation.customer_id,
+        location_id: Number(locationId),
+        priority,
+        resolution_deadline: currentUser?.role === 'customer' ? undefined : endOfLocalDayIso(resolutionDeadline),
+        assignee_id: assigneeId ? Number(assigneeId) : undefined,
+      };
     }
-    if (saving) return;
+    setError('');
     setSaving(true);
     try {
-      if (isInternal) {
-        await api.post('/tickets', {
-          is_internal: true,
-          body: body.trim(),
-          resolution_deadline: endOfLocalDayIso(resolutionDeadline),
-          assignee_id: Number(assigneeId),
-        });
+      if (documents.length) {
+        const form = new FormData();
+        form.append('data', JSON.stringify(data));
+        for (const file of documents) form.append('files', file);
+        await api.post('/tickets/with-attachments', form);
       } else {
-        const selected = locations.find(l => l.id === Number(locationId));
-        if (!selected) {
-          setError('Выбранный объект не найден. Обновите список объектов.');
-          setSaving(false);
-          return;
-        }
-        await api.post('/tickets', {
-          subject,
-          body,
-          type: ticketType || undefined,
-          source_description: sourceDesc || undefined,
-          customer_id: selected.customer_id,
-          location_id: Number(locationId),
-          priority,
-          resolution_deadline: currentUser?.role === 'customer' ? undefined : endOfLocalDayIso(resolutionDeadline),
-          assignee_id: assigneeId ? Number(assigneeId) : undefined,
-        });
+        await api.post('/tickets', data);
       }
       onCreated();
       onClose();
-    } catch (e: any) {
-      setError(e.response?.data?.detail || 'Ошибка создания');
+    } catch (error) {
+      setError(requestErrorMessage(error, 'Ошибка создания заявки'));
     } finally { setSaving(false); }
   };
 
@@ -280,7 +296,7 @@ const CreateTicketModal: React.FC<{
   const canCreateInternal = currentUser && ['admin', 'director', 'dispatcher', 'accountant', 'chief_accountant', 'engineer'].includes(currentUser.role);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={() => { if (!saving) onClose(); }}>
       <div className="modal-card modal-card-wide" onClick={e => e.stopPropagation()}>
         <h3>Создать заявку</h3>
         {error && <p className="modal-error">{error}</p>}
@@ -387,10 +403,21 @@ const CreateTicketModal: React.FC<{
             <label>Контактное лицо на объекте</label>
             <input value={formatSiteContact(selectedLocation?.contact_name, selectedLocation?.contact_phone)} readOnly />
           </div>}
+          <div className="span-2">
+            <label htmlFor="new-ticket-documents">Документы</label>
+            <input
+              id="new-ticket-documents"
+              type="file"
+              accept={TICKET_DOCUMENT_ACCEPT}
+              multiple
+              disabled={saving}
+              onChange={e => setDocuments(Array.from(e.currentTarget.files ?? []))}
+            />
+          </div>
         </div>
         <div className="modal-actions">
-          <button className="btn btn-primary" onClick={submit}>Создать</button>
-          <button className="btn btn-secondary" onClick={onClose}>Отмена</button>
+          <button className="btn btn-primary" onClick={submit} disabled={saving}>{saving ? 'Создание…' : 'Создать'}</button>
+          <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Отмена</button>
         </div>
       </div>
     </div>
@@ -554,8 +581,12 @@ const TicketDetailModal: React.FC<{
   onStatusChange?: (ticket: TicketResponse, target: string) => Promise<void>;
   onRefresh?: () => void; role?: string; currentUserId?: number; readOnly?: boolean;
 }> = ({ ticket, onClose, onStatusChange, onRefresh, role, currentUserId, readOnly = false }) => {
+  const [details, setDetails] = useState<TicketResponse | null>(null);
+  const [detailsFailed, setDetailsFailed] = useState(false);
   const [comments, setComments] = useState<any[]>([]);
-  const [attachments, setAttachments] = useState<any[]>([]);
+  const [attachments, setAttachments] = useState<TicketAttachment[]>([]);
+  const [documentError, setDocumentError] = useState('');
+  const [uploadingDocument, setUploadingDocument] = useState(false);
   const [newComment, setNewComment] = useState('');
   const [sending, setSending] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
@@ -580,18 +611,31 @@ const TicketDetailModal: React.FC<{
     (role === 'engineer' && ticket.assignee_id === currentUserId)
   ));
 
-  const load = async () => {
+  const loadDocuments = async () => {
     try {
-      const [cRes, aRes] = await Promise.all([
-        api.get(`/tickets/${ticket.id}/comments`),
-        api.get('/attachments', { params: { ticket_id: ticket.id } }).catch(() => ({ data: [] })),
-      ]);
-      setComments(cRes.data);
-      setAttachments(aRes.data);
-    } catch {}
+      const { data } = await api.get<TicketAttachment[]>('/attachments', { params: { ticket_id: ticket.id } });
+      setAttachments(data);
+      setDocumentError('');
+    } catch (error) {
+      setDocumentError(requestErrorMessage(error, 'Не удалось загрузить список документов'));
+    }
   };
 
-  useEffect(() => { load(); }, [ticket.id]);
+  const load = async () => {
+    await Promise.all([
+      api.get(`/tickets/${ticket.id}/comments`).then(response => setComments(response.data)).catch(() => {}),
+      loadDocuments(),
+    ]);
+  };
+
+  useEffect(() => {
+    const controller = new AbortController();
+    api.get<TicketResponse>(`/tickets/${ticket.id}`, { signal: controller.signal })
+      .then(response => setDetails(response.data))
+      .catch(() => { if (!controller.signal.aborted) setDetailsFailed(true); });
+    load();
+    return () => controller.abort();
+  }, [ticket.id]);
 
   const [statusError, setStatusError] = useState('');
 
@@ -628,19 +672,24 @@ const TicketDetailModal: React.FC<{
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.currentTarget.files?.[0];
+    e.currentTarget.value = '';
+    if (!file || uploadingDocument) return;
+    setDocumentError('');
+    setUploadingDocument(true);
     try {
       const form = new FormData();
       form.append('file', file);
       form.append('ticket_id', String(ticket.id));
+      form.append('kind', 'document');
       await api.post('/attachments', form);
-      load();
-    } catch (err: any) {
-      alert(err.response?.data?.detail || 'Ошибка загрузки файла');
+      await loadDocuments();
+    } catch (error) {
+      setDocumentError(requestErrorMessage(error, 'Не удалось загрузить документ'));
+    } finally {
+      setUploadingDocument(false);
     }
-    e.target.value = '';
   };
 
   const saveDeadline = async () => {
@@ -673,6 +722,9 @@ const TicketDetailModal: React.FC<{
       <div className="modal-card modal-card-wide" onClick={e => e.stopPropagation()} style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
         <div style={{ overflow: 'auto', flex: 1 }}>
           <h3 style={{ margin: '0 0 12px' }}>#{ticket.number} {ticket.subject}</h3>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
+            Создал: {details ? details.creator_name?.trim() || 'Не указан' : detailsFailed ? 'Не удалось загрузить' : '…'}
+          </p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 13, marginBottom: 14 }}>
             <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Статус</span><div><span className={`status-pill st-${ticket.status?.toLowerCase()}`}>{SL[ticket.status] || ticket.status}</span></div></div>
             <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Приоритет</span><div>{PL[ticket.priority] || ticket.priority}</div></div>
@@ -726,16 +778,36 @@ const TicketDetailModal: React.FC<{
               {statusError && <p style={{ color: 'var(--danger)', fontSize: 12, marginTop: 4 }}>{statusError}</p>}
             </div>
           )}
-          {attachments.length > 0 && (
+          {(attachments.length > 0 || documentError || (!readOnly && details?.can_upload_documents)) && (
             <div style={{ marginBottom: 14 }}>
-              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Файлы ({attachments.length})</span>
+              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Документы ({attachments.length})</span>
               <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {attachments.map((a: any) => (
-                  <a key={a.id} href="#" onClick={(e) => { e.preventDefault(); downloadFile(a.download_url || `/api/attachments/${a.id}`, a.filename); }} target="_blank" rel="noopener" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: 'var(--bg-surface)', borderRadius: 6, fontSize: 12, color: 'var(--primary)', textDecoration: 'none', border: '1px solid var(--border)', cursor: 'pointer' }}>
-                    {a.filename}
-                  </a>
+                {attachments.map(attachment => (
+                  <button
+                    key={attachment.id}
+                    type="button"
+                    className="btn btn-secondary"
+                    aria-label={`Скачать ${attachment.filename}`}
+                    onClick={() => downloadFile(attachment.download_url || `/attachments/${attachment.id}`, attachment.filename)}
+                    style={{ maxWidth: '100%', overflowWrap: 'anywhere', textAlign: 'left', fontSize: 12 }}
+                  >
+                    {attachment.filename}
+                  </button>
                 ))}
               </div>
+              {!readOnly && details?.can_upload_documents && (
+                <>
+                  <label htmlFor="ticket-document">{uploadingDocument ? 'Загрузка…' : 'Добавить документ'}</label>
+                  <input
+                    id="ticket-document"
+                    type="file"
+                    accept={TICKET_DOCUMENT_ACCEPT}
+                    disabled={uploadingDocument}
+                    onChange={handleDocumentUpload}
+                  />
+                </>
+              )}
+              {documentError && <p className="modal-error" role="alert">{documentError}</p>}
             </div>
           )}
           <div style={{ marginBottom: 14 }}>
@@ -764,9 +836,6 @@ const TicketDetailModal: React.FC<{
             <div style={{ display: 'flex', gap: 8, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' }}>
               <input type="text" placeholder="Ссылка URL" value={linkUrl} onChange={e => setLinkUrl(e.target.value)} style={{ flex: 1, minWidth: 120, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, background: 'var(--bg-surface)', color: 'var(--text)' }} />
               <input type="text" placeholder="Название ссылки" value={linkTitle} onChange={e => setLinkTitle(e.target.value)} style={{ width: 140, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, background: 'var(--bg-surface)', color: 'var(--text)' }} />
-              <label className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 12, cursor: 'pointer' }}>
-                Файл<input type="file" onChange={handleFileUpload} style={{ display: 'none' }} />
-              </label>
             </div>
           </div>
         )}
@@ -1261,6 +1330,7 @@ const App: React.FC = () => {
         )}
         {detailTicket && (
           <TicketDetailModal
+            key={detailTicket.id}
             ticket={detailTicket}
             onClose={() => { setDetailTicket(null); setDetailReadOnly(false); }}
             onStatusChange={handleStatusChange}
