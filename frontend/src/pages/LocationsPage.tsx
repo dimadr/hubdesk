@@ -128,7 +128,8 @@ export const LocationsPage: React.FC<LocationsPageProps> = ({ onOpenTicket }) =>
           <thead>
             <tr>
               <th>ID</th><th>Название</th><th>Клиент</th><th>Адрес</th><th>ИНН</th><th>Контакты</th>
-              <th>Инженер</th><th>Договор</th><th>Срок</th><th className="location-actions" scope="col">Действия</th>
+              <th>Инженер</th><th>Договор</th><th>Срок</th>
+              <th className="location-actions" scope="col">Действия</th>
             </tr>
           </thead>
           <tbody>
@@ -138,7 +139,7 @@ export const LocationsPage: React.FC<LocationsPageProps> = ({ onOpenTicket }) =>
                 : [l.contact_name, l.contact_phone, l.contact_email].filter(Boolean).join(' / ') || l.contacts;
               return (
                 <tr key={l.id}>
-                  <td className="mono" style={{ color: 'var(--text-muted)' }}>#{l.id}</td>
+                  <td className="mono location-identifier" style={{ color: 'var(--text-muted)' }}>#{l.id}</td>
                   <td style={{ fontWeight: 600 }}>
                     <button
                       type="button"
@@ -151,29 +152,31 @@ export const LocationsPage: React.FC<LocationsPageProps> = ({ onOpenTicket }) =>
                   </td>
                   <td style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{l.customer_name}</td>
                   <td style={{ color: 'var(--text-secondary)' }}>{l.address}</td>
-                  <td className="mono" style={{ fontSize: 12 }}>{l.inn || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                  <td className="mono location-identifier" style={{ fontSize: 12 }}>{l.inn || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
                   <td>{contactStr || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
                   <td>{l.assigned_engineer_name || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
                   <td className="mono" style={{ fontSize: 11 }}>{l.contract_number || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                  <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+                  <td className="location-contract-period">
                     {l.contract_valid_from && <span>с {l.contract_valid_from.substring(0, 10)}</span>}
-                    {l.contract_valid_to && <span> до {l.contract_valid_to.substring(0, 10)}</span>}
+                    {l.contract_valid_to && <span>до {l.contract_valid_to.substring(0, 10)}</span>}
                     {!l.contract_valid_from && !l.contract_valid_to && <span style={{ color: 'var(--text-muted)' }}>—</span>}
                   </td>
                   <td className="location-actions">
                     <button
                       type="button"
                       onClick={() => setEditId(l.id)}
-                      className="btn btn-secondary"
+                      className="btn location-action"
                       aria-label={canEditLocation ? 'Редактировать объект' : 'Сведения об объекте'}
                       title={canEditLocation ? 'Редактировать объект' : 'Сведения об объекте'}
-                      style={{ padding: '3px 8px', fontSize: 11 }}
                     >✎</button>
                     {isAdmin && (
                       <button
+                        type="button"
                         onClick={() => handleDelete(l.id)}
-                        className="btn btn-secondary"
-                        style={{ padding: '3px 8px', fontSize: 11, marginLeft: 4, color: confirmDelete === l.id ? 'var(--danger)' : undefined }}
+                        className="btn location-action"
+                        aria-label={confirmDelete === l.id ? 'Подтвердить удаление' : 'Удалить объект'}
+                        title={confirmDelete === l.id ? 'Подтвердить удаление' : 'Удалить объект'}
+                        style={{ color: confirmDelete === l.id ? 'var(--danger)' : undefined }}
                       >
                         {confirmDelete === l.id ? 'Подтвердить?' : '✕'}
                       </button>
