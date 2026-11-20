@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { isAxiosError } from 'axios';
 import { api, TicketAttachment, TicketResponse } from './api/client';
+import { EldisLink } from './components/EldisLink';
 import { TicketGrid } from './components/TicketGrid/TicketGrid';
 import { TicketChecklist } from './components/TicketChecklist';
 import { WarehousePage } from './pages/WarehousePage';
@@ -64,6 +65,7 @@ interface Location {
   id: number;
   name: string;
   address: string;
+  eldis_url?: string | null;
   customer_id: number;
   customer_name: string;
   contacts: string | null;
@@ -363,6 +365,7 @@ const CreateTicketModal: React.FC<{
                 )}
               </>
             )}
+            <EldisLink url={selectedLocation?.eldis_url} />
           </div>}
           <div className="span-2">
             <label>{isInternal ? 'Описание' : 'Описание проблемы'} {isInternal && <span className="required">*</span>}</label>
@@ -754,7 +757,7 @@ const TicketDetailModal: React.FC<{
             {!ticket.is_internal && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Контакт</span><div>{formatSiteContact(ticket.site_contact_name, ticket.site_contact_phone)}</div></div>}
             {ticket.scheduled_end && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Выезд по</span><div>{new Date(ticket.scheduled_end).toLocaleString('ru-RU')}</div></div>}
             {!ticket.is_internal && ticket.source_description && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Источник</span><div>{ticket.source_description}</div></div>}
-            {ticket.location_name && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Объект</span><div>{ticket.location_name}</div></div>}
+            {ticket.location_name && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Объект</span><div>{ticket.location_name}</div><EldisLink url={details?.eldis_url} /></div>}
             {ticket.location_address && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Адрес</span><div>{ticket.location_address}</div></div>}
             {ticket.customer_name && <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Заказчик</span><div>{ticket.customer_name}</div></div>}
           </div>

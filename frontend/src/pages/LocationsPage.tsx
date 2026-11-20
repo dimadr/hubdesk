@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api, TicketResponse } from '../api/client';
+import { EldisLink, isEldisObjectUrl } from '../components/EldisLink';
 
 interface ContactItem {
   id?: number;
@@ -14,6 +15,7 @@ interface Location {
   id: number;
   name: string;
   address: string;
+  eldis_url?: string | null;
   customer_id: number;
   customer_name: string;
   contacts: string | null;
@@ -39,6 +41,7 @@ interface LocationsPageProps {
 export const LocationsPage: React.FC<LocationsPageProps> = ({ onOpenTicket }) => {
   const role = (() => { try { return JSON.parse(localStorage.getItem('user') || '{}').role || ''; } catch { return ''; } })();
   const isAdmin = role === 'admin';
+  const canEditLocation = ['admin', 'director', 'dispatcher', 'accountant', 'chief_accountant', 'engineer'].includes(role);
   const [locations, setLocations] = useState<Location[]>([]);
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [customers, setCustomers] = useState<CustomerInfo[]>([]);
@@ -108,7 +111,7 @@ export const LocationsPage: React.FC<LocationsPageProps> = ({ onOpenTicket }) =>
     <div>
       <div className="page-header" style={{ marginBottom: 14 }}>
         <h2>Объекты обслуживания</h2>
-        {(role === 'admin' || role === 'director' || role === 'dispatcher' || role === 'accountant' || role === 'chief_accountant' || role === 'engineer') && (
+        {canEditLocation && (
           <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Добавить объект</button>
         )}
       </div>
@@ -188,6 +191,7 @@ export const LocationsPage: React.FC<LocationsPageProps> = ({ onOpenTicket }) =>
           onSaved={() => { setShowAdd(false); refreshLocations(); }}
           users={users}
           customers={customers}
+          canEditLocation={canEditLocation}
         />
       )}
 
@@ -198,6 +202,7 @@ export const LocationsPage: React.FC<LocationsPageProps> = ({ onOpenTicket }) =>
           onSaved={() => { setEditId(null); refreshLocations(); }}
           users={users}
           customers={customers}
+          canEditLocation={canEditLocation}
           loc={locations.find(l => l.id === editId)}
         />
       )}
@@ -286,6 +291,7 @@ const LocationWorksModal: React.FC<{
             <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 4 }}>
               {[location.customer_name, location.address].filter(Boolean).join(' — ')}
             </div>
+            <EldisLink url={location.eldis_url} />
           </div>
           <button
             type="button"
@@ -372,14 +378,16 @@ interface LocFormProps {
   onSaved: () => void;
   users: UserInfo[];
   customers: CustomerInfo[];
+  canEditLocation: boolean;
   loc?: Location;
 }
 
-const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, loc }) => {
+const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, canEditLocation, loc }) => {
   const [name, setName] = useState(loc?.name || '');
   const [customerId, setCustomerId] = useState<string>(loc?.customer_id != null ? loc.customer_id.toString() : '');
   const [newCustomerName, setNewCustomerName] = useState('');
   const [address, setAddress] = useState(loc?.address || '');
+  const [eldisUrl, setEldisUrl] = useState(loc?.eldis_url ?? '');
   const [contactName, setContactName] = useState(loc?.contact_name || '');
   const [contactPhone, setContactPhone] = useState(loc?.contact_phone || '');
   const [contactEmail, setContactEmail] = useState(loc?.contact_email || '');
@@ -447,6 +455,12 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
       setError('Выберите клиента или введите название нового');
       return;
     }
+    const nextEldisUrl = eldisUrl.trim() || null;
+    const eldisUrlChanged = canEditLocation && nextEldisUrl !== (loc?.eldis_url ?? null);
+    if (eldisUrlChanged && nextEldisUrl && !isEldisObjectUrl(nextEldisUrl)) {
+      setError('Введите ссылку на объект Элдиса вида https://it37.eldis24.ru/main/object/{UUID}');
+      return;
+    }
 
     try {
       const body: any = {
@@ -475,6 +489,7 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
       } else if (!loc && newCustomerName.trim()) {
         body.customer_name = newCustomerName.trim();
       }
+      if (eldisUrlChanged) body.eldis_url = nextEldisUrl;
 
       if (loc) {
         await api.patch(`/locations/${loc.id}`, body);
@@ -483,7 +498,8 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
       }
       onSaved();
     } catch (e: any) {
-      setError(e.response?.data?.detail || 'Произошла ошибка при сохранении');
+      const detail = e.response?.data?.detail;
+      setError(typeof detail === 'string' ? detail : 'Произошла ошибка при сохранении');
     }
   };
 
@@ -526,6 +542,13 @@ const LocForm: React.FC<LocFormProps> = ({ onClose, onSaved, users, customers, l
             <label>Адрес</label>
             <input placeholder="Город, улица, дом..." value={address} onChange={e => setAddress(e.target.value)} />
           </div>
+
+          {canEditLocation && (
+            <div className="span-2">
+              <label htmlFor="location-eldis-url">Ссылка на Элдис</label>
+              <input id="location-eldis-url" type="url" placeholder="https://it37.eldis24.ru/main/object/{UUID}" value={eldisUrl} onChange={e => setEldisUrl(e.target.value)} />
+            </div>
+          )}
 
           <div className="span-2">
             <label>ИНН контрагента</label>

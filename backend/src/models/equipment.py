@@ -1,6 +1,6 @@
 from datetime import date
 from typing import Any, Dict, List
-from sqlalchemy import String, ForeignKey, JSON, Table, Column, Integer, text, UniqueConstraint
+from sqlalchemy import BigInteger, String, ForeignKey, JSON, Table, Column, Integer, Uuid, text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -10,6 +10,17 @@ warehouse_access = Table(
     Base.metadata,
     Column("warehouse_id", Integer, ForeignKey("warehouses.id", ondelete="CASCADE"), primary_key=True),
     Column("user_id", Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
+eldis_link_import_changes = Table(
+    "eldis_link_import_changes",
+    Base.metadata,
+    Column("batch_id", Uuid, primary_key=True),
+    Column("location_id", Integer, primary_key=True),
+    Column("previous_url", String(128), nullable=True),
+    Column("imported_url", String(128), nullable=False),
+    Column("imported_revision", BigInteger, nullable=False),
 )
 
 
@@ -34,6 +45,8 @@ class AssetLocation(Base):
     customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id", ondelete="RESTRICT"), index=True)
     name: Mapped[str] = mapped_column(String(255))
     address: Mapped[str] = mapped_column(String(500))
+    eldis_url: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    eldis_url_revision: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
     contacts: Mapped[str | None] = mapped_column(String(500), nullable=True)
     contact_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     contact_phone: Mapped[str | None] = mapped_column(String(50), nullable=True)

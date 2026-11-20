@@ -1,8 +1,29 @@
-from pydantic import BaseModel, Field, field_serializer, field_validator
+import re
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional
+from typing import Annotated, Optional
+
+from pydantic import AfterValidator, BaseModel, Field, field_serializer, field_validator
+
 from src.models.ticket import TicketStatus, TicketPriority, TicketType
+
+
+ELDIS_OBJECT_URL = re.compile(
+    r"https://it37\.eldis24\.ru/main/object/"
+    r"[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}"
+)
+
+
+def normalize_eldis_url(value: str | None) -> str | None:
+    if value is None or not value.strip():
+        return None
+    link = value.strip()
+    if not ELDIS_OBJECT_URL.fullmatch(link):
+        raise ValueError("Укажите ссылку вида https://it37.eldis24.ru/main/object/{UUID}")
+    return link.lower()
+
+
+EldisUrl = Annotated[str | None, AfterValidator(normalize_eldis_url)]
 
 
 def _utc_iso(value: datetime | None) -> str | None:
@@ -160,6 +181,7 @@ class TicketResponse(BaseModel):
 class TicketDetailResponse(TicketResponse):
     creator_name: str | None = None
     can_upload_documents: bool = False
+    eldis_url: str | None = None
 
 
 class CommentCreate(BaseModel):

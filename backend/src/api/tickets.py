@@ -207,6 +207,7 @@ def create_ticket_router() -> APIRouter:
         if ticket.created_by is not None:
             detail.creator_name = await db.scalar(select(User.name).where(User.id == ticket.created_by))
         detail.can_upload_documents = await RoleChecker.can_modify_ticket_async(user, ticket, db)
+        detail.eldis_url = ticket.location.eldis_url if ticket.location else None
         return _enrich_ticket(detail, ticket, user)
 
     async def create_ticket_with_documents(

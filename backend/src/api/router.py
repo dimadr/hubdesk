@@ -42,6 +42,7 @@ from src.services.inn_service import lookup_inn as do_lookup
 from src.services.device_session_service import DeviceSessionService
 
 from .tickets import create_ticket_router
+from .schemas import EldisUrl
 from .attachments import attachment_router
 from .equipment import equipment_router
 from .warehouse import warehouse_router
@@ -163,6 +164,7 @@ class LocationResponse(BaseModel):
     id: int
     name: str
     address: str
+    eldis_url: str | None = None
     customer_id: int
     customer_name: str = ""
     contacts: str | None = None
@@ -185,6 +187,7 @@ class LocationCreate(BaseModel):
     customer_id: int | None = None
     customer_name: str | None = None
     address: str = ""
+    eldis_url: EldisUrl = None
     contacts: str | None = None
     contact_name: str | None = None
     contact_phone: str | None = None
@@ -201,6 +204,7 @@ class LocationUpdate(BaseModel):
     name: str | None = None
     customer_id: int | None = None
     address: str | None = None
+    eldis_url: EldisUrl = None
     contacts: str | None = None
     contact_name: str | None = None
     contact_phone: str | None = None
@@ -408,6 +412,7 @@ async def list_locations(
     for loc, cust_name in rows:
         out.append(LocationResponse(
             id=loc.id, name=loc.name, address=loc.address, customer_id=loc.customer_id,
+            eldis_url=loc.eldis_url,
             customer_name=cust_name,
             contacts=loc.contacts,
             contact_name=loc.contact_name,
@@ -463,6 +468,7 @@ async def create_location(
 
     loc = AssetLocation(
         name=data.name, address=data.address, customer_id=cust.id,
+        eldis_url=data.eldis_url,
         contacts=data.contacts,
         contact_name=data.contact_name,
         contact_phone=data.contact_phone,
@@ -496,6 +502,7 @@ async def create_location(
 
     return LocationResponse(
         id=loc.id, name=loc.name, address=loc.address, customer_id=loc.customer_id,
+        eldis_url=loc.eldis_url,
         customer_name=cust.name,
         contacts=loc.contacts,
         contact_name=loc.contact_name,
@@ -596,6 +603,7 @@ async def update_location(
 
     return LocationResponse(
         id=loc.id, name=loc.name, address=loc.address, customer_id=loc.customer_id,
+        eldis_url=loc.eldis_url,
         customer_name=cust_name,
         contacts=loc.contacts,
         contact_name=loc.contact_name,
